@@ -6,7 +6,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 from numba import njit,prange
 from . import utils
-from .constants import G,kpc,default_units,km,second
+from .constants import G,kpc,default_units,km,second,Unit
 
 class Density:
     def __init__(self,Rmin,Rmax,Mtot=1,unit_mass=1,space_steps=1e4):
@@ -18,10 +18,10 @@ class Density:
         self.unit_mass = unit_mass
 
         self.memoization = {}
-        self.print_length_units = default_units('length')
-        self.print_mass_units = default_units('mass')
-        self.print_time_units = default_units('time')
-        self.print_density_units = default_units('density')
+        self.print_length_units:Unit = default_units('length')
+        self.print_mass_units:Unit = default_units('mass')
+        self.print_time_units:Unit = default_units('time')
+        self.print_density_units:Unit = default_units('density')
 
     def __repr__(self):
             return f"""General mass density function
@@ -248,7 +248,8 @@ class Density:
 
 ##Plots
 
-    def plot_phase_space(self,r_range=None,v_range=None,length_units=default_units('length'),velocity_units=default_units('velocity'),fig=None,ax=None):
+    def plot_phase_space(self,r_range=None,v_range=None,length_units:Unit=default_units('length'),velocity_units:Unit=default_units('velocity'),
+                         fig=None,ax=None):
         if r_range is None:
             r_range = np.linspace(1e-2,50,200)*kpc
         if v_range is None:
@@ -256,10 +257,10 @@ class Density:
         r,v = np.meshgrid(r_range,v_range)
         f = self.f(self.E(r,v))
         grid = 16*np.pi*r**2*v**2*f
-        fig,ax = utils.plot_phase_space(grid,r_range/length_units['value'],v_range/velocity_units['value'],length_units,velocity_units,fig,ax)
+        fig,ax = utils.plot_phase_space(grid,r_range/length_units['value'],v_range/velocity_units['value'],length_units,velocity_units,fig=fig,ax=ax)
         return fig,ax
 
-    def plot_rho(self,r_start,r_end,density_units=default_units('density'),length_units=default_units('length'),fig=None,ax=None):
+    def plot_rho(self,r_start,r_end,density_units:Unit=default_units('density'),length_units:Unit=default_units('length'),fig=None,ax=None):
         if fig is None or ax is None:
             fig,ax = plt.subplots(figsize=(6,5))
         fig.tight_layout()
@@ -274,7 +275,7 @@ class Density:
         ax.set(xscale='log',yscale='log')
         return fig,ax
 
-    def plot_radius_distribution(self,r_start:None|float=None,r_end:None|float=None,cumulative=False,units=default_units('length'),fig=None,ax=None):
+    def plot_radius_distribution(self,r_start:None|float=None,r_end:None|float=None,cumulative=False,units:Unit=default_units('length'),fig=None,ax=None):
         if fig is None or ax is None:
             fig,ax = plt.subplots(figsize=(6,5))
         fig.tight_layout()
@@ -368,7 +369,7 @@ class NFW(Density):
 
 ##Plots
 
-    def plot_rho(self,r_start=1e-4,r_end=1e4,density_units=default_units('density'),length_units=default_units('length'),fig=None,ax=None):
+    def plot_rho(self,r_start=1e-4,r_end=1e4,density_units:Unit=default_units('density'),length_units:Unit=default_units('length'),fig=None,ax=None):
         fig,ax = super().plot_rho(r_start,r_end,density_units,length_units,fig,ax)
         ymax = self.rho(r_start)/length_units['value']
         ax.vlines(x=[self.Rs/length_units['value'],self.Rvir/length_units['value']],ymin=0,ymax=ymax,linestyles='dashed',colors='black')
@@ -376,7 +377,7 @@ class NFW(Density):
         ax.text(x=self.Rvir/length_units['value']*1.3,y=ymax*0.5,s='Rvir');
         return fig,ax
 
-    def plot_radius_distribution(self,r_start:None|float=1e-4*kpc,r_end=None,cumulative=False,units=default_units('length'),fig=None,ax=None):
+    def plot_radius_distribution(self,r_start:None|float=1e-4*kpc,r_end=None,cumulative=False,units:Unit=default_units('length'),fig=None,ax=None):
         if r_end is None:
             r_end = self.Rvir*2
         fig,ax = super().plot_radius_distribution(r_start,r_end,cumulative=cumulative,units=units,fig=fig,ax=ax)

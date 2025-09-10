@@ -3,7 +3,7 @@ import pandas as pd
 from numba import njit
 from matplotlib import pyplot as plt
 import matplotlib.ticker as mtick
-from .constants import kpc,km,second,default_units
+from .constants import kpc,km,second,default_units,Unit
 
 def random_angle(like,acos):
     rolls = np.random.rand(len(like)) if len(like.shape) == 1 else np.random.rand(*like.shape)
@@ -101,28 +101,41 @@ def linear_interpolation(xs,ys,x):
     w = (x-xs[i])/(xs[i+1]-xs[i])
     return (1-w)*ys[i]+w*ys[i+1]
 
-def plot_phase_space(grid,r_range=None,v_range=None,length_units=default_units('length'),velocity_units=default_units('velocity'),fig=None,ax=None):
-    if r_range is None:
-        r_range = np.array([1e-2,50])*kpc/length_units['value']
-    if v_range is None:
-        v_range = np.array([0,100])*(km/second)/velocity_units['value']
-    extent = (r_range.min(),r_range.max(),v_range.min(),v_range.max())
+def plot_2d(grid,extent=None,x_range=None,y_range=None,x_units:Unit=default_units(''),y_units:Unit=default_units(''),cbar_units:Unit=default_units(''),
+            x_nbins:int|None=6,y_nbins:int|None=6,title='',xlabel='',ylabel='',cbar_label='',fig=None,ax=None):
+    if extent is None:
+        if x_range is None:
+            x_range = np.array([1e-2,50])*kpc/x_units['value']
+        if y_range is None:
+            y_range = np.array([0,100])*(km/second)/y_units['value']
+        extent = (x_range.min(),x_range.max(),y_range.min(),y_range.max())
 
     if fig is None or ax is None:
         fig,ax = plt.subplots(figsize=(6,5))
     fig.tight_layout()
     im = ax.imshow(grid,origin='lower',aspect='auto',extent=extent)
-    fig.colorbar(im,ax=ax)
+    cbar = fig.colorbar(im,ax=ax)
+    if cbar_label:
+        cbar.set_label(cbar_label.format(**cbar_units))
 
-    ax.xaxis.set_major_locator(mtick.MaxNLocator(nbins=6))
-    ax.xaxis.set_major_formatter(mtick.FormatStrFormatter('%.0f'))
-    ax.xaxis.tick_bottom()
-    for lab in ax.get_xticklabels():
-        lab.set_rotation(0)
-        lab.set_horizontalalignment('center')
-    ax.set_xlabel('radius [{name}]'.format(**length_units))
+    if x_nbins is not None:
+        ax.xaxis.set_major_locator(mtick.MaxNLocator(nbins=x_nbins))
+        ax.xaxis.set_major_formatter(mtick.FormatStrFormatter('%.0f'))
+        ax.xaxis.tick_bottom()
+        for lab in ax.get_xticklabels():
+            lab.set_rotation(0)
+            lab.set_horizontalalignment('center')
+    ax.set_xlabel(xlabel.format(**x_units))
 
-    ax.yaxis.set_major_locator(mtick.MaxNLocator(nbins=6))
-    ax.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.0f'))
-    ax.set_ylabel('velocity [{name}]'.format(**velocity_units))
+    if y_nbins is not None:
+        ax.yaxis.set_major_locator(mtick.MaxNLocator(nbins=y_nbins))
+        ax.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.0f'))
+    ax.set_ylabel(ylabel.format(**y_units))
+    if title:
+        ax.set_title(title)
     return fig,ax
+
+def plot_phase_space(grid,r_range=None,v_range=None,length_units:Unit=default_units('length'),velocity_units:Unit=default_units('velocity'),
+                     x_nbins=6,y_nbins=6,fig=None,ax=None):
+    return plot_2d(grid,x_range=r_range,y_range=v_range,x_units=length_units,y_units=velocity_units,x_nbins=x_nbins,y_nbins=y_nbins,
+                   xlabel='radius [{name}]',ylabel='velocity [{name}]',fig=fig,ax=ax)

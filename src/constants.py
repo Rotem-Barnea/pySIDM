@@ -1,4 +1,9 @@
+from typing import TypedDict
 from . import si_units as SI
+
+class Unit(TypedDict):
+    name: str
+    value: float
 
 ## Work units
 length_unit = SI.kpc
@@ -36,7 +41,7 @@ unit_name.update({
     'density':f'{unit_name['mass']}/{unit_name['length']}^3',
 })
 
-def default_units(x):
+def default_units(x) -> Unit:
     match x:
         case 'length':
             return {'value':kpc,'name':'kpc'}
@@ -46,5 +51,7 @@ def default_units(x):
             return {'value':Msun,'name':'Msun'}
         case 'time':
             return {'value':Myr,'name':'Myr'}
+        case 'Tdyn':
+            return {'value':1,'name':'Tdyn'}
         case _:
             return {'value':1,'name':unit_name.get(x,'')}

@@ -5,7 +5,7 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 from .spatial_approximation import Lattice
 from . import utils,physics
-from .constants import kpc,km,second,default_units
+from .constants import kpc,km,second,default_units,Unit
 
 class Halo:
     def __init__(self,dt,r,v,initial_density,sigma=0,save_steps=None,time=0,simple_radius=1*kpc,n_interactions=0,regulator=1e-10,
@@ -227,7 +227,8 @@ class Halo:
             return self.initial_density.plot_radius_distribution(cumulative=cumulative,units=units,fig=fig,ax=ax)
         return fig,ax
 
-    def plot_phase_space(self,data,r_range=None,v_range=None,length_units=default_units('length'),velocity_units=default_units('velocity'),fig=None,ax=None):
+    def plot_phase_space(self,data,r_range=None,v_range=None,length_units:Unit=default_units('length'),velocity_units:Unit=default_units('velocity'),
+                         fig=None,ax=None):
         if r_range is None:
             r_range = np.linspace(1e-2,50,200)*kpc/length_units['value']
         if v_range is None:
@@ -245,5 +246,66 @@ class Halo:
         data = data.groupby(['r','v_norm']).agg('count').reset_index()
         grid[data['v_norm'].to_numpy(),data['r'].to_numpy()] = data['count']
 
-        fig,ax = utils.plot_phase_space(grid,r_range,v_range,length_units,velocity_units,fig,ax)
+        fig,ax = utils.plot_phase_space(grid,r_range,v_range,length_units,velocity_units,fig=fig,ax=ax)
         return fig,ax
+
+    def plot_inner_core_density(self,radius=0.2*kpc,time_units:Unit=default_units('time'),xlabel='time [{name}]',ylabel='#particles',
+                                title='#particles in inner density',fig=None,ax=None):
+        data = self.saved_states.copy()
+        data['time'] /= self.Tdyn
+        data['in_radius'] = data['r'] < radius
+        agg_data = data.groupby('time').in_radius.agg('sum')
+        xlabel = xlabel.format(**time_units)
+        if fig is None or ax is None:
+            fig,ax = plt.subplots(figsize=(6,5))
+        fig.tight_layout()
+        ax.grid(True)
+        sns.lineplot(agg_data,ax=ax)
+        ax.set_title(title)
+        ax.set_xlabel(xlabel)
+        ax.set_ylabel(ylabel)
+        return fig,ax
+
+    def plot_2d_density_time(self,radius_cutoff=40*kpc,length_units:Unit=default_units('length'),time_units:Unit=default_units('Tdyn'),fig=None,ax=None):
+        data = self.saved_states.copy()
+        if time_units['name'] == 'Tdyn':
+            data['time'] /= self.Tdyn
+        else:
+            data['time'] /= time_units['value']
+        data = data[data['r'] < radius_cutoff]
+        data['r_bin'] = data.r
+        lattice = Lattice(n_posts=30,start=data.r.min(),end=data.r.max()*1.1,log=False)
+        data['bin'] = lattice.posts[lattice(data.r)]
+        agg_data = data.groupby(['time','bin']).r_bin.agg('count').reset_index()
+        r,time = np.meshgrid(lattice.posts,data.time.unique())
+        pad = pd.DataFrame({'time':time.ravel(),'bin':r.ravel()})
+        pad['r_bin'] = np.nan
+        agg_data = pd.concat([agg_data,pad]).drop_duplicates(['time','bin']).sort_values(['time','bin'])
+        agg_data['bin'] /= length_units['value']
+        grid = agg_data.r_bin.to_numpy().reshape(r.shape)
+
+        return utils.plot_2d(grid,extent=(r.min()/kpc,r.max()/kpc,time.min(),time.max()),x_units=length_units,y_units=time_units,fig=fig,ax=ax,
+                             x_nbins=None,y_nbins=None,xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='#Particles')
+
+    def plot_2d_temperature_time(self,radius_cutoff=40*kpc,velocity_units:Unit=default_units('velocity'),time_units:Unit=default_units('Tdyn'),
+                                 fig=None,ax=None):
+        data = self.saved_states.copy()
+        if time_units['name'] == 'Tdyn':
+            data['time'] /= self.Tdyn
+        else:
+            data['time'] /= time_units['value']
+        data = data[data['r'] < radius_cutoff]
+        data['temperature'] = data.v_norm**2
+        lattice = Lattice(n_posts=30,start=data.r.min(),end=data.r.max()*1.1,log=False)
+        data['bin'] = lattice.posts[lattice(data.r)]
+        agg_data = data.groupby(['time','bin']).temperature.agg('count').reset_index()
+        r,time = np.meshgrid(lattice.posts,data.time.unique())
+        pad = pd.DataFrame({'time':time.ravel(),'bin':r.ravel()})
+        pad['temperature'] = np.nan
+        agg_data = pd.concat([agg_data,pad]).drop_duplicates(['time','bin']).sort_values(['time','bin'])
+        agg_data['bin'] /= velocity_units['value']
+        grid = agg_data.r_bin.to_numpy().reshape(r.shape)
+
+        return utils.plot_2d(grid,extent=(r.min()/kpc,r.max()/kpc,time.min(),time.max()),x_units=velocity_units,y_units=time_units,fig=fig,ax=ax,
+                             cbar_units={'value':1,'name':f'{velocity_units['name']}^2'},x_nbins=None,y_nbins=None,
+                             xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='log mean temperature (log v^2 [{name}])')

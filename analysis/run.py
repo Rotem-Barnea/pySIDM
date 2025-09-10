@@ -37,3 +37,16 @@ halo = Halo.setup(n_particles=n_particles,initial_density=nfw,sigma=sigma,steps_
 # %% Run
 
 halo.evolve(n_Tdyn=1)
+
+# %% Plot run results
+
+fig,ax = halo.plot_inner_core_density()
+fig,ax = halo.plot_2d_density_time()
+fig,ax = halo.plot_2d_temperature_time()
+
+# %% Plot initial distributions
+fig,ax = halo.initial_density.plot_rho()
+fig,ax = halo.plot_r_distribution(halo.initial_particles,cumulative=False)
+fig,ax = halo.plot_distribution('v_norm',halo.initial_particles)
+fig,ax = halo.initial_density.plot_phase_space()
+fig,ax = halo.plot_phase_space(halo.initial_particles);
