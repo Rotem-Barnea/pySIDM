@@ -41,8 +41,8 @@ halo.evolve(n_Tdyn=1)
 # %% Plot run results
 
 fig,ax = halo.plot_inner_core_density()
-fig,ax = halo.plot_2d_density_time()
-fig,ax = halo.plot_2d_temperature_time()
+fig,ax = halo.plot_density_evolution()
+fig,ax = halo.plot_temperature()
 
 # %% Plot initial distributions
 fig,ax = halo.initial_density.plot_rho()

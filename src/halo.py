@@ -266,7 +266,7 @@ class Halo:
         ax.set_ylabel(ylabel)
         return fig,ax
 
-    def plot_2d_density_time(self,radius_cutoff=40*kpc,length_units:Unit=default_units('length'),time_units:Unit=default_units('Tdyn'),fig=None,ax=None):
+    def plot_density_evolution(self,radius_cutoff=40*kpc,length_units:Unit=default_units('length'),time_units:Unit=default_units('Tdyn'),fig=None,ax=None):
         data = self.saved_states.copy()
         if time_units['name'] == 'Tdyn':
             data['time'] /= self.Tdyn
@@ -287,8 +287,7 @@ class Halo:
         return utils.plot_2d(grid,extent=(r.min()/kpc,r.max()/kpc,time.min(),time.max()),x_units=length_units,y_units=time_units,fig=fig,ax=ax,
                              x_nbins=None,y_nbins=None,xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='#Particles')
 
-    def plot_2d_temperature_time(self,radius_cutoff=40*kpc,velocity_units:Unit=default_units('velocity'),time_units:Unit=default_units('Tdyn'),
-                                 fig=None,ax=None):
+    def plot_temperature(self,radius_cutoff=40*kpc,velocity_units:Unit=default_units('velocity'),time_units:Unit=default_units('Tdyn'),fig=None,ax=None):
         data = self.saved_states.copy()
         if time_units['name'] == 'Tdyn':
             data['time'] /= self.Tdyn
