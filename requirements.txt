@@ -253,6 +253,10 @@ lark==1.2.2
     # via
     #   -r requirements.in
     #   rfc3987-syntax
+llvmlite==0.44.0
+    # via
+    #   -r requirements.in
+    #   numba
 markupsafe==3.0.2
     # via
     #   -r requirements.in
@@ -297,12 +301,15 @@ notebook-shim==0.2.4
     #   -r requirements.in
     #   jupyterlab
     #   notebook
-numpy==2.3.2
+numba==0.61.2
+    # via -r requirements.in
+numpy==2.2.6
     # via
     #   -r requirements.in
     #   contourpy
     #   imageio
     #   matplotlib
+    #   numba
     #   scipy
 packaging==25.0
     # via
