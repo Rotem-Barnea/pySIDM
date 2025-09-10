@@ -1,0 +1,13 @@
+m = 1 #m
+second = 1 # sec
+kg = 1 #kg
+kpc = 3.0857e19*m # m
+year = 365*24*60*60*second # sec
+Myr = 1e6*year # sec
+Gyr = 1e9*year # sec
+Msun = 1.988416e30*kg # kg
+G = 6.6743e-11*m**3/(kg*second**2) # m^3/(kg*sec^2)
+cm = 1e-2*m # m
+km = 1e3*m # m
+gram = 1e-3*kg #kg
+cross_section = cm**2/gram #m^2/kg
