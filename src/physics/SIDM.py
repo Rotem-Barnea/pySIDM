@@ -3,24 +3,6 @@ from numba import njit,prange
 from typing import Literal
 from .. import utils
 
-# @njit(parallel=True)
-# def multi_roll_scattering_pairs_worker(r,vr,vp,indices,dt,unit_mass,sigma,scatter_multiplicity=1,regulator=0,max_radius_j=10,buffer_size=100000):
-#     pairs_threads = np.full((scatter_multiplicity,buffer_size,2),-1,dtype=np.int64)
-#     mini_dt = dt/scatter_multiplicity
-#     for thread in prange(scatter_multiplicity):
-#         rolled_pairs = roll_scattering_pairs(r,vr,vp,indices,dt=mini_dt,unit_mass=unit_mass,sigma=sigma,regulator=regulator,max_radius_j=max_radius_j)
-#         for j in range(len(rolled_pairs)):
-#             if rolled_pairs[j,0] == rolled_pairs[j,1]:
-#                 continue
-#             pairs_threads[thread,j,0] = rolled_pairs[j,0]
-#             pairs_threads[thread,j,1] = rolled_pairs[j,1]
-#     return pairs_threads
-
-# def multi_roll_scattering_pairs(r,vr,vp,indices,dt,unit_mass,sigma,scatter_multiplicity=1,regulator=0,max_radius_j=10,buffer_size=100000):
-#     output = multi_roll_scattering_pairs_worker(r,vr,vp,indices,dt,unit_mass,sigma,scatter_multiplicity,regulator,max_radius_j,buffer_size)
-#     output = np.vstack(output)
-#     return indices[output[output[:,0]!=-1]]
-
 @njit()
 def interaction_rate(v,particle,sigma,max_radius_j=10):
     v_rel = v[particle]-v[particle+1:particle+max_radius_j+1]

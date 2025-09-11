@@ -8,20 +8,24 @@ from . import utils,physics
 from .constants import kpc,km,second,default_units,Unit
 
 class Halo:
-    def __init__(self,dt,r,v,initial_density,sigma=0,save_steps=None,time=0,simple_radius=1*kpc,n_interactions=0,regulator=1e-10,
+    def __init__(self,dt,r,v,dm_density,b_density=None,is_dm=None,sigma=0,save_steps=None,time=0,simple_radius=1*kpc,n_interactions=0,regulator=1e-10,
                  leapfrog_params={'max_ministeps':1000,'consider_all':True,'kill_divergent':False},scatter_live_only=False,
                  interaction_params={'max_radius_j':10,'rounds':4,'method':'rounds'},
                  mass_calculation_method:physics.utils.Mass_calcualtion_methods='rank presorted'):
         self.r = r
         self.v = v
+        if is_dm is None:
+            is_dm = np.full(len(r),True)
+        self.is_dm = is_dm
         self.particle_index = np.arange(len(r))
         self.live_particles = np.full(len(r),True)
         self.mass_calculation_method:physics.utils.Mass_calcualtion_methods = mass_calculation_method
         self.initial_particles = self.particles.copy()
         self.dt = dt
         self.save_steps = save_steps
-        self.lattice = Lattice.from_density(initial_density)
-        self.initial_density = initial_density
+        self.lattice = Lattice.from_density(dm_density)
+        self.dm_density = dm_density
+        self.b_density = b_density
         self.simple_radius = simple_radius
         self.leapfrog_params = leapfrog_params
         self.interaction_params = interaction_params
@@ -32,14 +36,18 @@ class Halo:
         self.scatter_live_only = scatter_live_only
 
     @classmethod
-    def setup(cls,n_particles,steps_per_Tdyn,initial_density,save_steps=None,save_every=None,total_run_time=None,**kwargs):
-        r = initial_density.roll_r(n_particles)
-        v_norm = initial_density.roll_v(r)
-        v = np.vstack(utils.split_3d(v_norm)).T
-        dt = initial_density.Tdyn/steps_per_Tdyn
+    def setup(cls,dm_density,steps_per_Tdyn,n_particles_dm,b_density=None,n_particles_b=0,save_steps=None,save_every=None,total_run_time=None,**kwargs):
+        r_dm = dm_density.roll_r(n_particles_dm)
+        v_dm = np.vstack(utils.split_3d(dm_density.roll_v(r_dm))).T
+        r_b = dm_density.roll_r(n_particles_b)
+        v_b = np.vstack(utils.split_3d(dm_density.roll_v(r_b))).T
+        r = np.hstack([r_dm,r_b])
+        v = np.vstack([v_dm,v_b])
+        is_dm = np.hstack([np.full(len(r_dm),True),np.full(len(r_b),False)])
+        dt = dm_density.Tdyn/steps_per_Tdyn
         if save_steps is None and save_every is not None and total_run_time is not None:
             save_steps = cls.calculate_save_steps(save_every,dt,total_run_time)
-        return cls(r=r,v=v,dt=dt,initial_density=initial_density,save_steps=save_steps,**kwargs)
+        return cls(r=r,v=v,is_dm=is_dm,dt=dt,dm_density=dm_density,b_density=b_density,save_steps=save_steps,**kwargs)
 
     @staticmethod
     def calculate_save_steps(save_every,dt,total_run_time):
@@ -51,6 +59,7 @@ class Halo:
         self.particle_index = self.initial_particles.index.to_numpy()
         self.r = self.initial_particles.r.to_numpy()
         self.live_particles = self.initial_particles.live.to_numpy()
+        self.is_dm = self.initial_particles.is_dm.to_numpy()
         self.v = self.initial_particles[['vx','vy','vr']].to_numpy()
         self.reset_saved_states()
 
@@ -64,22 +73,22 @@ class Halo:
 
     @property
     def particles(self):
-        return pd.DataFrame({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'live':self.live_particles},
+        return pd.DataFrame({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'live':self.live_particles,'is_dm':self.is_dm},
                             index=self.particle_index)
 
 ##Physical properties
 
     @property
     def unit_mass(self):
-        return self.initial_density.Mtot/len(self.r)
+        return self.dm_density.Mtot/len(self.r)
 
     @property
     def Tdyn(self):
-        return self.initial_density.Tdyn
+        return self.dm_density.Tdyn
 
     @property
     def M(self):
-        return physics.utils.M_below(self.r,unit_mass=self.unit_mass,lattice=self.lattice,density=self.initial_density,method=self.mass_calculation_method)
+        return physics.utils.M_below(self.r,unit_mass=self.unit_mass,lattice=self.lattice,density=self.dm_density,method=self.mass_calculation_method)
 
     @property
     def orbit_cicular_velocity(self):
@@ -220,11 +229,11 @@ class Halo:
         sns.histplot(x,cumulative=cumulative,ax=ax,stat='density')
         return fig,ax
 
-    def plot_r_distribution(self,data,cumulative=False,add_initial_density=True,**kwargs):
+    def plot_r_distribution(self,data,cumulative=False,add_dm_density=True,**kwargs):
         fig,ax = self.plot_distribution(key='r',data=data,cumulative=cumulative,**kwargs)
         units = default_units(self.plot_unit_type('r'))
-        if add_initial_density:
-            return self.initial_density.plot_radius_distribution(cumulative=cumulative,units=units,fig=fig,ax=ax)
+        if add_dm_density:
+            return self.dm_density.plot_radius_distribution(cumulative=cumulative,units=units,fig=fig,ax=ax)
         return fig,ax
 
     def plot_phase_space(self,data,r_range=None,v_range=None,length_units:Unit=default_units('length'),velocity_units:Unit=default_units('velocity'),
