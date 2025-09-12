@@ -30,8 +30,9 @@ sigma = 50 * cross_section
 
 n_particles_dm = int(1e5)
 dm_density = NFW(Rs=Rs,c=c,Mtot=Mtot_dm,Rmin=1e-4*kpc,Rmax=85*Rs,unit_mass=Mtot_dm/n_particles_dm)
-n_particles_b = int(Mtot_b/dm_density.unit_mass)
-b_density = Hernquist(Mtot=Mtot_b,Rmin=1e-4*kpc,Rmax=85*Rs,unit_mass=Mtot_b/n_particles_b)
+n_particles_b = 0
+# n_particles_b = int(Mtot_b/dm_density.unit_mass)
+# b_density = Hernquist(Mtot=Mtot_b,Rmin=1e-4*kpc,Rmax=85*Rs,unit_mass=Mtot_b/n_particles_b)
 steps_per_Tdyn = 1000
 total_run_time = 1100 * dm_density.Tdyn
 save_every = 10*dm_density.Tdyn
