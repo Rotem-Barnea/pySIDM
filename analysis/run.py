@@ -21,18 +21,11 @@ from astropy import units as u
 # Mtot = 1.0e10 * Msun #Default halo mass in solar masses (Msun).
 # Rs = 2.68441 * kpc #kpc
 # c = 17
-Mtot_dm = 1.15e9 * u.Msun
-Mtot_b = 1e5 * u.Msun
-Rs = 1.18 * u.kpc
+Mtot_dm = 1.15e9 * Msun
+Mtot_b = 1e5 * Msun
+Rs = 1.18 * kpc
 c = 19
-sigma = 50 * u.cm**2/u.s
-
-# %%
-from src.density import density
-import numpy as np
-d = NFW(Rs=Rs,c=c,Mtot=Mtot_dm,Rmin=1e-4*u.kpc,Rmax=85*Rs,unit_mass=Mtot_dm/10000)
-d.Mtot
-# d.mass_pdf(np.array([10]))
+sigma = 50 * cross_section
 
 # %% Setup system
 
