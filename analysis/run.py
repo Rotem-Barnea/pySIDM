@@ -42,7 +42,10 @@ halo = Halo.setup(dm_density=dm_density,steps_per_Tdyn=steps_per_Tdyn,n_particle
                   save_every=save_every,total_run_time=total_run_time)
 # %% Run
 
-halo.evolve(n_Tdyn=1)
+halo.evolve(n_Tdyn=1100)
+halo.saved_states.to_csv('saved_states.csv')
+
+print(halo.n_interactions)
 
 # %% Plot run results
 

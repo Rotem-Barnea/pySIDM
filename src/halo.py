@@ -312,7 +312,7 @@ class Halo:
         pad['temperature'] = np.nan
         agg_data = pd.concat([agg_data,pad]).drop_duplicates(['time','bin']).sort_values(['time','bin'])
         agg_data['bin'] /= velocity_units['value']
-        grid = agg_data.r_bin.to_numpy().reshape(r.shape)
+        grid = agg_data.temperature.to_numpy().reshape(r.shape)
 
         return utils.plot_2d(grid,extent=(r.min()/kpc,r.max()/kpc,time.min(),time.max()),x_units=velocity_units,y_units=time_units,fig=fig,ax=ax,
                              cbar_units={'value':1,'name':f'{velocity_units['name']}^2'},x_nbins=None,y_nbins=None,
