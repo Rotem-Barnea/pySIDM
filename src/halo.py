@@ -290,7 +290,7 @@ class Halo:
             data['time'] /= time_units['value']
         data = data[data['r'] < radius_cutoff]
         lattice = Lattice(n_posts=30,start=data.r.min(),end=data.r.max()*1.1,log=False)
-        data['bin'] = lattice.posts[lattice(data.r.to_numpy())]
+        data.loc[:,'bin'] = lattice.posts[lattice(data.r.to_numpy())]
         agg_data = data.groupby(['time','bin']).output.agg('count').reset_index()
         r,time = np.meshgrid(lattice.posts,data.time.unique())
         pad = pd.DataFrame({'time':time.ravel(),'bin':r.ravel()})
@@ -310,7 +310,7 @@ class Halo:
 
     def plot_temperature(self,radius_cutoff=40*kpc,velocity_units:Unit=default_units('velocity'),time_units:Unit=default_units('Tdyn'),fig=None,ax=None):
         data = self.saved_states.copy()
-        data['temperature'] = data.v_norm**2
+        data['output'] = data.v_norm**2
         grid,extent = self.prep_2d_data(data,radius_cutoff,velocity_units,time_units,self.Tdyn)
 
         return utils.plot_2d(grid,extent=extent,x_units=velocity_units,y_units=time_units,fig=fig,ax=ax,x_nbins=None,y_nbins=None,
