@@ -290,7 +290,7 @@ class Halo:
             data['time'] /= time_units['value']
         data = data[data['r'] < radius_cutoff]
         lattice = Lattice(n_posts=30,start=data.r.min(),end=data.r.max()*1.1,log=False)
-        data['bin'] = lattice.posts[lattice(data.r)]
+        data['bin'] = lattice.posts[lattice(data.r.to_numpy())]
         agg_data = data.groupby(['time','bin']).output.agg('count').reset_index()
         r,time = np.meshgrid(lattice.posts,data.time.unique())
         pad = pd.DataFrame({'time':time.ravel(),'bin':r.ravel()})
