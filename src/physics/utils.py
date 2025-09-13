@@ -1,12 +1,14 @@
 import numpy as np
 from numba import njit
-from typing import Literal
+from typing import Literal,Optional
+from ..spatial_approximation import Lattice
+from ..density.density import Density
 from .. import utils
 from ..constants import G
 
-Mass_calcualtion_methods = Literal['lattice','density','rank presorted','rank unsorted']
+Mass_calculation_methods = Literal['lattice','density','rank presorted','rank unsorted']
 
-def M_below(r,unit_mass=1,lattice=None,density=None,count_self=True,method:Mass_calcualtion_methods='lattice'):
+def M_below(r,unit_mass:float=1,lattice:Optional[Lattice]=None,density:Optional[Density]=None,count_self=True,method:Mass_calculation_methods='lattice'):
     mask = np.isnan(r)
     M = np.zeros_like(r)
     if method == 'lattice' and lattice is not None:

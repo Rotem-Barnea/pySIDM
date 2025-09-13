@@ -30,7 +30,14 @@ class NFW(Density):
 
     @property
     def Tdyn(self):
-        return np.sqrt(self.Rs**3/(G*self.Mtot))
+        if 'Tdyn' not in self.memoization:
+            self.memoization['Tdyn'] = np.sqrt(self.Rs**3/(G*self.Mtot))
+        return self.memoization['Tdyn']
+
+    @Tdyn.setter
+    def Tdyn(self,value):
+        self.memoization['Tdyn'] = value
+
 
     def to_scale(self,x):
         return x/self.Rs

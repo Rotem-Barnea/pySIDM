@@ -39,7 +39,13 @@ class Density:
 
     @property
     def Tdyn(self):
-        return 0
+        if 'Tdyn' not in self.memoization:
+            self.memoization['Tdyn'] = 0
+        return self.memoization['Tdyn']
+
+    @Tdyn.setter
+    def Tdyn(self,value):
+        self.memoization['Tdyn'] = value
 
     def geomspace(self,start=None,end=None,space_steps=None):
         if start is None:

@@ -1,5 +1,6 @@
 import numpy as np
 from .constants import kpc
+from numba import njit,prange
 
 epsilon = 1e-4 * kpc
 
@@ -36,7 +37,7 @@ class Lattice:
         return np.linspace(self.start,self.end,self.n_posts)
 
     def update(self,r,n_posts=None):
-        self.end = np.max(r.max(),self.end)
+        self.end = np.max([r.max(),self.end])
         if self.log:
             self.start_lattice = np.log10(self.start)
             self.end_lattice = np.log10(self.end)
@@ -48,24 +49,53 @@ class Lattice:
         self.lattice_spacing = np.abs(self.end_lattice-self.start_lattice)/self.n_posts
         self._lattice = None
 
-    def augment_to_lattice(self,x):
-        if self.log:
-            return np.log10(x) - self.start_lattice
-        return x - self.start_lattice
+    @staticmethod
+    @njit(parallel=True)
+    def fast_augment_to_lattice(x,start_lattice,log,clip=False,min_lattice=0,max_lattice=100000):
+        output = np.empty_like(x)
+        for i in prange(len(x)):
+            if log:
+                new_x = np.log10(x[i]) - start_lattice
+            else:
+                new_x = x[i] - start_lattice
+            if clip:
+                if new_x < min_lattice:
+                    new_x = min_lattice
+                elif new_x > max_lattice:
+                    new_x = max_lattice
+            output[i] = new_x
+        return output
+
+    @staticmethod
+    @njit(parallel=True)
+    def fast_augment_from_lattice(x,start_lattice,log):
+        output = np.empty_like(x)
+        for i in prange(len(x)):
+            if log:
+                output[i] = 10**(x[i] + start_lattice)
+            else:
+                output[i] = x[i] + start_lattice
+        return output
+
+    def augment_to_lattice(self,x,clip=True):
+        return self.fast_augment_to_lattice(x,self.start_lattice,self.log,clip,0,len(self))
 
     def augment_from_lattice(self,x):
-        if self.log:
-            return 10**(x + self.start_lattice)
-        else:
-            return x + self.start_lattice
+        return self.fast_augment_from_lattice(x,self.start_lattice,self.log)
 
     def in_lattice(self,x):
         return (x >= self.start) * (x <= self.end)
 
-    def to_lattice_coordinates(self,x):
-        x_lattice = self.augment_to_lattice(x)/self.lattice_spacing
+    def to_lattice_coordinates(self,x,clip=True):
+        scalar_input = np.isscalar(x)
+        if scalar_input:
+            x = np.array([x])
+        x_lattice = self.augment_to_lattice(x,clip)/self.lattice_spacing
         x_lattice[x == 0] = 0
-        return (x_lattice).astype(int)
+        x_lattice = (x_lattice).astype(int)
+        if scalar_input:
+            x_lattice = x_lattice[0]
+        return x_lattice
 
     def to_space_coordinates(self,x):
         return self.augment_from_lattice(x*self.lattice_spacing)

@@ -1,6 +1,12 @@
 import numpy as np
 from numba import njit,prange
+from typing import TypedDict
 from ..constants import G,kpc
+
+class Params(TypedDict,total=False):
+    max_ministeps: int
+    consider_all: bool
+    kill_divergent: bool
 
 @njit()
 def particle_step(r,vx,vy,vr,M,dt,N=1,regulator=0):

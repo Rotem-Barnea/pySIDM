@@ -1,7 +1,13 @@
 import numpy as np
 from numba import njit,prange
-from typing import Literal
+from typing import Literal,TypedDict
 from .. import utils
+
+class Params(TypedDict,total=False):
+    max_radius_j: int
+    regulator: float
+    rounds: int
+    method: Literal['rounds','poisson']
 
 @njit()
 def interaction_rate(v,particle,sigma,max_radius_j=10):

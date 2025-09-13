@@ -20,11 +20,6 @@ class Hernquist(Density):
   - Rmax = {self.Rmax/self.print_length_units['value']:.4f} {self.print_length_units['name']}
   - space_steps = {self.space_steps:.0e}"""
 
-    @property
-    def Tdyn(self):
-        return 0
-        # return np.sqrt(self.Rs**3/(G*self.Mtot))
-
     @staticmethod
     @njit(parallel=True)
     def calcualte_M(r,rho_s,num=10000):

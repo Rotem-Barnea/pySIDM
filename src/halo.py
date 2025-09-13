@@ -4,28 +4,28 @@ from tqdm import tqdm
 import seaborn as sns
 from matplotlib import pyplot as plt
 from .spatial_approximation import Lattice
+from typing import Optional
+from .density.density import Density
+from .background import Potential
 from . import utils,physics
 from .constants import kpc,km,second,default_units,Unit
 
 class Halo:
-    def __init__(self,dt,r,v,dm_density,b_density=None,is_dm=None,sigma=0,save_steps=None,time=0,simple_radius=1*kpc,n_interactions=0,regulator=1e-10,
-                 leapfrog_params={'max_ministeps':1000,'consider_all':True,'kill_divergent':False},scatter_live_only=False,
-                 interaction_params={'max_radius_j':10,'rounds':4,'method':'rounds'},
-                 mass_calculation_method:physics.utils.Mass_calcualtion_methods='rank presorted'):
+    def __init__(self,dt:float,r:np.ndarray,v:np.ndarray,density:Density,sigma=0,time=0,simple_radius=1*kpc,n_interactions=0,regulator=1e-10,
+                 save_steps:Optional[np.ndarray|list[int]]=None,scatter_live_only:bool=False,background:Optional[Potential]=None,
+                 leapfrog_params:physics.leapfrog.Params={'max_ministeps':1000,'consider_all':True,'kill_divergent':False},
+                 interaction_params:physics.SIDM.Params={'max_radius_j':10,'rounds':4,'method':'rounds'},
+                 mass_calculation_method:physics.utils.Mass_calculation_methods='rank presorted'):
         self.r = r
         self.v = v
-        if is_dm is None:
-            is_dm = np.full(len(r),True)
-        self.is_dm = is_dm
         self.particle_index = np.arange(len(r))
         self.live_particles = np.full(len(r),True)
-        self.mass_calculation_method:physics.utils.Mass_calcualtion_methods = mass_calculation_method
+        self.mass_calculation_method:physics.utils.Mass_calculation_methods = mass_calculation_method
         self.initial_particles = self.particles.copy()
         self.dt = dt
         self.save_steps = save_steps
-        self.lattice = Lattice.from_density(dm_density)
-        self.dm_density = dm_density
-        self.b_density = b_density
+        self.density:Density = density
+        self.lattice:Lattice = Lattice.from_density(self.density)
         self.simple_radius = simple_radius
         self.leapfrog_params = leapfrog_params
         self.interaction_params = interaction_params
@@ -34,20 +34,20 @@ class Halo:
         self.time = time
         self.regulator = regulator
         self.scatter_live_only = scatter_live_only
+        self.background:Optional[Potential] = background
 
     @classmethod
-    def setup(cls,dm_density,steps_per_Tdyn,n_particles_dm,b_density=None,n_particles_b=0,save_steps=None,save_every=None,total_run_time=None,**kwargs):
-        r_dm = dm_density.roll_r(n_particles_dm)
-        v_dm = np.vstack(utils.split_3d(dm_density.roll_v(r_dm))).T
-        r_b = dm_density.roll_r(n_particles_b)
-        v_b = np.vstack(utils.split_3d(dm_density.roll_v(r_b))).T
-        r = np.hstack([r_dm,r_b])
-        v = np.vstack([v_dm,v_b])
-        is_dm = np.hstack([np.full(len(r_dm),True),np.full(len(r_b),False)])
-        dt = dm_density.Tdyn/steps_per_Tdyn
+    def setup(cls,density:Density,steps_per_Tdyn,n_particles,save_steps:Optional[np.ndarray|list[int]]=None,save_every=None,total_run_time=None,**kwargs):
+        r = density.roll_r(n_particles)
+        v = np.vstack(utils.split_3d(density.roll_v(r))).T
+        dt = density.Tdyn/steps_per_Tdyn
         if save_steps is None and save_every is not None and total_run_time is not None:
             save_steps = cls.calculate_save_steps(save_every,dt,total_run_time)
-        return cls(r=r,v=v,is_dm=is_dm,dt=dt,dm_density=dm_density,b_density=b_density,save_steps=save_steps,**kwargs)
+        return cls(r=r,v=v,dt=dt,density=density,save_steps=save_steps,**kwargs)
+
+    def add_background(self,background:Potential):
+        self.background = background
+        self.lattice = background.lattice
 
     @staticmethod
     def calculate_save_steps(save_every,dt,total_run_time):
@@ -59,7 +59,6 @@ class Halo:
         self.particle_index = self.initial_particles.index.to_numpy()
         self.r = self.initial_particles.r.to_numpy()
         self.live_particles = self.initial_particles.live.to_numpy()
-        self.is_dm = self.initial_particles.is_dm.to_numpy()
         self.v = self.initial_particles[['vx','vy','vr']].to_numpy()
         self.reset_saved_states()
 
@@ -73,22 +72,27 @@ class Halo:
 
     @property
     def particles(self):
-        return pd.DataFrame({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'live':self.live_particles,'is_dm':self.is_dm},
+        return pd.DataFrame({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'live':self.live_particles},
                             index=self.particle_index)
 
 ##Physical properties
 
     @property
     def unit_mass(self):
-        return self.dm_density.Mtot/len(self.r)
+        return self.density.Mtot/len(self.r)
 
     @property
     def Tdyn(self):
-        return self.dm_density.Tdyn
+        return self.density.Tdyn
 
     @property
     def M(self):
-        return physics.utils.M_below(self.r,unit_mass=self.unit_mass,lattice=self.lattice,density=self.dm_density,method=self.mass_calculation_method)
+        halo_mass = physics.utils.M_below(self.r,unit_mass=self.unit_mass,lattice=self.lattice,density=self.density,method=self.mass_calculation_method)
+        if self.background is not None:
+            background_mass = self.background.quick_at_time(self.time)[self.lattice(self.r).clip(min=0,max=len(self.lattice)-1)]
+        else:
+            background_mass = 0
+        return halo_mass + background_mass
 
     @property
     def orbit_cicular_velocity(self):
@@ -126,7 +130,7 @@ class Halo:
 
 ##Dynamic evolution
 
-    def step(self,current_time_step=None):
+    def step(self,current_time_step:Optional[int]=None):
         if current_time_step in self.save_steps:
             self.save_state(current_time_step)
         self.sort_particles()
@@ -136,9 +140,12 @@ class Halo:
         physics.leapfrog.step(r=self.r,v=self.v,M=self.M,live=self.live_particles,**self.leapfrog_kwargs)
         self.time += self.dt
 
-    def evolve(self,n_time_steps=None,n_Tdyn=None,disable_tqdm=False,**kwargs):
+    def evolve(self,n_time_steps:Optional[int]=None,n_Tdyn:Optional[int]=None,disable_tqdm=False,**kwargs):
         if n_time_steps is None:
-            n_time_steps = int(n_Tdyn*self.Tdyn/self.dt)
+            if n_Tdyn is not None:
+                n_time_steps = int(n_Tdyn*self.Tdyn/self.dt)
+            else:
+                raise ValueError("Either n_time_steps or n_Tdyn must be specified")
         for time_step in tqdm(range(int(n_time_steps)),disable=disable_tqdm):
             self.step(time_step,**kwargs)
 
@@ -229,11 +236,11 @@ class Halo:
         sns.histplot(x,cumulative=cumulative,ax=ax,stat='density')
         return fig,ax
 
-    def plot_r_distribution(self,data,cumulative=False,add_dm_density=True,**kwargs):
+    def plot_r_distribution(self,data,cumulative=False,add_density=True,**kwargs):
         fig,ax = self.plot_distribution(key='r',data=data,cumulative=cumulative,**kwargs)
         units = default_units(self.plot_unit_type('r'))
-        if add_dm_density:
-            return self.dm_density.plot_radius_distribution(cumulative=cumulative,units=units,fig=fig,ax=ax)
+        if add_density:
+            return self.density.plot_radius_distribution(cumulative=cumulative,units=units,fig=fig,ax=ax)
         return fig,ax
 
     def plot_phase_space(self,data,r_range=None,v_range=None,length_units:Unit=default_units('length'),velocity_units:Unit=default_units('velocity'),
@@ -275,45 +282,37 @@ class Halo:
         ax.set_ylabel(ylabel)
         return fig,ax
 
-    def plot_density_evolution(self,radius_cutoff=40*kpc,length_units:Unit=default_units('length'),time_units:Unit=default_units('Tdyn'),fig=None,ax=None):
-        data = self.saved_states.copy()
+    @staticmethod
+    def prep_2d_data(data,radius_cutoff,x_units:Unit,time_units:Unit,Tdyn:Optional[float]=None):
         if time_units['name'] == 'Tdyn':
-            data['time'] /= self.Tdyn
+            data['time'] /= Tdyn
         else:
             data['time'] /= time_units['value']
         data = data[data['r'] < radius_cutoff]
-        data['r_bin'] = data.r
         lattice = Lattice(n_posts=30,start=data.r.min(),end=data.r.max()*1.1,log=False)
         data['bin'] = lattice.posts[lattice(data.r)]
-        agg_data = data.groupby(['time','bin']).r_bin.agg('count').reset_index()
+        agg_data = data.groupby(['time','bin']).output.agg('count').reset_index()
         r,time = np.meshgrid(lattice.posts,data.time.unique())
         pad = pd.DataFrame({'time':time.ravel(),'bin':r.ravel()})
-        pad['r_bin'] = np.nan
+        pad['output'] = np.nan
         agg_data = pd.concat([agg_data,pad]).drop_duplicates(['time','bin']).sort_values(['time','bin'])
-        agg_data['bin'] /= length_units['value']
-        grid = agg_data.r_bin.to_numpy().reshape(r.shape)
+        agg_data['bin'] /= x_units['value']
+        extent=(r.min()/kpc,r.max()/kpc,time.min(),time.max())
+        return agg_data.output.to_numpy().reshape(r.shape),extent
 
-        return utils.plot_2d(grid,extent=(r.min()/kpc,r.max()/kpc,time.min(),time.max()),x_units=length_units,y_units=time_units,fig=fig,ax=ax,
-                             x_nbins=None,y_nbins=None,xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='#Particles')
+    def plot_density_evolution(self,radius_cutoff=40*kpc,length_units:Unit=default_units('length'),time_units:Unit=default_units('Tdyn'),fig=None,ax=None):
+        data = self.saved_states.copy()
+        data['output'] = data.r
+        grid,extent = self.prep_2d_data(data,radius_cutoff,length_units,time_units,self.Tdyn)
+
+        return utils.plot_2d(grid,extent=extent,x_units=length_units,y_units=time_units,fig=fig,ax=ax,x_nbins=None,y_nbins=None,
+                             xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='#Particles')
 
     def plot_temperature(self,radius_cutoff=40*kpc,velocity_units:Unit=default_units('velocity'),time_units:Unit=default_units('Tdyn'),fig=None,ax=None):
         data = self.saved_states.copy()
-        if time_units['name'] == 'Tdyn':
-            data['time'] /= self.Tdyn
-        else:
-            data['time'] /= time_units['value']
-        data = data[data['r'] < radius_cutoff]
         data['temperature'] = data.v_norm**2
-        lattice = Lattice(n_posts=30,start=data.r.min(),end=data.r.max()*1.1,log=False)
-        data['bin'] = lattice.posts[lattice(data.r)]
-        agg_data = data.groupby(['time','bin']).temperature.agg('count').reset_index()
-        r,time = np.meshgrid(lattice.posts,data.time.unique())
-        pad = pd.DataFrame({'time':time.ravel(),'bin':r.ravel()})
-        pad['temperature'] = np.nan
-        agg_data = pd.concat([agg_data,pad]).drop_duplicates(['time','bin']).sort_values(['time','bin'])
-        agg_data['bin'] /= velocity_units['value']
-        grid = agg_data.temperature.to_numpy().reshape(r.shape)
+        grid,extent = self.prep_2d_data(data,radius_cutoff,velocity_units,time_units,self.Tdyn)
 
-        return utils.plot_2d(grid,extent=(r.min()/kpc,r.max()/kpc,time.min(),time.max()),x_units=velocity_units,y_units=time_units,fig=fig,ax=ax,
-                             cbar_units={'value':1,'name':f'{velocity_units['name']}^2'},x_nbins=None,y_nbins=None,
+        return utils.plot_2d(grid,extent=extent,x_units=velocity_units,y_units=time_units,fig=fig,ax=ax,x_nbins=None,y_nbins=None,
+                             cbar_units={'value':1,'name':f'{velocity_units['name']}^2'},
                              xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='log mean temperature (log v^2 [{name}])')
