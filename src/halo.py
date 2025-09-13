@@ -315,4 +315,4 @@ class Halo:
 
         return utils.plot_2d(grid,extent=extent,x_units=velocity_units,y_units=time_units,fig=fig,ax=ax,x_nbins=None,y_nbins=None,
                              cbar_units={'value':1,'name':f'{velocity_units['name']}^2'},
-                             xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='log mean temperature (log v^2 [{name}])')
+                             xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='mean temperature (v^2 [{name}])')
