@@ -294,7 +294,7 @@ class Density:
         sns.lineplot(x=r/length_units['value'],y=rho/density_units['value'],ax=ax)
         ax.set(xscale='log',yscale='log')
 
-        x = self.add_plot_R_markers(ax,ymax=rho.max()/length_units['value'],length_units=length_units)
+        x = self.add_plot_R_markers(ax,ymax=rho.max()/length_units['value'],units=length_units)
         return fig,ax
 
     def plot_radius_distribution(self,r_start:Optional[float]=None,r_end:Optional[float]=None,cumulative=False,
@@ -314,5 +314,5 @@ class Density:
         y = self.mass_cdf(r) if cumulative else self.mass_pdf(r)
         sns.lineplot(x=r/units['value'],y=y,color='r',ax=ax)
 
-        x = self.add_plot_R_markers(ax,ymax=y.max(),length_units=length_units)
+        x = self.add_plot_R_markers(ax,ymax=y.max(),units=length_units)
         return fig,ax
