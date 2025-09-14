@@ -1,18 +1,13 @@
 import numpy as np
-import scipy
-from numba import njit,prange
+from numba import njit
 from .density import Density
-from ..constants import G,kpc,default_units,Unit
+from ..constants import kpc,default_units,Unit
 
 class NFW(Density):
     def __init__(self,Rs,c,**kwargs):
-        super().__init__(**kwargs)
+        super().__init__(Rs=Rs,Rvir=c*Rs,**kwargs)
         self.title = 'NFW'
-        self.Rs = Rs
         self.c = c
-
-        self.Rvir = self.c*self.Rs
-        self.rho_s = self.Mtot/self.calcualte_M(np.array([self.Rmax]),self.Rs,self.Rvir,1)[0]
 
     def __repr__(self):
         return f"""NFW density
@@ -28,56 +23,10 @@ class NFW(Density):
   - Rmax = {self.Rmax/self.print_length_units['value']:.4f} {self.print_length_units['name']}
   - space_steps = {self.space_steps:.0e}"""
 
-    @property
-    def Tdyn(self):
-        if 'Tdyn' not in self.memoization:
-            self.memoization['Tdyn'] = np.sqrt(self.Rs**3/(G*self.Mtot))
-        return self.memoization['Tdyn']
-
-    @Tdyn.setter
-    def Tdyn(self,value):
-        self.memoization['Tdyn'] = value
-
-
-    def to_scale(self,x):
-        return x/self.Rs
-
     @staticmethod
-    @njit(parallel=True)
-    def calcualte_M(r,Rs,Rvir,rho_s,num=10000):
-        M_below = np.empty_like(r)
-        for i in prange(len(r)):
-            x = np.linspace(0,r[i],num)[1:]
-            J = 4*np.pi*x**2
-            ys = rho_s/((x/Rs)*(1+(x/Rs))**2)/(1+(x/Rvir)**10)
-            M_below[i] = np.trapezoid(y=ys*J,x=x)
-        return M_below
-
-    def M(self,r):
-        scalar_input = np.isscalar(r)
-        if scalar_input:
-            r = np.array([r])
-        M = self.calcualte_M(r,self.Rs,self.Rvir,self.rho_s)
-        if scalar_input:
-            M = M[0]
-        return M
-
-    def rho(self,r):
-        x = self(r)
-        density = self.rho_s/(x*(1+x)**2)/(1+(r/self.Rvir)**10)
-        return density
-
-    def Phi(self,r):
-        # x = self(r)
-        # return -4*np.pi*G*self.rho_s*self.Rs**2/x*np.log(1+x)
-        if 'Phi' not in self.memoization:
-            r_grid = self.geomspace_grid
-            M_grid = self.M(r_grid)
-            Phi_grid = -G*scipy.integrate.cumulative_trapezoid(y=M_grid/r_grid**2,x=r_grid,initial=0)
-            Phi_grid -= Phi_grid[-1]
-            Phi_grid *= -1
-            self.memoization['Phi'] = scipy.interpolate.interp1d(r_grid,Phi_grid,kind='cubic',bounds_error=False,fill_value=(0,0))
-        return self.memoization['Phi'](r)
+    @njit
+    def calculate_rho(r,rho_s=1,Rs=1,Rvir=1):
+        return rho_s/((r/Rs)*(1+(r/Rs))**2)/(1+(r/Rvir)**10)
 
 ##Plots
 
@@ -94,7 +43,7 @@ class NFW(Density):
             r_end = self.Rvir*2
         fig,ax = super().plot_radius_distribution(r_start,r_end,cumulative=cumulative,units=units,fig=fig,ax=ax)
 
-        r = self.geomspace(r_start,r_end)
+        r = np.geomspace(r_start,r_end,self.space_steps)
         if cumulative:
             ymax = self.mass_cdf(r).max()
         else:

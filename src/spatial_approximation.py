@@ -1,5 +1,6 @@
 import numpy as np
 from .constants import kpc
+from . import utils
 from numba import njit,prange
 
 class Lattice:
@@ -108,12 +109,4 @@ class Lattice:
     def assign_from_density(self,x):
         x_lattice = self(x)
         density_cumsum = self.lattice_to_density_cumsum(x_lattice)
-        return self.fast_assign(x_lattice,density_cumsum)
-
-    @staticmethod
-    @njit(parallel=True)
-    def fast_assign(indices,array):
-        output = np.empty_like(indices,dtype=np.float64)
-        for i in prange(len(indices)):
-            output[i] = array[indices[i]]
-        return output
+        return utils.fast_assign(x_lattice,density_cumsum)

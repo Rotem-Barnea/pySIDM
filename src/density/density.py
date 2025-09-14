@@ -9,13 +9,16 @@ from .. import utils
 from ..constants import G,kpc,default_units,km,second,Unit
 
 class Density:
-    def __init__(self,Rmin,Rmax,Mtot=1,unit_mass=1,space_steps=1e4):
+    def __init__(self,Rmin,Rmax,Rs=1,Rvir=1,Mtot=1,unit_mass=1,space_steps=1e4):
         self.Rmin = Rmin
         self.Rmax = Rmax
-        self.space_steps = int(space_steps)
+        self.space_steps:int = int(space_steps)
         self.Mtot = Mtot
         self.title = 'Density'
         self.unit_mass = unit_mass
+        self.Rs = Rs
+        self.Rvir = Rvir
+        self.rho_s = self.calculate_rho_scale();
 
         self.memoization = {}
         self.print_length_units:Unit = default_units('length')
@@ -35,50 +38,37 @@ class Density:
         return self.to_scale(x)
 
     def to_scale(self,x):
-        return x
+        return x/self.Rs
 
     @property
     def Tdyn(self):
         if 'Tdyn' not in self.memoization:
-            self.memoization['Tdyn'] = 0
+            self.memoization['Tdyn'] = np.sqrt(self.Rs**3/(G*self.Mtot))
         return self.memoization['Tdyn']
 
     @Tdyn.setter
     def Tdyn(self,value):
         self.memoization['Tdyn'] = value
 
-    def geomspace(self,start=None,end=None,space_steps=None):
-        if start is None:
-            start = self.Rmin
-        if end is None:
-            end = self.Rmax
-        if space_steps is None:
-            space_steps = int(self.space_steps)
-        return np.geomspace(start,end,space_steps)
-
     @property
     def geomspace_grid(self):
         if 'geomspace_grid' not in self.memoization:
-            self.memoization['geomspace_grid'] = self.geomspace()
+            self.memoization['geomspace_grid'] = np.geomspace(self.Rmin,self.Rmax,self.space_steps)
         return self.memoization['geomspace_grid']
-
-    def linspace(self,start=None,end=None,space_steps=None):
-        if start is None:
-            start = self.Rmin
-        if end is None:
-            end = self.Rmax
-        if space_steps is None:
-            space_steps = int(self.space_steps)
-        return np.linspace(start=start,stop=end,num=space_steps)
 
     @property
     def linspace_grid(self):
         if 'linspace_grid' not in self.memoization:
-            self.memoization['linspace_grid'] = self.linspace()
+            self.memoization['linspace_grid'] = np.linspace(start=self.Rmin,stop=self.Rmax,num=self.space_steps)
         return self.memoization['linspace_grid']
 
-    def rho(self,r):
+    @staticmethod
+    @njit
+    def calculate_rho(r,rho_s=1,Rs=1,Rvir=1):
         return r
+
+    def rho(self,r):
+        return self.calculate_rho(r,self.rho_s,self.Rs,self.Rvir)
 
     @property
     def rho_grid(self):
@@ -96,7 +86,13 @@ class Density:
         return self.memoization['rho_r2_grid']
 
     def M(self,r):
-        return r
+        scalar_input = np.isscalar(r)
+        if scalar_input:
+            r = np.array([r])
+        M = utils.fast_spherical_rho_integrate(r,self.calculate_rho,self.rho_s,self.Rs,self.Rvir)
+        if scalar_input:
+            M = M[0]
+        return M
 
     @property
     def M_grid(self):
@@ -104,8 +100,18 @@ class Density:
             self.memoization['M_grid'] = self.M(self.geomspace_grid)
         return self.memoization['M_grid']
 
+    def calculate_rho_scale(self):
+        return self.Mtot/utils.fast_spherical_rho_integrate(np.array([self.Rmax]),self.calculate_rho,rho_s=1,Rs=self.Rs,Rvir=self.Rvir)[0]
+
     def Phi(self,r):
-        return r
+        if 'Phi' not in self.memoization:
+            r_grid = self.geomspace_grid
+            M_grid = self.M(r_grid)
+            Phi_grid = -G*scipy.integrate.cumulative_trapezoid(y=M_grid/r_grid**2,x=r_grid,initial=0)
+            Phi_grid -= Phi_grid[-1]
+            Phi_grid *= -1
+            self.memoization['Phi'] = scipy.interpolate.interp1d(r_grid,Phi_grid,kind='cubic',bounds_error=False,fill_value=(0,0))
+        return self.memoization['Phi'](r)
 
     @property
     def Phi_grid(self):
@@ -275,7 +281,7 @@ class Density:
         ax.set_xlabel('r [{name}]'.format(**length_units))
         ax.set_ylabel('Density [{name}]'.format(**density_units))
 
-        r = self.geomspace(r_start,r_end)
+        r = np.geomspace(r_start,r_end,self.space_steps)
         rho = self.rho(r)
         sns.lineplot(x=r/length_units['value'],y=rho/density_units['value'],ax=ax)
         ax.set(xscale='log',yscale='log')
@@ -298,7 +304,7 @@ class Density:
         if r_end is None:
             r_end = self.Rmax
 
-        r = self.geomspace(r_start,r_end)
+        r = np.geomspace(r_start,r_end,self.space_steps)
         if cumulative:
             sns.lineplot(x=r/units['value'],y=self.mass_cdf(r),color='r',ax=ax)
         else:

@@ -1,38 +1,12 @@
 import numpy as np
 from numba import njit,prange
-from typing import Literal,TypedDict
+from typing import TypedDict
 from .. import utils
 
 class Params(TypedDict,total=False):
     max_radius_j: int
     regulator: float
     rounds: int
-    method: Literal['rounds','poisson']
-
-@njit()
-def interaction_rate(v,particle,sigma,max_radius_j=10):
-    v_rel = v[particle]-v[particle+1:particle+max_radius_j+1]
-    v_rel_norm = np.sqrt((v_rel**2).sum(axis=1))
-    return sigma*v_rel_norm
-
-@njit(parallel=True)
-def roll_scattering_lambda(r,v,dt,unit_mass,sigma,regulator=0,max_radius_j=10):
-    P = np.zeros(len(r))
-    if sigma == 0:
-        return P
-
-    delta_r = np.zeros_like(r)
-    delta_r[:-max_radius_j] = r[max_radius_j:]
-    delta_r[-max_radius_j:] = r[-1]
-    delta_r -= r
-
-    for particle in prange(len(r)):
-        if delta_r[particle] == 0:
-            continue
-        cross_section_term = interaction_rate(v=v,particle=particle,sigma=sigma,max_radius_j=max_radius_j).sum()
-        volume = 4*np.pi*r[particle]**2*delta_r[particle]+regulator
-        P[particle] = dt/2*(unit_mass/volume)*cross_section_term
-    return P
 
 @njit(parallel=True)
 def roll_scattering_pairs(r,v,dt,unit_mass,sigma,regulator=0,max_radius_j=10):
@@ -118,32 +92,15 @@ def scatter_unique_pairs(v,pairs):
             continue
         v[i0],v[i1] = scatter_pair_kinematics(v0=v[i0],v1=v[i1])
 
-def scatter(r,v,dt,unit_mass,sigma,blacklist=[],method:Literal['rounds','poisson']='rounds',rounds=1,regulator=0,max_radius_j=10,max_n_allowed=10000):
+def scatter(r,v,dt,unit_mass,sigma,blacklist=[],rounds=1,regulator=0,max_radius_j=10,max_n_allowed=10000):
     n_interactions = 0
-    if method == 'rounds':
-        for _ in range(rounds):
-            pairs_buffer = np.full((max_n_allowed,2),-1,dtype=np.int64)
-            pairs = roll_scattering_pairs(r=r,v=v,dt=dt/rounds,unit_mass=unit_mass,sigma=sigma,regulator=regulator,max_radius_j=max_radius_j)
-            pairs = utils.clean_pairs(pairs,blacklist)
-            pairs_buffer[:len(pairs)] = pairs
-            scatter_unique_pairs(v=v,pairs=pairs_buffer)
-            n_interactions += len(pairs)
-    else:
-        n_events = np.random.poisson(roll_scattering_lambda(r,v,dt=dt,unit_mass=unit_mass,sigma=sigma,regulator=regulator,max_radius_j=max_radius_j))
-        event_mask = n_events > 0
-        indices = np.arange(len(r))[event_mask]
-        n_events = n_events[event_mask]
-        n_interactions = n_events.sum()
-
-        pairs = []
-        for particle,interactions in zip(indices,n_events):
-            cdf = np.cumsum(interaction_rate(v,particle,sigma=sigma,max_radius_j=max_radius_j))
-            cdf /= cdf[-1]
-            partners = particle+np.argmax(np.random.rand(interactions,1) <= cdf,axis=1)
-            for partner in partners:
-                pairs += [[particle,partner]]
-
-        for batch in utils.split_pairs_to_batches(pairs):
-            scatter_unique_pairs(v=v,pairs=np.array(batch))
-
-    return n_interactions
+    interacted = []
+    for _ in range(rounds):
+        pairs_buffer = np.full((max_n_allowed,2),-1,dtype=np.int64)
+        pairs = roll_scattering_pairs(r=r,v=v,dt=dt/rounds,unit_mass=unit_mass,sigma=sigma,regulator=regulator,max_radius_j=max_radius_j)
+        pairs = utils.clean_pairs(pairs,blacklist)
+        pairs_buffer[:len(pairs)] = pairs
+        scatter_unique_pairs(v=v,pairs=pairs_buffer)
+        n_interactions += len(pairs)
+        interacted += [pairs.ravel()]
+    return n_interactions, np.unique(np.hstack(interacted))

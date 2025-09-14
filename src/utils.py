@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from numba import njit
+from numba import njit,prange
 from matplotlib import pyplot as plt
 import matplotlib.ticker as mtick
 from .constants import kpc,km,second,default_units,Unit
@@ -139,3 +139,20 @@ def plot_phase_space(grid,r_range=None,v_range=None,length_units:Unit=default_un
                      x_nbins=6,y_nbins=6,fig=None,ax=None):
     return plot_2d(grid,x_range=r_range,y_range=v_range,x_units=length_units,y_units=velocity_units,x_nbins=x_nbins,y_nbins=y_nbins,
                    xlabel='radius [{name}]',ylabel='velocity [{name}]',fig=fig,ax=ax)
+
+@njit(parallel=True)
+def fast_assign(indices,array):
+    output = np.empty_like(indices,dtype=np.float64)
+    for i in prange(len(indices)):
+        output[i] = array[indices[i]]
+    return output
+
+@njit(parallel=True)
+def fast_spherical_rho_integrate(r,rho_fn,rho_s=1,Rs=1,Rvir=1,start=0,num_steps=10000):
+    integral = np.empty_like(r)
+    for i in prange(len(r)):
+        x = np.linspace(start,r[i],num_steps)[1:]
+        J = 4*np.pi*x**2
+        ys = rho_fn(x,rho_s=rho_s,Rs=Rs,Rvir=Rvir)
+        integral[i] = np.trapezoid(y=ys*J,x=x)
+    return integral
