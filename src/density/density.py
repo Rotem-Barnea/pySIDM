@@ -273,7 +273,7 @@ class Density:
         fig,ax = utils.plot_phase_space(grid,r_range/length_units['value'],v_range/velocity_units['value'],length_units,velocity_units,fig=fig,ax=ax)
         return fig,ax
 
-    def add_plot_R_markers(self,ax,ymax,units:Units):
+    def add_plot_R_markers(self,ax,ymax,units:Unit):
         ax.vlines(x=[self.Rs/units['value'],self.Rvir/units['value']],ymin=0,ymax=ymax,linestyles='dashed',colors='black')
         ax.text(x=self.Rs/units['value'],y=ymax,s='Rs')
         ax.text(x=self.Rvir/units['value'],y=ymax,s='Rvir')
