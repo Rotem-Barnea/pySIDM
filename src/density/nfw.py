@@ -1,5 +1,6 @@
 import numpy as np
 from numba import njit
+from typing import Optional
 from .density import Density
 from ..constants import kpc,default_units,Unit
 
@@ -29,19 +30,11 @@ class NFW(Density):
         return rho_s/((r/Rs)*(1+(r/Rs))**2)/(1+(r/Rvir)**10)
 
 ##Plots
-
-    def plot_rho(self,r_start=1e-4,r_end=1e4,density_units:Unit=default_units('density'),length_units:Unit=default_units('length'),fig=None,ax=None):
-        fig,ax = super().plot_rho(r_start,r_end,density_units,length_units,fig,ax)
-        ymax = self.rho(r_start)/length_units['value']
-        ax.vlines(x=[self.Rs/length_units['value'],self.Rvir/length_units['value']],ymin=0,ymax=ymax,linestyles='dashed',colors='black')
-        ax.text(x=self.Rs/length_units['value']*1.3,y=ymax*0.5,s='Rs')
-        ax.text(x=self.Rvir/length_units['value']*1.3,y=ymax*0.5,s='Rvir');
-        return fig,ax
-
-    def plot_radius_distribution(self,r_start:None|float=1e-4*kpc,r_end=None,cumulative=False,units:Unit=default_units('length'),fig=None,ax=None):
+    def plot_radius_distribution(self,r_start:Optional[float]=1e-4*kpc,r_end:Optional[float]=None,cumulative=False,
+                                 units:Unit=default_units('length'),fig=None,ax=None):
         fig,ax = super().plot_radius_distribution(r_start,r_end or 2*self.Rvir,cumulative=cumulative,units=units,fig=fig,ax=ax)
 
-        r = np.geomspace(r_start,r_end,self.space_steps)
+        r = np.geomspace(r_start or 1e-4*kpc,r_end or 2*self.Rvir,self.space_steps)
         if cumulative:
             ymax = self.mass_cdf(r).max()
         else:

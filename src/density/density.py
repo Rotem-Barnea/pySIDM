@@ -5,13 +5,12 @@ from tqdm import tqdm
 import seaborn as sns
 from matplotlib import pyplot as plt
 from numba import njit,prange
+from typing import Optional
 from .. import utils
 from ..constants import G,kpc,default_units,km,second,Unit
 
 class Density:
-    def __init__(self,Rmin,Rmax,Rs=1,Rvir=1,Mtot=1,unit_mass=1,space_steps=1e4):
-        self.Rmin = Rmin
-        self.Rmax = Rmax
+    def __init__(self,Rmin:Optional[float]=1e-4,Rmax:Optional[float]=None,Rs=1,Rvir=1,Mtot=1,unit_mass=1,space_steps:float|int=1e4):
         self.space_steps:int = int(space_steps)
         self.Mtot = Mtot
         self.title = 'Density'
@@ -19,6 +18,8 @@ class Density:
         self.Rs = Rs
         self.Rvir = Rvir
         self.rho_s = self.calculate_rho_scale();
+        self.Rmin:float = Rmin or 1e-4
+        self.Rmax:float = Rmax or 85*self.Rs
 
         self.memoization = {}
         self.print_length_units:Unit = default_units('length')
@@ -272,7 +273,14 @@ class Density:
         fig,ax = utils.plot_phase_space(grid,r_range/length_units['value'],v_range/velocity_units['value'],length_units,velocity_units,fig=fig,ax=ax)
         return fig,ax
 
-    def plot_rho(self,r_start,r_end,density_units:Unit=default_units('density'),length_units:Unit=default_units('length'),fig=None,ax=None):
+    def add_plot_R_markers(self,ax,ymax,units:Units):
+        ax.vlines(x=[self.Rs/units['value'],self.Rvir/units['value']],ymin=0,ymax=ymax,linestyles='dashed',colors='black')
+        ax.text(x=self.Rs/units['value'],y=ymax,s='Rs')
+        ax.text(x=self.Rvir/units['value'],y=ymax,s='Rvir')
+        return ax
+
+    def plot_rho(self,r_start:Optional[float]=None,r_end:Optional[float]=1e4*kpc,density_units:Unit=default_units('density'),
+                 length_units:Unit=default_units('length'),fig=None,ax=None):
         if fig is None or ax is None:
             fig,ax = plt.subplots(figsize=(6,5))
         fig.tight_layout()
@@ -285,9 +293,12 @@ class Density:
         rho = self.rho(r)
         sns.lineplot(x=r/length_units['value'],y=rho/density_units['value'],ax=ax)
         ax.set(xscale='log',yscale='log')
+
+        x = self.add_plot_R_markers(ax,ymax=rho.max()/length_units['value'],length_units=length_units)
         return fig,ax
 
-    def plot_radius_distribution(self,r_start:None|float=None,r_end:None|float=None,cumulative=False,units:Unit=default_units('length'),fig=None,ax=None):
+    def plot_radius_distribution(self,r_start:Optional[float]=None,r_end:Optional[float]=None,cumulative=False,
+                                 units:Unit=default_units('length'),fig=None,ax=None):
         if fig is None or ax is None:
             fig,ax = plt.subplots(figsize=(6,5))
         fig.tight_layout()
@@ -300,8 +311,8 @@ class Density:
         ax.set_ylabel('Density')
 
         r = np.geomspace(r_start or self.Rmin,r_end or self.Rmax,self.space_steps)
-        if cumulative:
-            sns.lineplot(x=r/units['value'],y=self.mass_cdf(r),color='r',ax=ax)
-        else:
-            sns.lineplot(x=r/units['value'],y=self.mass_pdf(r),color='r',ax=ax)
+        y = self.mass_cdf(r) if cumulative else self.mass_pdf(r)
+        sns.lineplot(x=r/units['value'],y=y,color='r',ax=ax)
+
+        x = self.add_plot_R_markers(ax,ymax=y.max(),length_units=length_units)
         return fig,ax
