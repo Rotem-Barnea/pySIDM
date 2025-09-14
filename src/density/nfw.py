@@ -39,9 +39,7 @@ class NFW(Density):
         return fig,ax
 
     def plot_radius_distribution(self,r_start:None|float=1e-4*kpc,r_end=None,cumulative=False,units:Unit=default_units('length'),fig=None,ax=None):
-        if r_end is None:
-            r_end = self.Rvir*2
-        fig,ax = super().plot_radius_distribution(r_start,r_end,cumulative=cumulative,units=units,fig=fig,ax=ax)
+        fig,ax = super().plot_radius_distribution(r_start,r_end or 2*self.Rvir,cumulative=cumulative,units=units,fig=fig,ax=ax)
 
         r = np.geomspace(r_start,r_end,self.space_steps)
         if cumulative:

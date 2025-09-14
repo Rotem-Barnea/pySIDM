@@ -281,7 +281,7 @@ class Density:
         ax.set_xlabel('r [{name}]'.format(**length_units))
         ax.set_ylabel('Density [{name}]'.format(**density_units))
 
-        r = np.geomspace(r_start,r_end,self.space_steps)
+        r = np.geomspace(r_start or self.Rmin,r_end or self.Rmax,self.space_steps)
         rho = self.rho(r)
         sns.lineplot(x=r/length_units['value'],y=rho/density_units['value'],ax=ax)
         ax.set(xscale='log',yscale='log')
@@ -299,12 +299,7 @@ class Density:
         ax.set_xlabel('radius [{name}]'.format(**units))
         ax.set_ylabel('Density')
 
-        if r_start is None:
-            r_start = self.Rmin
-        if r_end is None:
-            r_end = self.Rmax
-
-        r = np.geomspace(r_start,r_end,self.space_steps)
+        r = np.geomspace(r_start or self.Rmin,r_end or self.Rmax,self.space_steps)
         if cumulative:
             sns.lineplot(x=r/units['value'],y=self.mass_cdf(r),color='r',ax=ax)
         else:
