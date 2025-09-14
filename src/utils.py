@@ -102,7 +102,7 @@ def linear_interpolation(xs,ys,x):
     return (1-w)*ys[i]+w*ys[i+1]
 
 def plot_2d(grid,extent=None,x_range=None,y_range=None,x_units:Unit=default_units(''),y_units:Unit=default_units(''),cbar_units:Unit=default_units(''),
-            x_nbins:int|None=6,y_nbins:int|None=6,title='',xlabel='',ylabel='',cbar_label='',fig=None,ax=None):
+    x_nbins:int|None=6,y_nbins:int|None=6,x_tick_format:str='%.0f',y_tick_format:str='%.0f',title='',xlabel='',ylabel='',cbar_label='',fig=None,ax=None):
     if extent is None:
         if x_range is None:
             x_range = np.array([1e-2,50])*kpc/x_units['value']
@@ -120,7 +120,7 @@ def plot_2d(grid,extent=None,x_range=None,y_range=None,x_units:Unit=default_unit
 
     if x_nbins is not None:
         ax.xaxis.set_major_locator(mtick.MaxNLocator(nbins=x_nbins))
-        ax.xaxis.set_major_formatter(mtick.FormatStrFormatter('%.0f'))
+        ax.xaxis.set_major_formatter(mtick.FormatStrFormatter(x_tick_format))
         ax.xaxis.tick_bottom()
         for lab in ax.get_xticklabels():
             lab.set_rotation(0)
@@ -129,16 +129,16 @@ def plot_2d(grid,extent=None,x_range=None,y_range=None,x_units:Unit=default_unit
 
     if y_nbins is not None:
         ax.yaxis.set_major_locator(mtick.MaxNLocator(nbins=y_nbins))
-        ax.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.0f'))
+        ax.yaxis.set_major_formatter(mtick.FormatStrFormatter(y_tick_format))
     ax.set_ylabel(ylabel.format(**y_units))
     if title:
         ax.set_title(title)
     return fig,ax
 
 def plot_phase_space(grid,r_range=None,v_range=None,length_units:Unit=default_units('length'),velocity_units:Unit=default_units('velocity'),
-                     x_nbins=6,y_nbins=6,fig=None,ax=None):
+                     x_nbins=6,y_nbins=6,x_tick_format:str='%.0f',y_tick_format:str='%.0f',fig=None,ax=None):
     return plot_2d(grid,x_range=r_range,y_range=v_range,x_units=length_units,y_units=velocity_units,x_nbins=x_nbins,y_nbins=y_nbins,
-                   xlabel='radius [{name}]',ylabel='velocity [{name}]',fig=fig,ax=ax)
+                   x_tick_format=x_tick_format,y_tick_format=y_tick_format,xlabel='radius [{name}]',ylabel='velocity [{name}]',fig=fig,ax=ax)
 
 @njit(parallel=True)
 def fast_assign(indices,array):
