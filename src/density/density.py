@@ -314,5 +314,5 @@ class Density:
         y = self.mass_cdf(r) if cumulative else self.mass_pdf(r)
         sns.lineplot(x=r/units['value'],y=y,color='r',ax=ax)
 
-        x = self.add_plot_R_markers(ax,ymax=y.max(),units=length_units)
+        x = self.add_plot_R_markers(ax,ymax=y.max(),units=units)
         return fig,ax
