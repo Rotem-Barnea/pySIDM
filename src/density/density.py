@@ -17,9 +17,9 @@ class Density:
         self.unit_mass = unit_mass
         self.Rs = Rs
         self.Rvir = Rvir
-        self.rho_s = self.calculate_rho_scale();
         self.Rmin:float = Rmin or 1e-4
         self.Rmax:float = Rmax or 85*self.Rs
+        self.rho_s = self.calculate_rho_scale();
 
         self.memoization = {}
         self.print_length_units:Unit = default_units('length')
