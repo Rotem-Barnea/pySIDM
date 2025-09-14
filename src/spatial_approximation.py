@@ -2,8 +2,6 @@ import numpy as np
 from .constants import kpc
 from numba import njit,prange
 
-epsilon = 1e-4 * kpc
-
 class Lattice:
     def __init__(self,n_posts,start,end,log=True):
         self.start = start
@@ -19,7 +17,7 @@ class Lattice:
         self.lattice_spacing = np.abs(self.end_lattice-self.start_lattice)/self.n_posts
 
     @classmethod
-    def from_density(cls,density,start=epsilon,overide_start=True,n_posts=int(1e4),**kwargs):
+    def from_density(cls,density,start=1e-4*kpc,overide_start=True,n_posts=int(1e4),**kwargs):
         if not overide_start:
             start = density.Rmin
         return cls(start=start,end=density.Rmax,n_posts=n_posts,**kwargs)
@@ -110,4 +108,12 @@ class Lattice:
     def assign_from_density(self,x):
         x_lattice = self(x)
         density_cumsum = self.lattice_to_density_cumsum(x_lattice)
-        return density_cumsum[x_lattice]
+        return self.fast_assign(x_lattice,density_cumsum)
+
+    @staticmethod
+    @njit(parallel=True)
+    def fast_assign(indices,array):
+        output = np.empty_like(indices,dtype=np.float64)
+        for i in prange(len(indices)):
+            output[i] = array[indices[i]]
+        return output

@@ -6,7 +6,7 @@ from typing import Self,Optional,Unpack
 from . import nsphere
 from .spatial_approximation import Lattice
 
-class Potential:
+class Mass_Distribution:
     def __init__(self,lattice:Lattice,interpolants:list[interp1d],M:np.ndarray,time:np.ndarray) -> None:
         self.lattice:Lattice = lattice
         self.interpolants:list[interp1d] = interpolants

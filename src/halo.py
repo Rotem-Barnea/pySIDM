@@ -6,13 +6,13 @@ from matplotlib import pyplot as plt
 from .spatial_approximation import Lattice
 from typing import Optional
 from .density.density import Density
-from .background import Potential
+from .background import Mass_Distribution
 from . import utils,physics
 from .constants import kpc,km,second,default_units,Unit
 
 class Halo:
     def __init__(self,dt:float,r:np.ndarray,v:np.ndarray,density:Density,sigma=0,time=0,simple_radius=1*kpc,n_interactions=0,regulator=1e-10,
-                 save_steps:Optional[np.ndarray|list[int]]=None,scatter_live_only:bool=False,background:Optional[Potential]=None,
+                 save_steps:Optional[np.ndarray|list[int]]=None,scatter_live_only:bool=False,background:Optional[Mass_Distribution]=None,
                  leapfrog_params:physics.leapfrog.Params={'max_ministeps':1000,'consider_all':True,'kill_divergent':False},
                  interaction_params:physics.SIDM.Params={'max_radius_j':10,'rounds':4,'method':'rounds'},
                  mass_calculation_method:physics.utils.Mass_calculation_methods='rank presorted'):
@@ -34,7 +34,7 @@ class Halo:
         self.time = time
         self.regulator = regulator
         self.scatter_live_only = scatter_live_only
-        self.background:Optional[Potential] = background
+        self.background:Optional[Mass_Distribution] = background
 
     @classmethod
     def setup(cls,density:Density,steps_per_Tdyn,n_particles,save_steps:Optional[np.ndarray|list[int]]=None,save_every=None,total_run_time=None,**kwargs):
@@ -45,7 +45,7 @@ class Halo:
             save_steps = cls.calculate_save_steps(save_every,dt,total_run_time)
         return cls(r=r,v=v,dt=dt,density=density,save_steps=save_steps,**kwargs)
 
-    def add_background(self,background:Potential):
+    def add_background(self,background:Mass_Distribution):
         self.background = background
         self.lattice = background.lattice
 
