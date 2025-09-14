@@ -34,6 +34,7 @@ class Halo:
         self.time = time
         self.regulator = regulator
         self.scatter_live_only = scatter_live_only
+        self.interactions_track = []
         self.background:Optional[Mass_Distribution] = background
 
     @classmethod
@@ -60,6 +61,7 @@ class Halo:
         self.r = self.initial_particles.r.to_numpy()
         self.live_particles = self.initial_particles.live.to_numpy()
         self.v = self.initial_particles[['vx','vy','vr']].to_numpy()
+        self.interactions_track = []
         self.reset_saved_states()
 
     @property
@@ -139,7 +141,7 @@ class Halo:
             blacklist = np.arange(len(self.r))[~self.live_particles] if self.scatter_live_only else []
             n_interactions,interacting_particles = physics.SIDM.scatter(r=self.r,v=self.v,blacklist=blacklist,**self.interaction_kwargs)
             self.n_interactions += n_interactions
-            self.interactions_track += self.r[interacting_particles]
+            self.interactions_track += [self.r[interacting_particles]]
         physics.leapfrog.step(r=self.r,v=self.v,M=self.M,live=self.live_particles,**self.leapfrog_kwargs)
         self.time += self.dt
 
@@ -307,8 +309,8 @@ class Halo:
             time_units['value'] = self.Tdyn
         grid,extent = self.prep_2d_data(data,radius_cutoff,length_units,time_units,agg_fn='count')
 
-        return utils.plot_2d(grid,extent=extent,x_units=length_units,y_units=time_units,fig=fig,ax=ax,x_nbins=None,y_nbins=None,
-                             xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='#Particles')
+        return utils.plot_2d(grid,extent=extent,x_units=length_units,y_units=time_units,fig=fig,ax=ax,xlabel='Radius [{name}]',
+                             ylabel='Time [{name}]',cbar_label='#Particles')
 
     def plot_temperature(self,radius_cutoff=40*kpc,velocity_units:Unit=default_units('velocity'),time_units:Unit=default_units('Tdyn'),fig=None,ax=None):
         data = self.saved_states.copy()
@@ -317,6 +319,5 @@ class Halo:
             time_units['value'] = self.Tdyn
         grid,extent = self.prep_2d_data(data,radius_cutoff,velocity_units,time_units,agg_fn='mean')
 
-        return utils.plot_2d(grid,extent=extent,x_units=velocity_units,y_units=time_units,fig=fig,ax=ax,x_nbins=None,y_nbins=None,
-                             cbar_units={'value':1,'name':f'{velocity_units['name']}^2'},
-                             xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='mean temperature (v^2 [{name}])')
+        return utils.plot_2d(grid,extent=extent,fig=fig,ax=ax,cbar_units={'value':1,'name':f'{velocity_units['name']}^2'},x_units=velocity_units,
+                             y_units=time_units,xlabel='Radius [{name}]',ylabel='Time [{name}]',cbar_label='mean temperature (v^2 [{name}])')
