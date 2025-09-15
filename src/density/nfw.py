@@ -29,6 +29,10 @@ class NFW(Density):
     def calculate_rho(r,rho_s=1,Rs=1,Rvir=1):
         return rho_s/((r/Rs)*(1+(r/Rs))**2)/(1+(r/Rvir)**10)
 
+    def calculate_theoretical_M(self,r):
+        x = self(r)
+        return 4*np.pi*self.rho_s*self.Rs**3*(np.log(1+x)-x/(1+x))
+
 ##Plots
     def plot_radius_distribution(self,r_start:Optional[float]=1e-4*kpc,r_end:Optional[float]=None,cumulative=False,
                                  units:Unit=default_units('length'),fig=None,ax=None):

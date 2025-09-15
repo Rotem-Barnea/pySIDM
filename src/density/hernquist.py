@@ -21,4 +21,4 @@ class Hernquist(Density):
     @staticmethod
     @njit
     def calculate_rho(r,rho_s=1,Rs=1,Rvir=1):
-        return rho_s/(2*np.pi*r*(1+r)**3)
+        return rho_s/(2*np.pi*(r/Rs)*(1+(r/Rs)**3))

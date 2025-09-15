@@ -8,11 +8,15 @@ class Params(TypedDict,total=False):
     consider_all: bool
     kill_divergent: bool
 
-@njit()
+@njit
+def acceleration(r,L,M,regulator=0):
+    return -G*M/(r**2+regulator) + L**2/(r**3+regulator)
+
+@njit
 def particle_step(r,vx,vy,vr,M,dt,N=1,regulator=0):
     Lx,Ly = r*vx,r*vy
     L = np.sqrt(Lx**2+Ly**2)
-    a = -G*M/(r**2+regulator) + L**2/(r**3+regulator)
+    a = acceleration(r,L,M,regulator)
     vr += a*dt/(2*N)
     for ministep in range(N):
         r += vr*dt/N
@@ -20,7 +24,7 @@ def particle_step(r,vx,vy,vr,M,dt,N=1,regulator=0):
             r *= -1
             vr *= -1
         final_N = 2*N if ministep == N-1 else N
-        a = -G*M/(r**2+regulator) + L**2/(r**3+regulator)
+        a = acceleration(r,L,M,regulator)
         vr += a*dt/(2*final_N)
     return r,np.array([Lx/r,Ly/r,vr])
 
