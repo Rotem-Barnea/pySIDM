@@ -149,7 +149,7 @@ def fast_assign(indices,array):
 
 @njit(parallel=True)
 def fast_spherical_rho_integrate(r,rho_fn,rho_s=1,Rs=1,Rvir=1,start=0,num_steps=10000):
-    integral = np.empty_like(r)
+    integral = np.empty_like(r,dtype=np.float64)
     for i in prange(len(r)):
         x = np.linspace(start,r[i],num_steps)[1:]
         J = 4*np.pi*x**2

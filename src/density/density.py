@@ -33,7 +33,7 @@ class Density:
   - Rmax = {self.Rmax/self.print_length_units['value']:.4f} {self.print_length_units['name']}
   - space_steps = {self.space_steps:.0e}
   - Mtot = {self.Mtot/self.print_mass_units['value']:.3e} {self.print_mass_units['name']}
-  - Mdm = {self.unit_mass/self.print_mass_units['value']:.3e} {self.print_mass_units['name']}"""
+  - particle mass = {self.unit_mass/self.print_mass_units['value']:.3e} {self.print_mass_units['name']}"""
 
     def __call__(self,x):
         return self.to_scale(x)
