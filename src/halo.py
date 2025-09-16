@@ -7,33 +7,33 @@ from typing import Optional
 from .spatial_approximation import Lattice
 from .density.density import Density
 from .background import Mass_Distribution
-from . import utils,physics
+from . import utils
+from .physics import sidm,leapfrog
+from .physics.utils import Mass_calculation_methods,get_default_mass_method,M_below,orbit_circular_velocity
 from .constants import kpc,km,second,default_units,Unit
 
 class Halo:
-    def __init__(self,dt:float,r:np.ndarray,v:np.ndarray,density:Density,sigma=0,time=0,simple_radius=1*kpc,n_interactions=0,regulator=1e-10,
-                 save_steps:Optional[np.ndarray|list[int]]=None,scatter_live_only:bool=False,background:Optional[Mass_Distribution]=None,
-                 leapfrog_params:physics.leapfrog.Params={'max_ministeps':1000,'consider_all':True,'kill_divergent':False},
-                 interaction_params:physics.SIDM.Params={'max_radius_j':10,'rounds':10},
-                 mass_calculation_method:physics.utils.Mass_calculation_methods='rank presorted'):
+    def __init__(self,dt:float,r:np.ndarray,v:np.ndarray,density:Density,time=0,n_interactions=0,background:Optional[Mass_Distribution]=None,
+                 save_steps:Optional[np.ndarray|list[int]]=None,mass_calculation_method:Optional[Mass_calculation_methods]=None,
+                 default_dynamics_params:leapfrog.Params={},default_scatter_params:sidm.Params={'sigma':0},
+                 sigma:Optional[float]=None,scatter_live_only:bool=False):
         self.r = r
         self.v = v
         self.particle_index = np.arange(len(r))
         self.live_particles = np.full(len(r),True)
-        self.mass_calculation_method:physics.utils.Mass_calculation_methods = mass_calculation_method
         self.initial_particles = self.particles.copy()
+        self.n_interactions = n_interactions
+        self.time = time
         self.dt = dt
         self.save_steps = save_steps
         self.density:Density = density
         self.lattice:Lattice = Lattice.from_density(self.density)
-        self.simple_radius = simple_radius
-        self.leapfrog_params = leapfrog_params
-        self.interaction_params = interaction_params
-        self.sigma = sigma
-        self.n_interactions = n_interactions
-        self.time = time
-        self.regulator = regulator
+        self.dynamics_params:leapfrog.Params = default_dynamics_params
+        self.scatter_params:sidm.Params = default_scatter_params
+        if sigma is not None:
+            self.scatter_params['sigma'] = sigma
         self.scatter_live_only = scatter_live_only
+        self.mass_calculation_method:Mass_calculation_methods = get_default_mass_method(mass_calculation_method,self.scatter_params['sigma'])
         self.interactions_track = []
         self.background:Optional[Mass_Distribution] = background
 
@@ -65,14 +65,6 @@ class Halo:
         self.reset_saved_states()
 
     @property
-    def leapfrog_kwargs(self):
-        return {'simple_radius':self.simple_radius,'dt':self.dt,'regulator':self.regulator,**self.leapfrog_params}
-
-    @property
-    def interaction_kwargs(self):
-        return {'dt':self.dt,'unit_mass':self.unit_mass,'sigma':self.sigma,'regulator':self.regulator,**self.interaction_params}
-
-    @property
     def particles(self):
         return pd.DataFrame({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'live':self.live_particles},
                             index=self.particle_index)
@@ -89,7 +81,7 @@ class Halo:
 
     @property
     def M(self):
-        halo_mass = physics.utils.M_below(self.r,unit_mass=self.unit_mass,lattice=self.lattice,density=self.density,method=self.mass_calculation_method)
+        halo_mass = M_below(self.r,unit_mass=self.unit_mass,lattice=self.lattice,density=self.density,method=self.mass_calculation_method)
         if self.background is not None:
             background_mass = self.background.quick_at_time(self.time)[self.lattice(self.r).clip(min=0,max=len(self.lattice)-1)]
         else:
@@ -97,8 +89,8 @@ class Halo:
         return halo_mass + background_mass
 
     @property
-    def orbit_cicular_velocity(self):
-        return physics.utils.orbit_cicular_velocity(self.r,self.M)
+    def orbit_circular_velocity(self):
+        return orbit_circular_velocity(self.r,self.M)
 
     @property
     def vx(self):
@@ -135,14 +127,14 @@ class Halo:
     def step(self,current_time_step:Optional[int]=None):
         if current_time_step in self.save_steps:
             self.save_state(current_time_step)
-        if self.sigma > 0 or self.mass_calculation_method == 'rank presorted':
+        if self.scatter_params['sigma'] > 0 or self.mass_calculation_method == 'rank presorted':
             self.sort_particles()
-        if self.sigma > 0:
+        if self.scatter_params['sigma'] > 0:
             blacklist = np.arange(len(self.r))[~self.live_particles] if self.scatter_live_only else []
-            n_interactions,interacting_particles = physics.SIDM.scatter(r=self.r,v=self.v,blacklist=blacklist,**self.interaction_kwargs)
+            n_interactions,indices = sidm.scatter(r=self.r,v=self.v,blacklist=blacklist,dt=self.dt,m=self.unit_mass,**self.scatter_params)
             self.n_interactions += n_interactions
-            self.interactions_track += [self.r[interacting_particles]]
-        physics.leapfrog.step(r=self.r,v=self.v,M=self.M,live=self.live_particles,**self.leapfrog_kwargs)
+            self.interactions_track += [self.r[indices]]
+        leapfrog.step(r=self.r,v=self.v,M=self.M,live=self.live_particles,dt=self.dt,**self.dynamics_params)
         self.time += self.dt
 
     def evolve(self,n_time_steps:Optional[int]=None,n_Tdyn:Optional[int]=None,disable_tqdm=False,**kwargs):

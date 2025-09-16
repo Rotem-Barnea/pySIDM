@@ -1,3 +1,3 @@
-from . import utils,leapfrog,SIDM
+from . import utils,leapfrog,sidm
 
-__all__ = ['utils','leapfrog','SIDM']
+__all__ = ['utils','leapfrog','sidm']

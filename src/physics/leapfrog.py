@@ -1,19 +1,26 @@
 import numpy as np
 from numba import njit,prange
 from typing import TypedDict
-from ..constants import G,kpc
+from ..constants import G,kpc,km,second
 
 class Params(TypedDict,total=False):
     max_ministeps: int
     consider_all: bool
     kill_divergent: bool
+    regulator: float
+    simple_radius: float
+    r_convergence_threshold:float
+    vr_convergence_threshold:float
+
+default_step_params:Params={'max_ministeps':1000,'consider_all':True,'kill_divergent':False,'regulator':1e-10,'simple_radius':1*kpc,
+                            'r_convergence_threshold':1e-3*kpc,'vr_convergence_threshold':5*km/second}
 
 @njit
-def acceleration(r,L,M,regulator=0):
+def acceleration(r,L,M,regulator:float=default_step_params['regulator']):
     return -G*M/(r**2+regulator) + L**2/(r**3+regulator)
 
 @njit
-def particle_step(r,vx,vy,vr,M,dt,N=1,regulator=0):
+def particle_step(r,vx,vy,vr,M,dt,N:int=1,regulator:float=default_step_params['regulator']):
     Lx,Ly = r*vx,r*vy
     L = np.sqrt(Lx**2+Ly**2)
     a = acceleration(r,L,M,regulator)
@@ -29,8 +36,10 @@ def particle_step(r,vx,vy,vr,M,dt,N=1,regulator=0):
     return r,np.array([Lx/r,Ly/r,vr])
 
 @njit(parallel=True)
-def step(r,v,M,live,dt,max_ministeps=10,r_convergence_threshold=1e-3*kpc,vr_convergence_threshold=5,regulator=0,simple_radius=0,consider_all=False,
-         kill_divergent=True):
+def step(r,v,M,live,dt,max_ministeps:int=default_step_params['max_ministeps'],r_convergence_threshold:float=default_step_params['r_convergence_threshold'],
+         vr_convergence_threshold:float=default_step_params['vr_convergence_threshold'],regulator:float=default_step_params['regulator'],
+         simple_radius:float=default_step_params['simple_radius'],consider_all=default_step_params['consider_all'],
+         kill_divergent=default_step_params['kill_divergent']):
     for i in prange(len(r)):
         if not consider_all and not live[i]:
             continue

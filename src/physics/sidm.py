@@ -1,15 +1,19 @@
 import numpy as np
 from numba import njit,prange
-from typing import TypedDict
+from typing import TypedDict,Required,Tuple
 from .. import utils
 
 class Params(TypedDict,total=False):
     max_radius_j: int
     regulator: float
     rounds: int
+    max_n_allowed:int
+    sigma: Required[float]
+
+default_scatter_params:Params={'max_radius_j':10,'rounds':10,'regulator':1e-10,'max_n_allowed':10000,'sigma':0}
 
 @njit(parallel=True)
-def roll_scattering_pairs(r,v,dt,unit_mass,sigma,regulator=0,max_radius_j=10):
+def roll_scattering_pairs(r,v,dt,m,sigma,regulator:float=default_scatter_params['regulator'],max_radius_j:int=default_scatter_params['max_radius_j']):
     if sigma == 0:
         return np.empty((0,2),dtype=np.int64)
 
@@ -33,7 +37,7 @@ def roll_scattering_pairs(r,v,dt,unit_mass,sigma,regulator=0,max_radius_j=10):
             v_rel_norm = np.sqrt((v_rel**2).sum())
             cross_section_term = sigma*v_rel_norm
             volume = 4*np.pi*r[particle]**2*delta_r[particle]+regulator
-            cum_p += dt/2*(unit_mass/volume)*cross_section_term
+            cum_p += dt/2*(m/volume)*cross_section_term
             if p <= cum_p:
                 pairs[particle] = [particle,partner]
                 pair_found[particle] = True
@@ -92,12 +96,15 @@ def scatter_unique_pairs(v,pairs):
             continue
         v[i0],v[i1] = scatter_pair_kinematics(v0=v[i0],v1=v[i1])
 
-def scatter(r,v,dt,unit_mass,sigma,blacklist=[],rounds=1,regulator=0,max_radius_j=10,max_n_allowed=10000):
+def scatter(r,v,dt,m,sigma,blacklist=[],rounds:int=default_scatter_params['rounds'],regulator:float=default_scatter_params['regulator'],
+            max_radius_j:int=default_scatter_params['max_radius_j'],max_n_allowed:int=default_scatter_params['max_n_allowed']) -> Tuple[int, np.ndarray]:
+    if sigma == 0:
+        return 0, np.array([])
     n_interactions = 0
     interacted = []
     for _ in range(rounds):
         pairs_buffer = np.full((max_n_allowed,2),-1,dtype=np.int64)
-        pairs = roll_scattering_pairs(r=r,v=v,dt=dt/rounds,unit_mass=unit_mass,sigma=sigma,regulator=regulator,max_radius_j=max_radius_j)
+        pairs = roll_scattering_pairs(r=r,v=v,dt=dt/rounds,m=m,sigma=sigma,regulator=regulator,max_radius_j=max_radius_j)
         pairs = utils.clean_pairs(pairs,blacklist)
         pairs_buffer[:len(pairs)] = pairs
         scatter_unique_pairs(v=v,pairs=pairs_buffer)
