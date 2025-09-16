@@ -17,14 +17,14 @@ class Halo:
                  save_steps:Optional[np.ndarray|list[int]]=None,mass_calculation_method:Optional[Mass_calculation_methods]=None,
                  dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={'sigma':0},sigma:Optional[float]=None,
                  scatter_live_only:bool=False):
+        self.time = time
+        self.dt = dt
         self.r = r
         self.v = v
         self.particle_index = np.arange(len(r))
         self.live_particles = np.full(len(r),True)
         self.initial_particles = self.particles.copy()
         self.n_interactions = n_interactions
-        self.time = time
-        self.dt = dt
         self.save_steps = save_steps
         self.density:Density = density
         self.lattice:Lattice = Lattice.from_density(self.density)
@@ -66,8 +66,8 @@ class Halo:
 
     @property
     def particles(self):
-        return pd.DataFrame({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'live':self.live_particles},
-                            index=self.particle_index)
+        return pd.DataFrame({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'live':self.live_particles,
+                             'time':self.time},index=self.particle_index)
 
 ##Physical properties
 
@@ -83,7 +83,7 @@ class Halo:
     def M(self):
         halo_mass = M_below(self.r,unit_mass=self.unit_mass,lattice=self.lattice,density=self.density,method=self.mass_calculation_method)
         if self.background is not None:
-            background_mass = self.background.quick_at_time(self.time)[self.lattice(self.r).clip(min=0,max=len(self.lattice)-1)]
+            background_mass = self.background.at_time(self.time)[self.lattice(self.r).clip(min=0,max=len(self.lattice)-1)]
         else:
             background_mass = 0
         return halo_mass + background_mass
@@ -175,7 +175,6 @@ class Halo:
         index = self.saved_states_map[current_time_step]
         data = self.particles.copy()
         data['step'] = current_time_step
-        data['time'] = self.time
         self._saved_states[index] = data
         self.save_state_indices[index] = True
 
@@ -280,9 +279,11 @@ class Halo:
         return fig,ax
 
     @staticmethod
-    def prep_2d_data(data,radius_cutoff,x_units:Unit,time_units:Unit,agg_fn='count',n_posts=100):
+    def prep_2d_data(data,radius_range,time_range=None,x_units:Unit=default_units('length'),time_units:Unit=default_units('Tdyn'),agg_fn='count',n_posts=100):
+        data = data[(data['r'] >= radius_range[0]) * (data['r'] <= radius_range[1])].copy()
+        if time_range is not None:
+            data = data[(data['time'] >= time_range[0]) * (data['time'] <= time_range[1])].copy()
         data['time'] /= time_units['value']
-        data = data[data['r'] < radius_cutoff].copy()
         lattice = Lattice(n_posts=n_posts,start=data.r.min(),end=data.r.max()*1.1,log=False)
         data['bin'] = lattice.posts[lattice(data.r.to_numpy())]
         agg_data = data.groupby(['time','bin']).output.agg(agg_fn).reset_index()

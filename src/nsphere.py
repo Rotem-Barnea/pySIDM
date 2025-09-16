@@ -1,8 +1,9 @@
 from os import PathLike
 from pathlib import Path
-from typing import NotRequired,TypedDict
+from typing import NotRequired,TypedDict,Unpack
 import numpy as np
 import pandas as pd
+from tqdm import tqdm
 import regex
 
 class File_params(TypedDict):
@@ -34,3 +35,22 @@ def gather_files(base_filename:str,ntimesteps:int,tfinal:int,max_time:int=1,root
 
 def load_file(path:PathLike[str],dtype:np.dtype) -> np.ndarray:
     return np.fromfile(path,dtype=dtype)
+
+def load_all_files(files=None,**kwargs:Unpack[File_params]):
+    if files is None:
+        files = gather_files(**kwargs)
+    data = []
+    for path,dtype,time,save_step in tqdm(files[['path','record_dtype','time','save_step']].to_numpy(),desc='Load files'):
+        sub = pd.DataFrame(load_file(path,dtype))
+        sub['time'] = time
+        sub['save_step'] = save_step
+        data += [sub]
+    return pd.concat(data,ignore_index=True)
+
+def to_saved_state_like(data:pd.DataFrame):
+    data = data.rename(columns={'Vrad':'vr','R':'r','save_step':'step'})
+    data['vp'] = data['L']/data['r']
+    data['v_norm'] = np.sqrt(data['vp']**2+data['vr']**2)
+    data = data.drop(columns=['rank','mass','PsiA','E','L'])
+    data['live'] = True
+    return data

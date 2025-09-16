@@ -102,7 +102,8 @@ def linear_interpolation(xs,ys,x):
     return (1-w)*ys[i]+w*ys[i+1]
 
 def plot_2d(grid,extent=None,x_range=None,y_range=None,x_units:Unit=default_units(''),y_units:Unit=default_units(''),cbar_units:Unit=default_units(''),
-    x_nbins:int|None=6,y_nbins:int|None=6,x_tick_format:str='%.0f',y_tick_format:str='%.0f',title='',xlabel='',ylabel='',cbar_label='',fig=None,ax=None):
+            x_nbins:int|None=6,y_nbins:int|None=6,x_tick_format:str='%.0f',y_tick_format:str='%.0f',title='',xlabel='',ylabel='',cbar_label='',
+            fig=None,ax=None,**kwargs):
     if extent is None:
         if x_range is None:
             x_range = np.array([1e-2,50])*kpc/x_units['value']
@@ -113,7 +114,7 @@ def plot_2d(grid,extent=None,x_range=None,y_range=None,x_units:Unit=default_unit
     if fig is None or ax is None:
         fig,ax = plt.subplots(figsize=(6,5))
     fig.tight_layout()
-    im = ax.imshow(grid,origin='lower',aspect='auto',extent=extent)
+    im = ax.imshow(grid,origin='lower',aspect='auto',extent=extent,**kwargs)
     cbar = fig.colorbar(im,ax=ax)
     if cbar_label:
         cbar.set_label(cbar_label.format(**cbar_units))
@@ -136,9 +137,9 @@ def plot_2d(grid,extent=None,x_range=None,y_range=None,x_units:Unit=default_unit
     return fig,ax
 
 def plot_phase_space(grid,r_range=None,v_range=None,length_units:Unit=default_units('length'),velocity_units:Unit=default_units('velocity'),
-                     x_nbins=6,y_nbins=6,x_tick_format:str='%.0f',y_tick_format:str='%.0f',fig=None,ax=None):
+                     x_nbins=6,y_nbins=6,x_tick_format:str='%.0f',y_tick_format:str='%.0f',fig=None,ax=None,**kwargs):
     return plot_2d(grid,x_range=r_range,y_range=v_range,x_units=length_units,y_units=velocity_units,x_nbins=x_nbins,y_nbins=y_nbins,
-                   x_tick_format=x_tick_format,y_tick_format=y_tick_format,xlabel='radius [{name}]',ylabel='velocity [{name}]',fig=fig,ax=ax)
+                   x_tick_format=x_tick_format,y_tick_format=y_tick_format,xlabel='radius [{name}]',ylabel='velocity [{name}]',fig=fig,ax=ax,**kwargs)
 
 @njit(parallel=True)
 def fast_assign(indices,array):
