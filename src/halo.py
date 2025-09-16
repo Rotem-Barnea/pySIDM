@@ -15,8 +15,8 @@ from .constants import kpc,km,second,default_units,Unit
 class Halo:
     def __init__(self,dt:float,r:np.ndarray,v:np.ndarray,density:Density,time=0,n_interactions=0,background:Optional[Mass_Distribution]=None,
                  save_steps:Optional[np.ndarray|list[int]]=None,mass_calculation_method:Optional[Mass_calculation_methods]=None,
-                 default_dynamics_params:leapfrog.Params={},default_scatter_params:sidm.Params={'sigma':0},
-                 sigma:Optional[float]=None,scatter_live_only:bool=False):
+                 dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={'sigma':0},sigma:Optional[float]=None,
+                 scatter_live_only:bool=False):
         self.r = r
         self.v = v
         self.particle_index = np.arange(len(r))
@@ -28,8 +28,8 @@ class Halo:
         self.save_steps = save_steps
         self.density:Density = density
         self.lattice:Lattice = Lattice.from_density(self.density)
-        self.dynamics_params:leapfrog.Params = default_dynamics_params
-        self.scatter_params:sidm.Params = default_scatter_params
+        self.dynamics_params:leapfrog.Params = dynamics_params
+        self.scatter_params:sidm.Params = scatter_params
         if sigma is not None:
             self.scatter_params['sigma'] = sigma
         self.scatter_live_only = scatter_live_only
