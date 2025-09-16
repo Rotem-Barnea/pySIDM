@@ -156,3 +156,11 @@ def fast_spherical_rho_integrate(r,rho_fn,rho_s=1,Rs=1,Rvir=1,start=0,num_steps=
         ys = rho_fn(x,rho_s=rho_s,Rs=Rs,Rvir=Rvir)
         integral[i] = np.trapezoid(y=ys*J,x=x)
     return integral
+
+@njit(parallel=True)
+def fast_unique_mask(x):
+    """use with np.where(fast_unique_mask(x) > 1)[0] to get all unique elements"""
+    output = np.zeros_like(x,dtype=np.int64)
+    for i in prange(len(x)):
+        output[x[i]] += 1
+    return output
