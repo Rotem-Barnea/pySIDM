@@ -1,5 +1,3 @@
 __pycache__
 **/.ipynb_checkpoints/**
-
-# Large CSV data files
-analysis/states*.csv
+analysis/*.csv
