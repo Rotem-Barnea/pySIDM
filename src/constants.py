@@ -1,51 +1,55 @@
 from typing import TypedDict
-# from astropy import units,constants
-from . import si_units as SI
+from astropy import units,constants
 
 class Unit(TypedDict):
     name: str
     value: float
 
 ## Work units
-length_unit = SI.kpc
-time_unit = SI.Myr
-mass_unit = SI.Msun
+length:units.UnitBase = units.kpc
+time:units.UnitBase = units.Myr
+mass:units.UnitBase = units.Msun
 
-# time_unit_ = 'Myr'
+## Compound units
+velocity:units.UnitBase = length/time
+acceleration:units.UnitBase = length/time**2
+energy:units.UnitBase = mass*velocity**2
+density:units.UnitBase = mass/length**3
+
+assert isinstance(length,units.UnitBase)
+assert isinstance(time,units.UnitBase)
+assert isinstance(mass,units.UnitBase)
+assert isinstance(velocity,units.UnitBase)
+assert isinstance(acceleration,units.UnitBase)
+assert isinstance(energy,units.UnitBase)
+assert isinstance(density,units.UnitBase)
 
 ## SI units redefinition to the work units
-# m = (1*units.m).value/length_unit
-# second = (1*units.second).value/time_unit
-# kg = (1*units.kg).value/mass_unit
-# kpc:float = (1*units.kpc).value/length_unit
-m = SI.m/length_unit
-second = SI.second/time_unit
-kg = SI.kg/mass_unit
-kpc = SI.kpc/length_unit
-year = SI.year/time_unit
-Myr = SI.Myr/time_unit
-Gyr = SI.Gyr/time_unit
-Msun = SI.Msun/mass_unit
-# G:float = constants.G.value/(length_unit**3/(mass_unit*time_unit**2))
-G:float = SI.G/(length_unit**3/(mass_unit*time_unit**2))
-cm = SI.cm/length_unit
-km = SI.km/length_unit
-gram = SI.gram/mass_unit
+m:float = (1*units.m).to(length).value
+second:float = (1*units.second).to(time).value
+kg:float = (1*units.kg).to(mass).value
+kpc:float = (1*units.kpc).to(length).value
+year:float = (1*units.year).to(time).value
+Myr:float = (1*units.Myr).to(time).value
+Gyr:float = (1*units.Gyr).to(time).value
+Msun:float = (1*units.Msun).to(mass).value
+G:float = constants.G.to(length**3/(mass*time**2)).value
+cm:float = (1*units.cm).to(length).value
+km:float = (1*units.km).to(length).value
+gram:float = (1*units.gram).to(mass).value
 
-cross_section = SI.cross_section/(length_unit**2/mass_unit)
+cross_section:float = (1*units.Unit('cm^2/gram')).to(length**2/mass).value
 
 ## default unit handles
 unit_name={
-    'length':'kpc',
-    'time':'Myr',
-    'mass':'Msun',
+    'length':str(length),
+    'time':str(time),
+    'mass':str(mass),
+    'velocity':str(velocity),
+    'acceleration':str(acceleration),
+    'energy':str(energy),
+    'density':str(density),
 }
-unit_name.update({
-    'velocity':f'{unit_name['length']}/{unit_name['time']}',
-    'acceleration':f'{unit_name['length']}/{unit_name['time']}^2',
-    'energy':f'{unit_name['mass']}*({unit_name['length']}/{unit_name['time']})^2',
-    'density':f'{unit_name['mass']}/{unit_name['length']}^3',
-})
 
 def default_units(x:str) -> Unit:
     match x:
