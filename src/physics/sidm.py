@@ -1,6 +1,7 @@
 import numpy as np
 from numba import njit,prange
-from typing import TypedDict,Required,Tuple
+from typing import TypedDict,Required
+from numpy.typing import NDArray
 from .. import utils
 
 class Params(TypedDict,total=False):
@@ -13,11 +14,12 @@ class Params(TypedDict,total=False):
 default_scatter_params:Params={'max_radius_j':10,'rounds':10,'regulator':1e-10,'max_n_allowed':10000,'sigma':0}
 
 @njit(parallel=True)
-def roll_scattering_pairs(r,v,dt,m,sigma,regulator:float=default_scatter_params['regulator'],max_radius_j:int=default_scatter_params['max_radius_j']):
+def roll_scattering_pairs(r:NDArray[np.float64],v:NDArray[np.float64],dt:float,m:float,sigma:float,regulator:float=default_scatter_params['regulator'],
+                          max_radius_j:int=default_scatter_params['max_radius_j']) -> NDArray[np.int64]:
     if sigma == 0:
         return np.empty((0,2),dtype=np.int64)
 
-    delta_r = np.zeros_like(r)
+    delta_r:NDArray[np.float64] = np.zeros_like(r)
     delta_r[:-max_radius_j] = r[max_radius_j:]
     delta_r[-max_radius_j:] = r[-1]
     delta_r -= r
@@ -45,7 +47,7 @@ def roll_scattering_pairs(r,v,dt,m,sigma,regulator:float=default_scatter_params[
     return pairs[pair_found]
 
 @njit()
-def scatter_pair_kinematics(v0,v1):
+def scatter_pair_kinematics(v0:NDArray[np.float64],v1:NDArray[np.float64]) -> tuple[NDArray[np.float64],NDArray[np.float64]]:
     #Calculate relative velocity and center of mass velocity
     v_rel = v0-v1
     v_cm = (v0+v1)/2
@@ -89,25 +91,26 @@ def scatter_pair_kinematics(v0,v1):
     return v0_new,v1_new
 
 @njit(parallel=True)
-def scatter_unique_pairs(v,pairs):
+def scatter_unique_pairs(v:NDArray[np.float64],pairs:NDArray[np.int64]) -> None:
     for pair_index in prange(len(pairs)):
         i0,i1 = pairs[pair_index]
         if i0 == -1 or i1 == -2:
             continue
         v[i0],v[i1] = scatter_pair_kinematics(v0=v[i0],v1=v[i1])
 
-def scatter(r,v,dt,m,sigma,blacklist=[],rounds:int=default_scatter_params['rounds'],regulator:float=default_scatter_params['regulator'],
-            max_radius_j:int=default_scatter_params['max_radius_j'],max_n_allowed:int=default_scatter_params['max_n_allowed']) -> Tuple[int, np.ndarray]:
+def scatter(r:NDArray[np.float64],v:NDArray[np.float64],dt:float,m:float,sigma:float,blacklist:list[int]=[],rounds:int=default_scatter_params['rounds'],
+            regulator:float=default_scatter_params['regulator'],max_radius_j:int=default_scatter_params['max_radius_j'],
+            max_n_allowed:int=default_scatter_params['max_n_allowed']) -> tuple[int,NDArray[np.int64]]:
     if sigma == 0:
-        return 0, np.array([])
+        return 0, np.array([],dtype=np.int64)
     n_interactions = 0
-    interacted = []
+    interacted:list[NDArray[np.int64]] = []
     for _ in range(rounds):
         pairs_buffer = np.full((max_n_allowed,2),-1,dtype=np.int64)
-        pairs = roll_scattering_pairs(r=r,v=v,dt=dt/rounds,m=m,sigma=sigma,regulator=regulator,max_radius_j=max_radius_j)
+        pairs:NDArray[np.int64] = roll_scattering_pairs(r=r,v=v,dt=dt/rounds,m=m,sigma=sigma,regulator=regulator,max_radius_j=max_radius_j)
         pairs = utils.clean_pairs(pairs,blacklist)
         pairs_buffer[:len(pairs)] = pairs
         scatter_unique_pairs(v=v,pairs=pairs_buffer)
         n_interactions += len(pairs)
         interacted += [pairs.ravel()]
-    return n_interactions, np.unique(np.hstack(interacted))
+    return n_interactions,np.unique(np.hstack(interacted)).astype(np.int64)

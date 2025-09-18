@@ -1,11 +1,14 @@
 import numpy as np
 from numba import njit
-from typing import Optional
+from typing import Any,cast
+from matplotlib.figure import Figure
+from matplotlib.axes import Axes
 from .density import Density
+from ..types import FloatOrArray
 from ..constants import kpc,default_units,Unit
 
 class NFW(Density):
-    def __init__(self,Rs,c,**kwargs):
+    def __init__(self,Rs:float,c:float,**kwargs:Any) -> None:
         super().__init__(Rs=Rs,Rvir=c*Rs,**kwargs)
         self.title = 'NFW'
         self.c = c
@@ -26,18 +29,17 @@ class NFW(Density):
 
     @staticmethod
     @njit
-    def calculate_rho(r,rho_s=1,Rs=1,Rvir=1):
+    def calculate_rho(r:FloatOrArray,rho_s:float=1,Rs:float=1,Rvir:float=1) -> FloatOrArray:
         return rho_s/((r/Rs)*(1+(r/Rs))**2)/(1+(r/Rvir)**10)
 
-    def calculate_theoretical_M(self,r):
+    def calculate_theoretical_M(self,r:FloatOrArray) -> FloatOrArray:
         x = self(r)
-        return 4*np.pi*self.rho_s*self.Rs**3*(np.log(1+x)-x/(1+x))
+        return cast(FloatOrArray,4*np.pi*self.rho_s*self.Rs**3*(np.log(1+x)-x/(1+x)))
 
 ##Plots
-    def plot_radius_distribution(self,r_start:Optional[float]=1e-4*kpc,r_end:Optional[float]=None,cumulative=False,
-                                 units:Unit=default_units('length'),fig=None,ax=None):
+    def plot_radius_distribution(self,r_start:float|None=1e-4*kpc,r_end:float|None=None,cumulative:bool=False,
+                                 units:Unit=default_units('length'),fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
         fig,ax = super().plot_radius_distribution(r_start,r_end or 2*self.Rvir,cumulative=cumulative,units=units,fig=fig,ax=ax)
-
         r = np.geomspace(r_start or 1e-4*kpc,r_end or 2*self.Rvir,self.space_steps)
         if cumulative:
             ymax = self.mass_cdf(r).max()

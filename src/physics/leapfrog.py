@@ -1,5 +1,6 @@
 import numpy as np
 from numba import njit,prange
+from numpy.typing import NDArray
 from typing import TypedDict
 from ..constants import G,kpc,km,second
 
@@ -16,11 +17,11 @@ default_step_params:Params={'max_ministeps':1000,'consider_all':True,'kill_diver
                             'r_convergence_threshold':1e-3*kpc,'vr_convergence_threshold':5*km/second}
 
 @njit
-def acceleration(r,L,M,regulator:float=default_step_params['regulator']):
+def acceleration(r:float,L:float,M:float,regulator:float=default_step_params['regulator']) -> float:
     return -G*M/(r**2+regulator) + L**2/(r**3+regulator)
 
 @njit
-def particle_step(r,vx,vy,vr,M,dt,N:int=1,regulator:float=default_step_params['regulator']):
+def particle_step(r:float,vx:float,vy:float,vr:float,M:float,dt:float,N:int=1,regulator:float=default_step_params['regulator']) -> tuple[float,NDArray[np.float64]]:
     Lx,Ly = r*vx,r*vy
     L = np.sqrt(Lx**2+Ly**2)
     a = acceleration(r,L,M,regulator)
@@ -36,10 +37,10 @@ def particle_step(r,vx,vy,vr,M,dt,N:int=1,regulator:float=default_step_params['r
     return r,np.array([Lx/r,Ly/r,vr])
 
 @njit(parallel=True)
-def step(r,v,M,live,dt,max_ministeps:int=default_step_params['max_ministeps'],r_convergence_threshold:float=default_step_params['r_convergence_threshold'],
-         vr_convergence_threshold:float=default_step_params['vr_convergence_threshold'],regulator:float=default_step_params['regulator'],
-         simple_radius:float=default_step_params['simple_radius'],consider_all=default_step_params['consider_all'],
-         kill_divergent=default_step_params['kill_divergent']):
+def step(r:NDArray[np.float64],v:NDArray[np.float64],M:NDArray[np.float64],live:NDArray[np.bool_],dt:float,regulator:float=default_step_params['regulator'],
+         max_ministeps:int=default_step_params['max_ministeps'],r_convergence_threshold:float=default_step_params['r_convergence_threshold'],
+         vr_convergence_threshold:float=default_step_params['vr_convergence_threshold'],simple_radius:float=default_step_params['simple_radius'],
+         consider_all:bool=default_step_params['consider_all'],kill_divergent:bool=default_step_params['kill_divergent']) -> None:
     for i in prange(len(r)):
         if not consider_all and not live[i]:
             continue

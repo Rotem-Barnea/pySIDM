@@ -4,21 +4,25 @@ from functools import partial
 from tqdm import tqdm
 import seaborn as sns
 from matplotlib import pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.axes import Axes
 from numba import njit,prange
-from typing import Optional
+from numpy.typing import NDArray
+from typing import Callable,cast
 from .. import utils
+from ..types import FloatOrArray
 from ..constants import G,kpc,default_units,km,second,Unit
 
 class Density:
-    def __init__(self,Rmin:Optional[float]=1e-4,Rmax:Optional[float]=None,Rs=1,Rvir=1,Mtot=1,unit_mass=1,space_steps:float|int=1e4):
+    def __init__(self,Rmin:float|None=1e-4,Rmax:float|None=None,Rs:float=1,Rvir:float=1,Mtot:float=1,unit_mass:float=1,space_steps:float|int=1e4) -> None:
         self.space_steps:int = int(space_steps)
         self.Mtot = Mtot
         self.title = 'Density'
         self.unit_mass = unit_mass
         self.Rs = Rs
         self.Rvir = Rvir
-        self.Rmin:float = Rmin or 1e-4
-        self.Rmax:float = Rmax or 85*self.Rs
+        self.Rmin = Rmin or 1e-4
+        self.Rmax = Rmax or 85*self.Rs
         self.rho_s = self.calculate_rho_scale();
 
         self.memoization = {}
@@ -35,76 +39,74 @@ class Density:
   - Mtot = {self.Mtot/self.print_mass_units['value']:.3e} {self.print_mass_units['name']}
   - particle mass = {self.unit_mass/self.print_mass_units['value']:.3e} {self.print_mass_units['name']}"""
 
-    def __call__(self,x):
+    def __call__(self,x:FloatOrArray) -> FloatOrArray:
         return self.to_scale(x)
 
-    def to_scale(self,x):
+    def to_scale(self,x:FloatOrArray) -> FloatOrArray:
         return x/self.Rs
 
     @property
-    def Tdyn(self):
+    def Tdyn(self) -> float:
         if 'Tdyn' not in self.memoization:
             self.memoization['Tdyn'] = np.sqrt(self.Rs**3/(G*self.Mtot))
         return self.memoization['Tdyn']
 
     @Tdyn.setter
-    def Tdyn(self,value):
+    def Tdyn(self,value:float) -> None:
         self.memoization['Tdyn'] = value
 
     @property
-    def geomspace_grid(self):
+    def geomspace_grid(self) -> NDArray[np.float64]:
         if 'geomspace_grid' not in self.memoization:
             self.memoization['geomspace_grid'] = np.geomspace(self.Rmin,self.Rmax,self.space_steps)
         return self.memoization['geomspace_grid']
 
     @property
-    def linspace_grid(self):
+    def linspace_grid(self) -> NDArray[np.float64]:
         if 'linspace_grid' not in self.memoization:
             self.memoization['linspace_grid'] = np.linspace(start=self.Rmin,stop=self.Rmax,num=self.space_steps)
         return self.memoization['linspace_grid']
 
     @staticmethod
     @njit
-    def calculate_rho(r,rho_s=1,Rs=1,Rvir=1):
+    def calculate_rho(r:FloatOrArray,rho_s:float=1,Rs:float=1,Rvir:float=1) -> FloatOrArray:
         return r
 
-    def rho(self,r):
+    def rho(self,r:FloatOrArray) -> FloatOrArray:
         return self.calculate_rho(r,self.rho_s,self.Rs,self.Rvir)
 
     @property
-    def rho_grid(self):
+    def rho_grid(self) -> NDArray[np.float64]:
         if 'rho_grid' not in self.memoization:
             self.memoization['rho_grid'] = self.rho(self.geomspace_grid)
         return self.memoization['rho_grid']
 
-    def rho_r2(self,r):
+    def rho_r2(self,r:FloatOrArray) -> FloatOrArray:
         return self.rho(r)*r**2
 
     @property
-    def rho_r2_grid(self):
+    def rho_r2_grid(self) -> NDArray[np.float64]:
         if 'rho_r2_grid' not in self.memoization:
             self.memoization['rho_r2_grid'] = self.rho_r2(self.geomspace_grid)
         return self.memoization['rho_r2_grid']
 
-    def M(self,r):
+    def M(self,r:FloatOrArray) -> FloatOrArray:
         scalar_input = np.isscalar(r)
+        M = utils.fast_spherical_rho_integrate(np.atleast_1d(r),self.calculate_rho,self.rho_s,self.Rs,self.Rvir)
         if scalar_input:
-            r = np.array([r])
-        M = utils.fast_spherical_rho_integrate(r,self.calculate_rho,self.rho_s,self.Rs,self.Rvir)
-        if scalar_input:
-            M = M[0]
-        return M
+            return M[0]
+        return cast(FloatOrArray,M)
 
     @property
-    def M_grid(self):
+    def M_grid(self) -> NDArray[np.float64]:
         if 'M_grid' not in self.memoization:
             self.memoization['M_grid'] = self.M(self.geomspace_grid)
         return self.memoization['M_grid']
 
-    def calculate_rho_scale(self):
+    def calculate_rho_scale(self) -> float:
         return self.Mtot/utils.fast_spherical_rho_integrate(np.array([self.Rmax]),self.calculate_rho,rho_s=1,Rs=self.Rs,Rvir=self.Rvir)[0]
 
-    def Phi(self,r):
+    def Phi(self,r:FloatOrArray) -> FloatOrArray:
         if 'Phi' not in self.memoization:
             r_grid = self.geomspace_grid
             M_grid = self.M(r_grid)
@@ -115,82 +117,81 @@ class Density:
         return self.memoization['Phi'](r)
 
     @property
-    def Phi_grid(self):
+    def Phi_grid(self) -> NDArray[np.float64]:
         if 'Phi_grid' not in self.memoization:
             self.memoization['Phi_grid'] = self.Phi(self.geomspace_grid)
         return self.memoization['Phi_grid']
 
     @property
-    def Phi0(self):
+    def Phi0(self) -> float:
         if 'Phi0' not in self.memoization:
-            self.memoization['Phi0'] = self.Phi(self.Rmax)
+            self.memoization['Phi0'] = float(self.Phi(self.Rmax))
         return self.memoization['Phi0']
 
-    def Psi(self,r):
+    def Psi(self,r:FloatOrArray) -> FloatOrArray:
         return self.Phi0 - self.Phi(r)
 
     @property
-    def Psi_grid(self):
+    def Psi_grid(self) -> NDArray[np.float64]:
         if 'Psi_grid' not in self.memoization:
             self.memoization['Psi_grid'] = self.Psi(self.geomspace_grid)
         return self.memoization['Psi_grid']
 
-    def mass_pdf(self,r):
+    def mass_pdf(self,r:NDArray[np.float64]) -> NDArray[np.float64]:
         mass_pdf = self.rho_r2(r)
         mass_pdf /= np.trapezoid(mass_pdf,r)
         return mass_pdf
 
-    def mass_cdf(self,r):
+    def mass_cdf(self,r:FloatOrArray) -> FloatOrArray:
         return self.M(r)/self.Mtot
 
     @property
-    def pdf(self):
+    def pdf(self) -> scipy.interpolate.interp1d:
         if 'pdf' not in self.memoization:
             self.memoization['pdf'] = scipy.interpolate.interp1d(self.geomspace_grid,self.mass_pdf(self.geomspace_grid),
                                                                  kind='cubic',bounds_error=False,fill_value=(0,1))
         return self.memoization['pdf']
 
     @property
-    def cdf(self):
+    def cdf(self) -> scipy.interpolate.interp1d:
         if 'cdf' not in self.memoization:
             self.memoization['cdf'] = scipy.interpolate.interp1d(self.geomspace_grid,self.mass_cdf(self.geomspace_grid),
                                                                  kind='cubic',bounds_error=False,fill_value=(0,1))
         return self.memoization['cdf']
 
     @property
-    def quantile_function(self):
+    def quantile_function(self) -> scipy.interpolate.interp1d:
         if 'quantile_function' not in self.memoization:
             r,cdf = utils.joint_clean([self.geomspace_grid,self.mass_cdf(self.geomspace_grid)],['r','cdf'],'cdf')
             self.memoization['quantile_function'] = scipy.interpolate.interp1d(cdf,r,kind='cubic',bounds_error=False,fill_value=(self.Rmin,self.Rmax))
         return self.memoization['quantile_function']
 
     @property
-    def Psi_to_r(self):
+    def Psi_to_r(self) -> scipy.interpolate.interp1d:
         if 'Psi_to_r' not in self.memoization:
             r,Psi = utils.joint_clean([self.geomspace_grid,self.Psi_grid],['r','Psi'],'Psi')
             self.memoization['Psi_to_r'] = scipy.interpolate.interp1d(Psi,r,kind='cubic',bounds_error=False,fill_value=(self.Rmin,self.Rmax))
         return self.memoization['Psi_to_r']
 
-    def Psi_to_rho(self,Psi):
+    def Psi_to_rho(self,Psi:FloatOrArray) -> FloatOrArray:
         return self.rho(self.Psi_to_r(Psi))
 
     @property
-    def drhodPsi(self):
+    def drhodPsi(self) -> Callable[[FloatOrArray],FloatOrArray]:
         if 'drhodPsi' not in self.memoization:
             self.memoization['drhodPsi'] = partial(utils.derivate,y_fn=self.Psi_to_rho)
         return self.memoization['drhodPsi']
 
     @property
-    def drho2dPsi2(self):
+    def drho2dPsi2(self) -> Callable[[FloatOrArray],FloatOrArray]:
         if 'drho2dPsi2' not in self.memoization:
             self.memoization['drho2dPsi2'] = partial(utils.derivate2,y_fn=self.Psi_to_rho)
         return self.memoization['drho2dPsi2']
 
-    def calculate_f(self,E,disable=True):
+    def calculate_f(self,E:NDArray[np.float64],disable:bool=True) -> NDArray[np.float64]:
         scalar_input = np.isscalar(E)
-        if scalar_input:
-            E = np.array([E])
-        Psi = np.linspace(self.Psi_grid.min(),E.max(),1000)
+        E = np.asarray(E)
+        Psi = np.linspace(self.Psi_grid.min(),E.max(),1000,dtype=np.float64)
         drho2dPsi2 = self.drho2dPsi2(Psi)
         integral = np.zeros_like(E)
         for i,e in enumerate(tqdm(E,disable=disable)):
@@ -201,24 +202,24 @@ class Density:
             E = E[0]
         return 1/(self.unit_mass*np.sqrt(8)*np.pi**2)*(self.drhodPsi(0)/np.sqrt(E)+integral)
 
-    def E(self,r,v):
+    def E(self,r:FloatOrArray,v:FloatOrArray) -> FloatOrArray:
         return self.Psi(r)-v**2/2
 
     @property
-    def f(self):
+    def f(self) -> scipy.interpolate.interp1d:
         if 'f' not in self.memoization:
-            E = np.linspace(0,self.Psi_grid.max(),int(1e3))[1:]
+            E: NDArray[np.float64] = np.linspace(0,self.Psi_grid.max(),int(1e3),dtype=np.float64)[1:]
             fs = self.calculate_f(E)
             self.memoization['f'] = scipy.interpolate.interp1d(E,fs,kind='cubic',bounds_error=False,fill_value=(0,0))
         return self.memoization['f']
 
 ## Roll initial setup
 
-    def roll_r(self,n_particles):
+    def roll_r(self,n_particles:int) -> NDArray[np.float64]:
         rolls = np.random.rand(n_particles)
         return self.quantile_function(rolls)
 
-    def roll_v_slow(self,r,num=1000):
+    def roll_v_slow(self,r:NDArray[np.float64],num:int=1000) -> NDArray[np.float64]:
         Psi = self.Psi(r)
         vs = np.linspace(np.zeros_like(r),np.sqrt(2*Psi),num=num)
         pdf = vs**2*self.f(Psi-vs**2/2)
@@ -232,10 +233,12 @@ class Density:
 
     @staticmethod
     @njit(parallel=True)
-    def roll_v_fast(Psi,E_grid,f_grid,num=100000):
+    def roll_v_fast(Psi:NDArray[np.float64],E_grid:NDArray[np.float64],f_grid:NDArray[np.float64],num:int=100000) -> NDArray[np.float64]:
         output = np.empty_like(Psi)
         for particle in prange(len(Psi)):
-            vs = np.linspace(0,np.sqrt(2*Psi[particle]),num=num)
+            vs_grid = np.linspace(0,np.sqrt(2*Psi[particle]),num=num)
+            vs = np.empty_like(vs_grid,dtype=np.float64)
+            vs[:] = vs_grid
             pdf = np.zeros_like(vs)
             for i,v in enumerate(vs):
                 pdf[i] = v**2*utils.linear_interpolation(E_grid,f_grid,Psi[particle]-v**2/2)
@@ -250,37 +253,32 @@ class Density:
             output[particle] = vs[i]
         return output
 
-    def roll_v(self,r,num=1000):
-        E_grid = np.linspace(0,self.Psi_grid.max(),int(num))[1:]
-        f_grid = self.calculate_f(E_grid)
-        return self.roll_v_fast(self.Psi(r),E_grid,f_grid,num=num)
+    def roll_v(self,r:NDArray[np.float64],num:int=1000) -> NDArray[np.float64]:
+        E_grid = np.linspace(0,self.Psi_grid.max(),int(num),dtype=np.float64)[1:]
+        return self.roll_v_fast(self.Psi(r),E_grid,f_grid=self.calculate_f(E_grid),num=num)
 
-    def roll_initial_angle(self,n_particles):
+    def roll_initial_angle(self,n_particles:int) -> NDArray[np.float64]:
         theta = np.acos(np.random.rand(n_particles)*2-1)
         return theta
 
 ##Plots
 
-    def plot_phase_space(self,r_range=None,v_range=None,length_units:Unit=default_units('length'),velocity_units:Unit=default_units('velocity'),
-                         fig=None,ax=None):
-        if r_range is None:
-            r_range = np.linspace(1e-2,50,200)*kpc
-        if v_range is None:
-            v_range = np.linspace(0,100,200)*(km/second)
+    def plot_phase_space(self,r_range:NDArray[np.float64]=np.linspace(1e-2,50,200)*kpc,v_range:NDArray[np.float64]=np.linspace(0,100,200)*(km/second),
+                         length_units:Unit=default_units('length'),velocity_units:Unit=default_units('velocity'),fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
         r,v = np.meshgrid(r_range,v_range)
         f = self.f(self.E(r,v))
         grid = 16*np.pi*r**2*v**2*f
         fig,ax = utils.plot_phase_space(grid,r_range/length_units['value'],v_range/velocity_units['value'],length_units,velocity_units,fig=fig,ax=ax)
         return fig,ax
 
-    def add_plot_R_markers(self,ax,ymax,units:Unit):
+    def add_plot_R_markers(self,ax:Axes,ymax:float,units:Unit) -> Axes:
         ax.vlines(x=[self.Rs/units['value'],self.Rvir/units['value']],ymin=0,ymax=ymax,linestyles='dashed',colors='black')
         ax.text(x=self.Rs/units['value'],y=ymax,s='Rs')
         ax.text(x=self.Rvir/units['value'],y=ymax,s='Rvir')
         return ax
 
-    def plot_rho(self,r_start:Optional[float]=None,r_end:Optional[float]=1e4*kpc,density_units:Unit=default_units('density'),
-                 length_units:Unit=default_units('length'),fig=None,ax=None):
+    def plot_rho(self,r_start:float|None=None,r_end:float|None=1e4*kpc,density_units:Unit=default_units('density'),
+                 length_units:Unit=default_units('length'),fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
         if fig is None or ax is None:
             fig,ax = plt.subplots(figsize=(6,5))
         fig.tight_layout()
@@ -297,8 +295,8 @@ class Density:
         ax = self.add_plot_R_markers(ax,ymax=rho.max()/length_units['value'],units=length_units)
         return fig,ax
 
-    def plot_radius_distribution(self,r_start:Optional[float]=None,r_end:Optional[float]=None,cumulative=False,
-                                 units:Unit=default_units('length'),fig=None,ax=None):
+    def plot_radius_distribution(self,r_start:float|None=None,r_end:float|None=None,cumulative:bool=False,
+                                 units:Unit=default_units('length'),fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
         if fig is None or ax is None:
             fig,ax = plt.subplots(figsize=(6,5))
         fig.tight_layout()

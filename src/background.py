@@ -1,18 +1,19 @@
 import numpy as np
+from numpy.typing import NDArray
 import pandas as pd
 from tqdm import tqdm
-from typing import Self,Optional,Unpack,Callable
+from typing import Self,Unpack
 from . import nsphere
 from .spatial_approximation import Lattice
 
 class Mass_Distribution:
-    def __init__(self,lattice:Lattice,M:np.ndarray,time:np.ndarray) -> None:
+    def __init__(self,lattice:Lattice,M:NDArray[np.float64],time:NDArray[np.float64]) -> None:
         self.lattice:Lattice = lattice
-        self.M:np.ndarray = M
-        self.time:np.ndarray = time
+        self.M = M
+        self.time = time
 
     @classmethod
-    def from_files(cls,lattice:Lattice,Mtot:float,files:Optional[pd.DataFrame]=None,**kwargs:Unpack[nsphere.File_params]) -> Self:
+    def from_files(cls,lattice:Lattice,Mtot:float,files:pd.DataFrame|None=None,**kwargs:Unpack[nsphere.File_params]) -> Self:
         if files is None:
             files = nsphere.gather_files(**kwargs)
         data = np.vstack([nsphere.load_file(path,dtype)['R'] for path,dtype in tqdm(files[['path','record_dtype']].to_numpy(),desc='Load files')])
@@ -21,8 +22,8 @@ class Mass_Distribution:
         time = files.time.to_numpy()
         return cls(lattice,M,time)
 
-    def at_time(self,t:float) -> np.ndarray:
-        mask = self.time == t
+    def at_time(self,t:float) -> NDArray[np.float64]:
+        mask:NDArray[np.bool_] = (self.time == t)
         if mask.any():
             return self.M[mask][0]
         mask = self.time < t
@@ -35,11 +36,3 @@ class Mass_Distribution:
         before = after - 1
         f = (t - self.time[before])/(self.time[after]-self.time[before])
         return self.M[before]*f + self.M[after]*(1-f)
-
-# class Velocity_Distribution(Distribution):
-#     def __init__(self,lattice:Lattice,data:np.ndarray,cumulative_data:np.ndarray,time:np.ndarray) -> None:
-#         super().__init__(lattice,data,cumulative_data,time)
-
-#     @classmethod
-#     def from_files(cls,lattice:Lattice,files:Optional[pd.DataFrame]=None,**kwargs:Unpack[nsphere.File_params]) -> Self:
-#         return super().from_files(lattice=lattice,files=files,process_fn=lambda x:np.sqrt(x['Vrad']**2+(x['L']/x['R'])**2),**kwargs)

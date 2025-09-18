@@ -1,4 +1,5 @@
 from typing import TypedDict
+# from astropy import units,constants
 from . import si_units as SI
 
 class Unit(TypedDict):
@@ -8,11 +9,15 @@ class Unit(TypedDict):
 ## Work units
 length_unit = SI.kpc
 time_unit = SI.Myr
-# length_unit = SI.km
-# time_unit = SI.second
 mass_unit = SI.Msun
 
+# time_unit_ = 'Myr'
+
 ## SI units redefinition to the work units
+# m = (1*units.m).value/length_unit
+# second = (1*units.second).value/time_unit
+# kg = (1*units.kg).value/mass_unit
+# kpc:float = (1*units.kpc).value/length_unit
 m = SI.m/length_unit
 second = SI.second/time_unit
 kg = SI.kg/mass_unit
@@ -21,7 +26,8 @@ year = SI.year/time_unit
 Myr = SI.Myr/time_unit
 Gyr = SI.Gyr/time_unit
 Msun = SI.Msun/mass_unit
-G = SI.G/(length_unit**3/(mass_unit*time_unit**2))
+# G:float = constants.G.value/(length_unit**3/(mass_unit*time_unit**2))
+G:float = SI.G/(length_unit**3/(mass_unit*time_unit**2))
 cm = SI.cm/length_unit
 km = SI.km/length_unit
 gram = SI.gram/mass_unit
@@ -41,7 +47,7 @@ unit_name.update({
     'density':f'{unit_name['mass']}/{unit_name['length']}^3',
 })
 
-def default_units(x) -> Unit:
+def default_units(x:str) -> Unit:
     match x:
         case 'length':
             return {'value':kpc,'name':'kpc'}
