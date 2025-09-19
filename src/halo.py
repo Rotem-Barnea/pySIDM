@@ -81,7 +81,7 @@ class Halo:
 
     @property
     def unit_mass(self) -> units.Quantity['mass']:
-        return self.density.unit_mass/len(self.r)
+        return self.density.unit_mass
 
     @property
     def Tdyn(self) -> units.Unit:
