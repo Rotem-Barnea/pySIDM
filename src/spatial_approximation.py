@@ -9,8 +9,8 @@ from typing import Any,cast,Self
 
 class Lattice:
     def __init__(self,n_posts:int|float,start:float,end:float,log:bool=True) -> None:
-        self.start = start
-        self.end = end
+        self.start = float(start)
+        self.end = float(end)
         if log:
             self.start_lattice:float = np.log10(self.start)
             self.end_lattice:float = np.log10(self.end)
@@ -23,7 +23,7 @@ class Lattice:
 
     @classmethod
     def from_density(cls,density:Density,start:float=1e-4*kpc,overide_start:bool=True,n_posts:int|float=int(1e4),**kwargs:Any) -> Self:
-        return cls(start=density.Rmin if overide_start else start,end=density.Rmax,n_posts=n_posts,**kwargs)
+        return cls(start=density.Rmin.value if overide_start else start,end=density.Rmax.value,n_posts=n_posts,**kwargs)
 
     def __len__(self):
         return self.n_posts

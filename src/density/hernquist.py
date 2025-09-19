@@ -12,12 +12,12 @@ class Hernquist(Density):
 
     def __repr__(self):
         return f"""Hernquist density
-  - Mtot = {self.Mtot/self.print_mass_units['value']:.3e} {self.print_mass_units['name']}
-  - rho_s = {self.rho_s/self.print_density_units['value']:.4f} {self.print_density_units['name']}
-  - Tdyn = {self.Tdyn/self.print_time_units['value']:.4f} {self.print_time_units['name']}
+  - Mtot = {self.Mtot:.3e}
+  - rho_s = {self.rho_s:.4f}
+  - Tdyn = {self.Tdyn:.4f}
 
-  - Rmin = {self.Rmin/self.print_length_units['value']:.4f} {self.print_length_units['name']}
-  - Rmax = {self.Rmax/self.print_length_units['value']:.4f} {self.print_length_units['name']}
+  - Rmin = {self.Rmin:.4f}
+  - Rmax = {self.Rmax:.4f}
   - space_steps = {self.space_steps:.0e}"""
 
     @staticmethod

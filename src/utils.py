@@ -2,12 +2,14 @@ import numpy as np
 import pandas as pd
 from numba import njit,prange
 from numpy.typing import NDArray
-from typing import Callable,Any
+from typing import Callable,Any,cast
 from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 import matplotlib.ticker as mtick
-from .constants import kpc,km,second,default_units,Unit
+from astropy import units,table
+from astropy.units.typing import UnitLike
+from .constants import length,velocity
 from .types import FloatOrArray
 
 def random_angle(like:NDArray[np.float64],acos:bool) -> NDArray[np.float64]:
@@ -52,6 +54,14 @@ def derivate(x:FloatOrArray,y_fn:Callable[[FloatOrArray],FloatOrArray],h:float=1
 def derivate2(x:FloatOrArray,y_fn:Callable[[FloatOrArray],FloatOrArray],h:float=1e-4) -> FloatOrArray:
     return (y_fn(x+2*h)-2*y_fn(x+h)+y_fn(x))/h**2
 
+def quantity_derivate(x:units.Quantity,y_fn:Callable[[units.Quantity],units.Quantity],h:float=1e-4) -> units.Quantity:
+    t = units.Quantity(h,x.unit)
+    return cast(units.Quantity,(y_fn(cast(units.Quantity,x+t))-y_fn(x))/t)
+
+def quantity_derivate2(x:units.Quantity,y_fn:Callable[[units.Quantity],units.Quantity],h:float=1e-4) -> units.Quantity:
+    t = units.Quantity(h,x.unit)
+    return cast(units.Quantity,(y_fn(cast(units.Quantity,x+2*t))-2*y_fn(cast(units.Quantity,x+t))+y_fn(x))/t**2)
+
 @njit
 def linear_interpolation(xs:NDArray[np.float64],ys:NDArray[np.float64],x:float) -> NDArray[np.float64]:
     i = np.searchsorted(xs,x) - 1
@@ -62,20 +72,20 @@ def linear_interpolation(xs:NDArray[np.float64],ys:NDArray[np.float64],x:float) 
     w = (x-xs[i])/(xs[i+1]-xs[i])
     return (1-w)*ys[i]+w*ys[i+1]
 
-def plot_2d(grid:NDArray[Any],extent:tuple[float,float,float,float]|None=None,x_range:NDArray[np.float64]=np.array([1e-2,50])*kpc,
-            y_range:NDArray[np.float64]=np.array([0,100])*(km/second),x_units:Unit=default_units(''),y_units:Unit=default_units(''),
-            cbar_units:Unit=default_units(''),x_nbins:int|None=6,y_nbins:int|None=6,x_tick_format:str='%.0f',y_tick_format:str='%.0f',
-            title:str='',xlabel:str='',ylabel:str='',cbar_label:str='',fig:Figure|None=None,ax:Axes|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
+def plot_2d(grid:NDArray[Any],extent:tuple[units.Quantity,units.Quantity,units.Quantity,units.Quantity]|None=None,x_range:units.Quantity|None=None,
+            y_range:units.Quantity|None=None,x_units:UnitLike=length,y_units:UnitLike=velocity,x_nbins:int|None=6,y_nbins:int|None=6,
+            x_tick_format:str='%.0f',y_tick_format:str='%.0f',title:str|None=None,xlabel:str|None=None,ylabel:str|None=None,cbar_label:str|None=None,
+            fig:Figure|None=None,ax:Axes|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
     if extent is None:
-        extent = (x_range.min()/x_units['value'],x_range.max()/x_units['value'],y_range.min()/y_units['value'],y_range.max()/y_units['value'])
+        assert x_range is not None and y_range is not None, "x_range and y_range must be provided if extent is None"
+        extent = (x_range.to(x_units).min(),x_range.to(x_units).max(),y_range.to(y_units).min(),y_range.to(y_units).max())
+    extent_value = (float(extent[0].to(x_units).value),float(extent[1].to(x_units).value),float(extent[2].to(y_units).value),float(extent[3].to(y_units).value))
 
-    if fig is None or ax is None:
-        fig,ax = plt.subplots(figsize=(6,5))
-    fig.tight_layout()
-    im = ax.imshow(grid,origin='lower',aspect='auto',extent=extent,**kwargs)
+    fig,ax = setup_plot(fig=fig,ax=ax,grid=False,title=title,xlabel=xlabel,ylabel=ylabel)
+    im = ax.imshow(grid,origin='lower',aspect='auto',extent=extent_value,**kwargs)
     cbar = fig.colorbar(im,ax=ax)
     if cbar_label:
-        cbar.set_label(cbar_label.format(**cbar_units))
+        cbar.set_label(cbar_label)
 
     if x_nbins is not None:
         ax.xaxis.set_major_locator(mtick.MaxNLocator(nbins=x_nbins))
@@ -84,21 +94,17 @@ def plot_2d(grid:NDArray[Any],extent:tuple[float,float,float,float]|None=None,x_
         for lab in ax.get_xticklabels():
             lab.set_rotation(0)
             lab.set_horizontalalignment('center')
-    ax.set_xlabel(xlabel.format(**x_units))
 
     if y_nbins is not None:
         ax.yaxis.set_major_locator(mtick.MaxNLocator(nbins=y_nbins))
         ax.yaxis.set_major_formatter(mtick.FormatStrFormatter(y_tick_format))
-    ax.set_ylabel(ylabel.format(**y_units))
-    if title:
-        ax.set_title(title)
     return fig,ax
 
-def plot_phase_space(grid:NDArray[Any],r_range:NDArray[np.float64]|None=None,v_range:NDArray[np.float64]|None=None,length_units:Unit=default_units('length'),
-                     velocity_units:Unit=default_units('velocity'),x_nbins:int=6,y_nbins:int=6,x_tick_format:str='%.0f',y_tick_format:str='%.0f',
-                     **kwargs:Any) -> tuple[Figure,Axes]:
-    return plot_2d(grid,xlabel='radius [{name}]',ylabel='velocity [{name}]',x_units=length_units,y_units=velocity_units,x_nbins=x_nbins,y_nbins=y_nbins,
-                   x_tick_format=x_tick_format,y_tick_format=y_tick_format,**drop_None(x_range=r_range,y_range=v_range),**kwargs)
+def plot_phase_space(grid:NDArray[Any],r_range:units.Quantity['length']|None=np.array([1e-2,50])*units.kpc,
+                     v_range:units.Quantity['velocity']|None=np.array([0,100])*units.Unit('km/second'),length_units:UnitLike=length,
+                     velocity_units:UnitLike=velocity,**kwargs:Any) -> tuple[Figure,Axes]:
+    return plot_2d(grid,xlabel=add_label_unit('Radius',length_units),ylabel=add_label_unit('Velocity',velocity_units),x_units=length_units,
+                   y_units=velocity_units,**drop_None(x_range=r_range,y_range=v_range),**kwargs)
 
 @njit(parallel=True)
 def fast_assign(indices:NDArray[np.int64],array:NDArray[np.float64]) -> NDArray[np.float64]:
@@ -127,3 +133,24 @@ def fast_unique_mask(x:NDArray[np.int64]) -> NDArray[np.int64]:
     for i in prange(len(x)):
         output[x[i]] += 1
     return output
+
+def setup_plot(fig:Figure|None=None,ax:Axes|None=None,grid:bool=True,title:str|None=None,xlabel:str|None=None,ylabel:str|None=None) -> tuple[Figure,Axes]:
+    if fig is None or ax is None:
+        fig,ax = plt.subplots(figsize=(6,5))
+    fig.tight_layout()
+    ax.grid(grid)
+    if title is not None:
+        ax.set_title(title)
+    if xlabel is not None:
+        ax.set_xlabel(xlabel)
+    if ylabel is not None:
+        ax.set_ylabel(ylabel)
+    return fig,ax
+
+def aggregate_QTable(data:table.QTable,groupby:str|list[str],keys:str|list[str],agg_fn:str|Callable[[Any],Any],final_units:dict[str,UnitLike]|None=None) -> table.QTable:
+    return table.QTable(table.Table.from_pandas(pd.DataFrame(data.to_pandas().groupby(groupby)[keys].agg(agg_fn)),index=True,units=final_units))
+
+def add_label_unit(label:str|None,plot_units:UnitLike) -> str|None:
+    if label is None:
+        return None
+    return f'{label} [{units.Unit(cast(str,plot_units)):latex}]'

@@ -2,36 +2,35 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import seaborn as sns
-from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from numpy.typing import NDArray
-from typing import Any,Self,Callable
+from typing import Any,Self,Callable,cast
+from astropy import units,table
+from astropy.units.typing import UnitLike
 from .spatial_approximation import Lattice
 from .density.density import Density
 from .background import Mass_Distribution
 from . import utils
 from .physics import sidm,leapfrog
 from .physics.utils import Mass_calculation_methods,get_default_mass_method,M_below,orbit_circular_velocity
-from .constants import kpc,km,second,default_units,Unit
+from .constants import time,length,velocity,mass
 
 class Halo:
-    def __init__(self,dt:float,r:NDArray[np.float64],v:NDArray[np.float64],density:Density,time:float=0,n_interactions:int=0,
-                 background:Mass_Distribution|None=None,save_steps:NDArray[np.int64]|list[int]|None=None,dynamics_params:leapfrog.Params={},
-                 scatter_params:sidm.Params={'sigma':0},sigma:float|None=None,scatter_live_only:bool=False,
-                 mass_calculation_method:Mass_calculation_methods|None=None) -> None:
-        self.time = time
-        self.dt = dt
-        self.r = r
-        self.v = v
+    def __init__(self,dt:units.Quantity['time'],r:units.Quantity['length'],v:units.Quantity['velocity'],density:Density,time:units.Quantity['time']=0*time,
+                 n_interactions:int=0,background:Mass_Distribution|None=None,save_steps:NDArray[np.int64]|list[int]|None=None,
+                 dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={'sigma':units.Quantity(0,'cm^2/gram')},
+                 sigma:units.Quantity['opacity']|None=None,scatter_live_only:bool=False,mass_calculation_method:Mass_calculation_methods|None=None) -> None:
+        self.time:units.Quantity['time'] = time
+        self.dt:units.Quantity['time'] = dt
+        self._r:NDArray[np.float64] = r.to(length).value
+        self._v:NDArray[np.float64] = v.to(velocity).value
         self.particle_index = np.arange(len(r))
         self.live_particles = np.full(len(r),True)
         self.initial_particles = self.particles.copy()
         self.n_interactions = n_interactions
-        self._save_steps:NDArray[np.int64] = np.array([])
-        self._saved_states:list[pd.DataFrame] = []
-        self.save_steps = np.asarray(save_steps) if save_steps is not None else np.array([])
-        self.save_state_indices = np.full(len(self.save_steps),False)
+        self.snapshots:table.QTable = table.QTable()
+        self.save_steps = list(save_steps) if save_steps is not None else []
         self.density:Density = density
         self.lattice:Lattice = Lattice.from_density(self.density)
         self.dynamics_params:leapfrog.Params = dynamics_params
@@ -44,11 +43,11 @@ class Halo:
         self.background:Mass_Distribution|None = background
 
     @classmethod
-    def setup(cls,density:Density,steps_per_Tdyn:int,n_particles:int,save_steps:NDArray[np.int64]|list[int]|None=None,save_every:int|None=None,
-              total_run_time:float|None=None,**kwargs:Any) -> Self:
-        r = density.roll_r(n_particles)
-        v = np.vstack(utils.split_3d(density.roll_v(r))).T
-        dt:float = density.Tdyn/steps_per_Tdyn
+    def setup(cls,density:Density,steps_per_Tdyn:int|float,n_particles:int|float,save_steps:NDArray[np.int64]|list[int]|None=None,
+              save_every:units.Quantity['time']|None=None,total_run_time:units.Quantity['time']|None=None,**kwargs:Any) -> Self:
+        r = density.roll_r(int(n_particles))
+        v = density.roll_v_3d(r)
+        dt:units.Quantity = cast(units.Quantity,(density.Tdyn/int(steps_per_Tdyn)))
         if save_steps is None and save_every is not None and total_run_time is not None:
             save_steps = cls.calculate_save_steps(save_every,dt,total_run_time)
         return cls(r=r,v=v,dt=dt,density=density,save_steps=save_steps,**kwargs)
@@ -58,37 +57,43 @@ class Halo:
         self.lattice = background.lattice
 
     @staticmethod
-    def calculate_save_steps(save_every:int,dt:float,total_run_time:float) -> NDArray[np.int64]:
-        return np.arange(0,int(total_run_time/dt),int(save_every/dt))
+    def calculate_save_steps(save_every:units.Quantity['time'],dt:units.Quantity['time'],total_run_time:units.Quantity['time']) -> NDArray[np.int64]:
+        return np.arange(0,int((total_run_time/dt).value),int((save_every/dt).value))
 
     def reset(self) -> None:
-        self.time = 0
+        self.time = 0*time
         self.n_interactions = 0
         self.particle_index = self.initial_particles.index.to_numpy()
-        self.r = self.initial_particles.r.to_numpy()
+        self._r = self.initial_particles.r.to_numpy().value
         self.live_particles = self.initial_particles.live.to_numpy()
-        self.v = self.initial_particles[['vx','vy','vr']].to_numpy()
+        self._v = self.initial_particles[['vx','vy','vr']].to_numpy().value
         self.interactions_track = []
-        self.reset_saved_states()
+        self.snapshots = table.QTable()
 
     @property
-    def particles(self) -> pd.DataFrame:
-        return pd.DataFrame({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'live':self.live_particles,
-                             'time':self.time},index=self.particle_index)
+    def particles(self) -> table.QTable:
+        data = table.QTable({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'live':self.live_particles,
+                             'time':[self.time]*len(self.r),'particle_index':self.particle_index})
+        data.add_index('particle_index')
+        return data
 
 ##Physical properties
 
     @property
-    def unit_mass(self) -> float:
-        return self.density.Mtot/len(self.r)
+    def unit_mass(self) -> units.Quantity['mass']:
+        return self.density.unit_mass/len(self.r)
 
     @property
-    def Tdyn(self) -> float:
+    def Tdyn(self) -> units.Unit:
         return self.density.Tdyn
 
     @property
-    def M(self) -> NDArray[np.float64]:
-        halo_mass = M_below(self.r,unit_mass=self.unit_mass,lattice=self.lattice,density=self.density,method=self.mass_calculation_method)
+    def Tdyn_value(self) -> float:
+        return cast(float,self.density.Tdyn.to(time))
+
+    @property
+    def _M(self) -> NDArray[np.float64]:
+        halo_mass = M_below(self.r,unit_mass=self.unit_mass.value,lattice=self.lattice,density=self.density,method=self.mass_calculation_method)
         if self.background is not None:
             background_mass = self.background.at_time(self.time)[self.lattice(self.r).clip(min=0,max=len(self.lattice)-1).astype(np.int64)]
         else:
@@ -96,225 +101,204 @@ class Halo:
         return halo_mass + background_mass
 
     @property
-    def orbit_circular_velocity(self):
-        return orbit_circular_velocity(self.r,self.M)
+    def M(self) -> units.Quantity['mass']:
+        return self._M*mass
 
     @property
-    def vx(self) -> NDArray[np.float64]:
-        return self.v[:,0]
+    def v(self) -> units.Quantity['velocity']:
+        return self._v*velocity
 
     @property
-    def vy(self) -> NDArray[np.float64]:
-        return self.v[:,1]
+    def r(self) -> units.Quantity['length']:
+        return self._r*length
 
     @property
-    def vr(self) -> NDArray[np.float64]:
-        return self.v[:,2]
+    def orbit_circular_velocity(self) -> units.Quantity['velocity']:
+        return orbit_circular_velocity(self.r_Q,self.M_Q)
 
     @property
-    def vp(self) -> NDArray[np.float64]:
-        return np.sqrt(self.vx**2+self.vy**2)
+    def vx(self) -> units.Quantity['velocity']:
+        return cast(units.Quantity['velocity'],self.v[:,0])
 
     @property
-    def v_norm(self) -> NDArray[np.float64]:
-        return np.sqrt(self.vr**2+self.vp**2)
+    def vy(self) -> units.Quantity['velocity']:
+        return cast(units.Quantity['velocity'],self.v[:,1])
+
+    @property
+    def vr(self) -> units.Quantity['velocity']:
+        return cast(units.Quantity['velocity'],self.v[:,2])
+
+    @property
+    def vp(self) -> units.Quantity['velocity']:
+        return cast(units.Quantity['velocity'],np.sqrt(self.vx**2+self.vy**2))
+
+    @property
+    def v_norm(self) -> units.Quantity['velocity']:
+        return cast(units.Quantity['velocity'],np.sqrt(self.vr**2+self.vp**2))
 
     @property
     def ranks(self) -> NDArray[np.int64]:
-        return utils.rank_array(self.r)
+        return utils.rank_array(self._r)
 
     def sort_particles(self) -> None:
-        indices = np.argsort(self.r)
-        self.r = self.r[indices]
-        self.v = self.v[indices]
+        indices = np.argsort(self._r)
+        self._r = self._r[indices]
+        self._v = self._v[indices]
         self.particle_index = self.particle_index[indices]
 
 ##Dynamic evolution
 
+    def save_snapshot(self,current_time_step:int) -> None:
+        data = self.particles.copy()
+        data['step'] = current_time_step
+        self.snapshots = table.vstack([self.snapshots,data])
+
     def step(self,current_time_step:int|None=None) -> None:
-        if type(current_time_step) is int and current_time_step in self.save_steps:
-            self.save_state(current_time_step)
+        if current_time_step in self.save_steps:
+            self.save_snapshot(current_time_step)
         if self.scatter_params['sigma'] > 0 or self.mass_calculation_method == 'rank presorted':
             self.sort_particles()
         if self.scatter_params['sigma'] > 0:
-            blacklist = list(np.arange(len(self.r))[~self.live_particles]) if self.scatter_live_only else []
-            n_interactions,indices = sidm.scatter(r=self.r,v=self.v,blacklist=blacklist,dt=self.dt,m=self.unit_mass,**self.scatter_params)
+            blacklist = list(np.arange(len(self._r))[~self.live_particles]) if self.scatter_live_only else []
+            n_interactions,indices = sidm.scatter(r=self._r,v=self._v,blacklist=blacklist,dt=self.dt,m=self.unit_mass,**self.scatter_params)
             self.n_interactions += n_interactions
-            self.interactions_track += [self.r[indices]]
-        leapfrog.step(r=self.r,v=self.v,M=self.M,live=self.live_particles,dt=self.dt,**self.dynamics_params)
+            self.interactions_track += [self._r[indices]]
+        leapfrog.step(r=self._r,v=self._v,M=self._M,live=self.live_particles,dt=self.dt.value,**self.dynamics_params)
         self.time += self.dt
 
-    def evolve(self,n_time_steps:int|None=None,n_Tdyn:int|None=None,disable_tqdm:bool=False,**kwargs:Any) -> None:
-        if n_time_steps is None:
-            if n_Tdyn is not None:
-                n_time_steps = int(n_Tdyn*self.Tdyn/self.dt)
+    def evolve(self,n_steps:int|None=None,t:units.Quantity['time']|None=None,disable_tqdm:bool=False) -> None:
+        if n_steps is None:
+            if t is not None:
+                n_steps = int((t/self.dt).value)
             else:
-                raise ValueError("Either n_time_steps or n_Tdyn must be specified")
-        for time_step in tqdm(range(int(n_time_steps)),disable=disable_tqdm):
-            self.step(time_step,**kwargs)
-
-##Manage save states
-
-    @property
-    def saved_states(self):
-        data = pd.concat([state for state,saved in zip(self._saved_states,self.save_state_indices) if saved])
-        data = data.reset_index().rename(columns={'index':'particle_index'})
-        return data
-
-    @property
-    def saved_states_map(self):
-        return {step:i for i,step in enumerate(self.save_steps)}
-
-    def reset_saved_states(self) -> None:
-        self._saved_states = [self.initial_particles.copy()]*len(self.save_steps)
-        self.save_state_indices = np.full(len(self.save_steps),False)
-
-    def save_state(self,current_time_step:int) -> None:
-        index = self.saved_states_map[current_time_step]
-        data = self.particles.copy()
-        data['step'] = current_time_step
-        self._saved_states[index] = data
-        self.save_state_indices[index] = True
+                raise ValueError("Either n_steps or t must be specified")
+        for time_step in tqdm(range(int(n_steps)),disable=disable_tqdm):
+            self.step(time_step)
 
 ##Plots
 
-    @property
-    def default_plot_text(self) -> dict[str, dict[str, str]]:
+    def default_plot_text(self,key:str,x_units:UnitLike) -> dict[str,str|None]:
         return {
-            'vr':{'title':'radial velocity distribution','xlabel':'radial velocity [{name}]','ylabel':'density'},
-            'vx':{'title':'pendicular velocity distribution','xlabel':'pendicular velocity [{name}]','ylabel':'density'},
-            'vy':{'title':'pendicular velocity distribution','xlabel':'pendicular velocity [{name}]','ylabel':'density'},
-            'vp':{'title':'pendicular velocity distribution','xlabel':'pendicular velocity [{name}]','ylabel':'density'},
-            'v_norm':{'title':'velocity distribution','xlabel':'velocity [{name}]','ylabel':'density'},
-            'r':{'title':'radius distribution','xlabel':'radius [{name}]','ylabel':'density'}
-        }
+            'vr':{'title':'Radial velocity distribution','xlabel':utils.add_label_unit('Radial velocity',x_units),'ylabel':'Density'},
+            'vx':{'title':'Pendicular velocity distribution','xlabel':utils.add_label_unit('Pendicular velocity',x_units),'ylabel':'Density'},
+            'vy':{'title':'Pendicular velocity distribution','xlabel':utils.add_label_unit('Pendicular velocity',x_units),'ylabel':'Density'},
+            'vp':{'title':'Pendicular velocity distribution','xlabel':utils.add_label_unit('Pendicular velocity',x_units),'ylabel':'Density'},
+            'v_norm':{'title':'Velocity distribution','xlabel':utils.add_label_unit('Velocity',x_units),'ylabel':'Density'},
+            'r':{'title':'Radius distribution','xlabel':utils.add_label_unit('Radius',x_units),'ylabel':'Density'}
+        }.get(key,{})
 
-    def plot_unit_type(self,key:str) -> str:
+    def plot_unit_type(self,key:str,plot_unit:UnitLike|None=None) -> UnitLike:
+        if plot_unit is not None:
+            return plot_unit
         if key == 'r':
-            return 'length'
+            return units.kpc
         elif key in ['vr','vx','vy','vp','v_norm']:
-            return 'velocity'
+            return units.Unit('km/second')
         return ''
 
-    def plot_r_density_over_time(self,clip:tuple[float,float]|None=None,fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
-        steps = np.array(list(self.saved_states_map.keys()))[self.save_state_indices]
-        times = steps * self.dt / self.Tdyn
-        if fig is None or ax is None:
-            fig,ax = plt.subplots(figsize=(6,5))
-        for _,group in self.saved_states.groupby('time'):
-            sns.kdeplot(group.r.to_numpy()/kpc,ax=ax,clip=clip)
-        ax.set_title('Density progression over time')
-        ax.set_xlabel('radius [kpc]')
-        fig.legend([f'{t:.1f} Tdyn' for t in times], loc='outside center right');
-        fig.tight_layout()
+    def plot_r_density_over_time(self,clip:tuple[float,float]|None=None,x_units:UnitLike='kpc',time_units:UnitLike='Tdyn',
+                                 title:str|None='Density progression over time',xlabel:str|None='radius',ylabel:str|None=None,
+                                 fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
+        x_units = units.Unit(cast(str,x_units))
+        time_units = self.Tdyn if time_units == 'Tdyn' else units.Unit(cast(str,time_units))
+        fig,ax = utils.setup_plot(fig,ax,**utils.drop_None(title=title,xlabel=f'{xlabel} [{x_units:latex}]',ylabel=ylabel))
+        legend = []
+        for group in self.snapshots.group_by('time'):
+            sns.kdeplot(group['r'].to(x_units),ax=ax,clip=clip)
+            legend += [group['time'][0].to(time_units).to_string(format="latex",formatter=".1f")]
+        fig.legend(legend,loc='outside center right')
         return fig,ax
 
-    def plot_distribution(self,key:str,data:pd.DataFrame,cumulative:bool=False,absolute:bool=False,title:str|None=None,xlabel:str|None=None,
-                          ylabel:str|None=None,fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
-        x = data[key].to_numpy()
-        units = default_units(self.plot_unit_type(key))
-        x /= units['value']
+    def plot_distribution(self,key:str,data:table.QTable,cumulative:bool=False,absolute:bool=False,title:str|None=None,xlabel:str|None=None,
+                          x_units:UnitLike|None=None,ylabel:str|None=None,grid:bool=True,fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
+        x_units = self.plot_unit_type(key,x_units)
+        x = data[key].to(x_units)
         if absolute:
             x = np.abs(x)
-        if fig is None or ax is None:
-            fig,ax = plt.subplots(figsize=(6,5))
-        fig.tight_layout()
-        ax.grid(True)
-        if not title:
-            title = self.default_plot_text.get(key,{}).get('title','').format(**units)
-        if not xlabel:
-            xlabel = self.default_plot_text.get(key,{}).get('xlabel','').format(**units)
-        if not ylabel:
-            ylabel = self.default_plot_text.get(key,{}).get('ylabel','').format(**units)
-        if title:
-            ax.set_title(title)
-        if xlabel:
-            ax.set_xlabel(xlabel)
-        if ylabel:
-            ax.set_ylabel(ylabel)
+        fig,ax = utils.setup_plot(fig,ax,grid=grid,**{**self.default_plot_text(key,x_units),**utils.drop_None(title=title,xlabel=xlabel,ylabel=ylabel)})
         sns.histplot(x,cumulative=cumulative,ax=ax,stat='density')
         return fig,ax
 
-    def plot_r_distribution(self,data:pd.DataFrame,cumulative:bool=False,add_density:bool=True,**kwargs:Any) -> tuple[Figure,Axes]:
-        fig,ax = self.plot_distribution(key='r',data=data,cumulative=cumulative,**kwargs)
-        units = default_units(self.plot_unit_type('r'))
+    def plot_r_distribution(self,data:table.QTable,cumulative:bool=False,add_density:bool=True,x_units:UnitLike|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
+        fig,ax = self.plot_distribution(key='r',data=data,cumulative=cumulative,x_units=x_units,**kwargs)
         if add_density:
-            return self.density.plot_radius_distribution(cumulative=cumulative,units=units,fig=fig,ax=ax)
+            return self.density.plot_radius_distribution(cumulative=cumulative,plot_units=self.plot_unit_type('r',x_units),fig=fig,ax=ax)
         return fig,ax
 
-    def plot_phase_space(self,data:pd.DataFrame,r_range:NDArray[np.float64]=np.linspace(1e-2,50,200)*kpc,
-                         v_range:NDArray[np.float64]=np.linspace(0,100,200)*(km/second),length_units:Unit=default_units('length'),
-                         velocity_units:Unit=default_units('velocity'),fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
-        r_lattice = Lattice(len(r_range),r_range.min()/length_units['value'],r_range.max()/length_units['value'],log=False)
-        v_lattice = Lattice(len(v_range),v_range.min()/velocity_units['value'],v_range.max()/velocity_units['value'],log=False)
+    def plot_phase_space(self,data:table.QTable,r_range:units.Quantity['length']=np.linspace(1e-2,50,200)*units.kpc,
+                         v_range:units.Quantity['velocity']=np.linspace(0,100,200)*units.Unit('km/second'),length_units:UnitLike='kpc',
+                         velocity_units:UnitLike='km/second',fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
+        r_lattice = Lattice(len(r_range),r_range.min().to(length_units).value,r_range.max().to(length_units).value,log=False)
+        v_lattice = Lattice(len(v_range),v_range.min().to(velocity_units).value,v_range.max().to(velocity_units).value,log=False)
         grid = np.zeros((len(v_range),len(r_range)))
 
-        r = data.r.to_numpy()/length_units['value']
-        v_norm = np.sqrt(data.vr.to_numpy()**2+data.vp.to_numpy()**2)/velocity_units['value']
+        r = data['r'].to(length_units).value
+        v_norm = data['v_norm'].to(velocity_units).value
 
         mask = r_lattice.in_lattice(r)*v_lattice.in_lattice(v_norm)
-        data = pd.DataFrame({'r':r_lattice(r[mask]),'v_norm':v_lattice(v_norm[mask])})
-        data['count'] = 1
-        data = data.groupby(['r','v_norm']).agg('count').reset_index()
-        grid[data['v_norm'].to_numpy(),data['r'].to_numpy()] = data['count']
+        data_table = pd.DataFrame({'r':r_lattice(r[mask]),'v_norm':v_lattice(v_norm[mask])})
+        data_table['count'] = 1
+        data_table = data_table.groupby(['r','v_norm']).agg('count').reset_index()
+        grid[data_table['v_norm'].to_numpy(),data_table['r'].to_numpy()] = data_table['count']
 
-        fig,ax = utils.plot_phase_space(grid,r_range,v_range,length_units,velocity_units,fig=fig,ax=ax)
-        return fig,ax
+        return utils.plot_phase_space(grid,r_range,v_range,length_units,velocity_units,fig=fig,ax=ax)
 
-    def plot_inner_core_density(self,radius:float=0.2*kpc,time_units:Unit=default_units('time'),xlabel:str='time [{name}]',ylabel:str='#particles',
-                                title:str='#particles in inner density',fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
-        data = self.saved_states.copy()
-        data['time'] /= self.Tdyn
-        data['in_radius'] = data['r'] < radius
-        agg_data = data.groupby('time').in_radius.agg('sum')
-        xlabel = xlabel.format(**time_units)
-        if fig is None or ax is None:
-            fig,ax = plt.subplots(figsize=(6,5))
-        fig.tight_layout()
-        ax.grid(True)
-        sns.lineplot(pd.DataFrame(agg_data),ax=ax)
-        ax.set_title(title)
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
+    def plot_inner_core_density(self,radius:units.Quantity['length']=0.2*units.kpc,time_units:UnitLike='Tdyn',xlabel:str|None='time',
+                                ylabel:str|None='#particles',title:str|None='#particles in inner density',fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
+        data = self.snapshots.copy()
+        time_units = self.Tdyn if time_units == 'Tdyn' else units.Unit(cast(str,time_units))
+        data['time'] = data['time'].to(time_units)
+        data['in_radius'] = data['r'] <= radius
+
+        agg_data = utils.aggregate_QTable(data,groupby='time',keys=['in_radius'],agg_fn='sum',final_units={'time':time_units})
+
+        xlabel = f'{xlabel} [{time_units}]' if xlabel is not None else None
+        fig,ax = utils.setup_plot(fig,ax,**utils.drop_None(title=title,xlabel=xlabel,ylabel=ylabel))
+        sns.lineplot(agg_data.to_pandas(index='time'),ax=ax)
         return fig,ax
 
     @staticmethod
-    def prep_2d_data(data:pd.DataFrame,radius_range:tuple[float,float],time_range:tuple[float,float]|None=None,x_units:Unit=default_units('length'),
-                     time_units:Unit=default_units('Tdyn'),agg_fn:str|Callable[[Any],Any]='count',n_posts:int=100):
-        data = data[(data['r'] >= radius_range[0]) * (data['r'] <= radius_range[1])].copy()
-        if time_range is not None:
-            data = data[(data['time'] >= time_range[0]) * (data['time'] <= time_range[1])].copy()
-        data['time'] /= time_units['value']
-        lattice = Lattice(n_posts=n_posts,start=data.r.min(),end=data.r.max()*1.1,log=False)
-        data['bin'] = lattice.posts[lattice(data.r.to_numpy())]
-        agg_data = data.groupby(['time','bin']).output.agg(agg_fn).reset_index()
-        r,time = np.meshgrid(lattice.posts,data.time.unique().astype(np.float64))
+    def prep_2d_data(data:table.QTable,radius_range:tuple[units.Quantity['length'],units.Quantity['length']],
+                     time_range:tuple[units.Quantity['time'],units.Quantity['time']]|None=None,length_units:UnitLike='kpc',
+                     time_units:UnitLike='Myr',agg_fn:str|Callable[[Any],Any]='count',n_posts:int=100) -> tuple[NDArray[Any],tuple[units.Quantity['length'],units.Quantity['length'],units.Quantity['time'],units.Quantity['time']]]:
+        data = data.copy()
+        data['r'] = data['r'].to(length_units)
+        data['time'] = data['time'].to(time_units)
+        radius_mask = (data['r'] >= radius_range[0])*(data['r'] <= radius_range[1])
+        time_mask = (data['time'] >= time_range[0]) * (data['time'] <= time_range[1]) if time_range is not None else np.full_like(radius_mask,True)
+        data = cast(table.QTable,data[radius_mask*time_mask])
+        lattice = Lattice(n_posts=n_posts,start=data['r'].min().value,end=data['r'].max().value*1.1,log=False)
+        data['bin'] = lattice.posts[lattice(data['r'].value)]
+        agg_data = pd.DataFrame(data.to_pandas().groupby(['time','bin'])['output'].agg(agg_fn)).reset_index()
+        r,time = np.meshgrid(lattice.posts,np.unique(data['time'].value))
         pad = pd.DataFrame({'time':time.ravel(),'bin':r.ravel()})
         pad['output'] = np.nan
         agg_data = pd.concat([agg_data,pad]).drop_duplicates(['time','bin']).sort_values(['time','bin'])
-        agg_data['bin'] /= x_units['value']
-        extent=(r.min()/kpc,r.max()/kpc,time.min(),time.max())
+        extent=(units.Quantity(r.min(),length_units),units.Quantity(r.max(),length_units),units.Quantity(time.min(),time_units),units.Quantity(time.max(),time_units))
         return agg_data.output.to_numpy().reshape(r.shape),extent
 
-    def plot_density_evolution(self,radius_range:tuple[float,float]=(0,40*kpc),time_range:tuple[float,float]|None=None,
-                               length_units:Unit=default_units('length'),time_units:Unit=default_units('Tdyn'),xlabel:str='Radius [{name}]',
-                               ylabel:str='Time [{name}]',cbar_label:str='#Particles',**kwargs:Any) -> tuple[Figure,Axes]:
-        data = self.saved_states.copy()
-        data['output'] = data.r
-        if time_units['name'] == 'Tdyn':
-            time_units['value'] = self.Tdyn
+    def plot_density_evolution(self,radius_range:tuple[units.Quantity['length'],units.Quantity['length']]=(0*units.kpc,40*units.kpc),
+                               time_range:tuple[units.Quantity['time'],units.Quantity['time']]|None=None,length_units:UnitLike='kpc',
+                               time_units:UnitLike='Tdyn',xlabel:str|None='Radius',ylabel:str|None='Time',
+                               cbar_label:str|None='#Particles',**kwargs:Any) -> tuple[Figure,Axes]:
+        if time_units == 'Tdyn':
+            time_units = self.Tdyn
+        data = self.snapshots.copy()
+        data['output'] = data['r']
         grid,extent = self.prep_2d_data(data,radius_range,time_range,length_units,time_units,agg_fn='count')
 
-        return utils.plot_2d(grid=grid,extent=extent,x_units=length_units,y_units=time_units,xlabel=xlabel,ylabel=ylabel,cbar_label=cbar_label,**kwargs)
+        return utils.plot_2d(grid=grid,extent=extent,x_units=length_units,y_units=time_units,xlabel=utils.add_label_unit(xlabel,length_units),
+                             ylabel=utils.add_label_unit(ylabel,time_units),cbar_label=cbar_label,**kwargs)
 
-    def plot_temperature(self,radius_range:tuple[float,float]=(0,40*kpc),time_range:tuple[float,float]|None=None,
-                         velocity_units:Unit=default_units('velocity'),time_units:Unit=default_units('Tdyn'),
-                         xlabel:str='Radius [{name}]',ylabel:str='Time [{name}]',**kwargs:Any) -> tuple[Figure,Axes]:
-        data = self.saved_states.copy()
-        data['output'] = data.v_norm**2
-        if time_units['name'] == 'Tdyn':
-            time_units['value'] = self.Tdyn
-        grid,extent = self.prep_2d_data(data,radius_range,time_range,time_units,agg_fn='mean')
+    def plot_temperature(self,radius_range:tuple[units.Quantity['length'],units.Quantity['length']]=(0*units.kpc,40*units.kpc),
+                         time_range:tuple[units.Quantity['time'],units.Quantity['time']]|None=None,velocity_units:UnitLike='km/second',
+                         length_units:UnitLike='kpc',time_units:UnitLike='Tdyn',xlabel:str|None='Radius',ylabel:str|None='Time',
+                         cbar_label:str|None='Temperature (velocity std)',**kwargs:Any) -> tuple[Figure,Axes]:
+        if time_units == 'Tdyn':
+            time_units = self.Tdyn
+        data = self.snapshots.copy()
+        data['output'] = data['v_norm']
+        grid,extent = self.prep_2d_data(data,radius_range,time_range,length_units,time_units,agg_fn='std')
 
-        return utils.plot_2d(grid=grid,extent=extent,cbar_units={'value':1,'name':f'{velocity_units['name']}^2'},x_units=velocity_units,
-                             y_units=time_units,xlabel=xlabel,ylabel=ylabel,cbar_label='mean temperature (v^2 [{name}])',**kwargs)
+        return utils.plot_2d(grid=grid,extent=extent,x_units=length_units,y_units=time_units,xlabel=utils.add_label_unit(xlabel,velocity_units),
+                             ylabel=utils.add_label_unit(ylabel,time_units),cbar_label=utils.add_label_unit(cbar_label,velocity_units),**kwargs)

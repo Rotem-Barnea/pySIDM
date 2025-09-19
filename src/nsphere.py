@@ -5,12 +5,14 @@ import pandas as pd
 from tqdm import tqdm
 from numpy.typing import NDArray
 import regex
+from astropy import units
+from .constants import time
 
 class File_params(TypedDict):
     base_filename: str
     ntimesteps: int
     tfinal: int
-    max_time: NotRequired[int]
+    max_time: NotRequired[units.Quantity['time']]
     root_path: NotRequired[str|Path]
 
 # Define the record dtype (as in your original code)
@@ -24,7 +26,8 @@ record_dtype = {
                                              ('L',     np.float32)])
 }
 
-def gather_files(base_filename:str,ntimesteps:int,tfinal:int,max_time:int=1,root_path:str|Path=r'../../NSphere-SIDM/data/') -> pd.DataFrame:
+def gather_files(base_filename:str,ntimesteps:int,tfinal:int,max_time:units.Quantity['time']=1*time,
+                 root_path:str|Path=r'../../NSphere-SIDM/data/') -> pd.DataFrame:
     if not isinstance(root_path,Path):
         root_path = Path(root_path)
     files = pd.DataFrame({'path':list(root_path.glob(f'{base_filename}_t*_100000_{ntimesteps+1}_{tfinal}.dat'))})

@@ -1,17 +1,16 @@
 import numpy as np
 from numba import njit
 from numpy.typing import NDArray
-from typing import Literal,cast
-from ..types import FloatOrArray
+from typing import Literal
+from astropy import units,constants
 from ..spatial_approximation import Lattice
 from ..density.density import Density
 from .. import utils
-from ..constants import G
 
 Mass_calculation_methods = Literal['lattice','density','rank presorted','rank unsorted']
 
-def get_default_mass_method(method:Mass_calculation_methods|None=None,sigma:float=0) -> Mass_calculation_methods:
-    if method is None and sigma == 0:
+def get_default_mass_method(method:Mass_calculation_methods|None=None,sigma:units.Quantity['opacity']=0*units.Unit('cm^2/gram')) -> Mass_calculation_methods:
+    if method is None and sigma.value == 0:
         return 'lattice'
     return method or 'rank presorted'
 
@@ -27,5 +26,5 @@ def M_below(r:NDArray[np.float64],unit_mass:float=1,lattice:Lattice|None=None,de
         return (utils.rank_array(r)+count_self)*unit_mass
 
 @njit()
-def orbit_circular_velocity(r:FloatOrArray,M:FloatOrArray) -> FloatOrArray:
-    return cast(FloatOrArray,np.sqrt(G*M/r))
+def orbit_circular_velocity(r:units.Quantity['length'],M:units.Quantity['mass']) -> units.Quantity['velocity']:
+    return np.sqrt(constants.G*M/r)

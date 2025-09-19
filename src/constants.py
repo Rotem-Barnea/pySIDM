@@ -1,4 +1,4 @@
-from typing import TypedDict
+from typing import TypedDict,cast
 from astropy import units,constants
 
 class Unit(TypedDict):
@@ -6,27 +6,18 @@ class Unit(TypedDict):
     value: float
 
 ## Work units
-length:units.UnitBase = units.kpc
-time:units.UnitBase = units.Myr
-mass:units.UnitBase = units.Msun
+length:units.UnitBase = cast(units.UnitBase,units.kpc)
+time:units.UnitBase = cast(units.UnitBase,units.Myr)
+mass:units.UnitBase = cast(units.UnitBase,units.Msun)
 
 ## Compound units
-velocity:units.UnitBase = length/time
-acceleration:units.UnitBase = length/time**2
-energy:units.UnitBase = mass*velocity**2
-density:units.UnitBase = mass/length**3
-cross_section_units:units.UnitBase = length**2/mass
-G_units:units.UnitBase = length**3/(mass*time**2)
-
-assert isinstance(length,units.UnitBase)
-assert isinstance(time,units.UnitBase)
-assert isinstance(mass,units.UnitBase)
-assert isinstance(velocity,units.UnitBase)
-assert isinstance(acceleration,units.UnitBase)
-assert isinstance(energy,units.UnitBase)
-assert isinstance(density,units.UnitBase)
-assert isinstance(cross_section_units,units.UnitBase)
-assert isinstance(G_units,units.UnitBase)
+velocity:units.UnitBase = cast(units.UnitBase,length/time)
+acceleration:units.UnitBase = cast(units.UnitBase,length/time**2)
+energy:units.UnitBase = cast(units.UnitBase,mass*velocity**2)
+density:units.UnitBase = cast(units.UnitBase,mass/length**3)
+cross_section:units.UnitBase = cast(units.UnitBase,length**2/mass)
+G_units:units.UnitBase = cast(units.UnitBase,length**3/(mass*time**2))
+f_units:units.UnitBase = cast(units.UnitBase,density/(mass*energy**(3/2)))
 
 ## Units redefinition to the work units
 m:float = (1*units.m).to(length).value
@@ -41,7 +32,7 @@ G:float = constants.G.to(G_units).value
 cm:float = (1*units.cm).to(length).value
 km:float = (1*units.km).to(length).value
 gram:float = (1*units.gram).to(mass).value
-cross_section:float = (1*units.Unit('cm^2/gram')).to(cross_section_units).value
+cross_section_value:float = (1*units.Unit('cm^2/gram')).to(cross_section).value
 
 ## default unit handles
 unit_name={
