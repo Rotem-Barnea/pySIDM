@@ -6,7 +6,7 @@ from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from numpy.typing import NDArray
 from typing import Any,Self,Callable,cast
-from astropy import units,table
+from astropy import units,table,constants
 from astropy.units.typing import UnitLike
 from .spatial_approximation import Lattice
 from .density.density import Density
@@ -18,7 +18,7 @@ from .physics.utils import Mass_calculation_methods,get_default_mass_method,M_be
 class Halo:
     def __init__(self,dt:units.Quantity['time'],r:units.Quantity['length'],v:units.Quantity['velocity'],density:Density,n_interactions:int=0,
                  time:units.Quantity['time']=0*run_units.time,background:Mass_Distribution|None=None,save_steps:NDArray[np.int64]|list[int]|None=None,
-                 dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={'sigma':units.Quantity(0,'cm^2/gram')},
+                 dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={'sigma':units.Quantity(0,'cm^2/gram')},ensure_energy_conservation:bool=True,
                  sigma:units.Quantity['opacity']|None=None,scatter_live_only:bool=False,mass_calculation_method:Mass_calculation_methods|None=None) -> None:
         self.time:units.Quantity['time'] = time.to(run_units.time)
         self.dt:units.Quantity['time'] = dt
@@ -37,6 +37,7 @@ class Halo:
         if sigma is not None:
             self.scatter_params['sigma'] = sigma
         self.scatter_live_only = scatter_live_only
+        self.ensure_energy_conservation = ensure_energy_conservation
         self.mass_calculation_method:Mass_calculation_methods = get_default_mass_method(mass_calculation_method,self.scatter_params['sigma'])
         self.interactions_track = []
         self.background:Mass_Distribution|None = background
@@ -136,12 +137,20 @@ class Halo:
         return cast(units.Quantity['velocity'],np.sqrt(self.vr**2+self.vp**2))
 
     @property
-    def kinetic_energy(self) -> units.Quantity:
-        return cast(units.Quantity,0.5*self.v_norm**2)
+    def kinetic_energy(self) -> units.Quantity['specific energy']:
+        return (0.5*self.v_norm**2).to(run_units.specific_energy)
 
     @property
-    def Psi(self) -> units.Quantity:
-        return cast(units.Quantity,0.5*self.v_norm**2)
+    def Phi(self) -> units.Quantity['specific energy']:
+        return (constants.G*self.M/self.r).to(run_units.specific_energy)
+
+    @property
+    def Psi(self) -> units.Quantity['specific energy']:
+        return (self.density.Phi0-self.Phi).to(run_units.specific_energy)
+
+    @property
+    def E(self) -> units.Quantity['specific energy']:
+        return (self.Psi-self.kinetic_energy).to(run_units.specific_energy)
 
     @property
     def ranks(self) -> NDArray[np.int64]:
@@ -170,7 +179,10 @@ class Halo:
             n_interactions,indices = sidm.scatter(r=self._r,v=self._v,blacklist=blacklist,dt=self.dt,m=self.unit_mass,**self.scatter_params)
             self.n_interactions += n_interactions
             self.interactions_track += [self._r[indices]]
+        Ein = self.E.copy()
         leapfrog.step(r=self._r,v=self._v,M=self._M,live=self.live_particles,dt=self.dt,**self.dynamics_params)
+        if self.ensure_energy_conservation:
+            self._v *= np.expand_dims(np.array(np.sqrt(np.abs(2*(self.Psi-Ein)))/self.v_norm),1)
         self.time += self.dt
 
     def evolve(self,n_steps:int|None=None,t:units.Quantity['time']|None=None,disable_tqdm:bool=False) -> None:
