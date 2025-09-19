@@ -3,8 +3,7 @@ from numba import njit,prange
 from typing import TypedDict,Required
 from numpy.typing import NDArray
 from astropy import units
-from .. import utils
-from ..constants import cross_section
+from .. import utils,run_units
 
 class Params(TypedDict,total=False):
     max_radius_j: int
@@ -13,7 +12,7 @@ class Params(TypedDict,total=False):
     max_n_allowed:int
     sigma: Required[units.Quantity['opacity']]
 
-default_scatter_params:Params={'max_radius_j':10,'rounds':10,'regulator':1e-10,'max_n_allowed':10000,'sigma':0*cross_section}
+default_scatter_params:Params={'max_radius_j':10,'rounds':10,'regulator':1e-10,'max_n_allowed':10000,'sigma':units.Quantity(0,'cm^2/gram')}
 
 @njit(parallel=True)
 def roll_scattering_pairs(r:NDArray[np.float64],v:NDArray[np.float64],dt:float,m:float,sigma:float,regulator:float=default_scatter_params['regulator'],
@@ -103,7 +102,7 @@ def scatter_unique_pairs(v:NDArray[np.float64],pairs:NDArray[np.int64]) -> None:
 def scatter(r:NDArray[np.float64],v:NDArray[np.float64],dt:units.Quantity['time'],m:units.Quantity['mass'],sigma:units.Quantity['opacity'],
             blacklist:list[int]=[],rounds:int=default_scatter_params['rounds'],regulator:float=default_scatter_params['regulator'],
             max_radius_j:int=default_scatter_params['max_radius_j'],max_n_allowed:int=default_scatter_params['max_n_allowed']) -> tuple[int,NDArray[np.int64]]:
-    sigma_value:float = sigma.to(cross_section).value
+    sigma_value:float = sigma.to(run_units.cross_section).value
     if sigma_value == 0:
         return 0, np.array([],dtype=np.int64)
     n_interactions = 0

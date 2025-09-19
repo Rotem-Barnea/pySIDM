@@ -6,7 +6,6 @@ from tqdm import tqdm
 from numpy.typing import NDArray
 import regex
 from astropy import units
-from .constants import time
 
 class File_params(TypedDict):
     base_filename: str
@@ -26,7 +25,7 @@ record_dtype = {
                                              ('L',     np.float32)])
 }
 
-def gather_files(base_filename:str,ntimesteps:int,tfinal:int,max_time:units.Quantity['time']=1*time,
+def gather_files(base_filename:str,ntimesteps:int,tfinal:int,max_time:units.Quantity['time']=1*units.Gyr,
                  root_path:str|Path=r'../../NSphere-SIDM/data/') -> pd.DataFrame:
     if not isinstance(root_path,Path):
         root_path = Path(root_path)

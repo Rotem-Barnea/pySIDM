@@ -9,7 +9,7 @@ from matplotlib.axes import Axes
 import matplotlib.ticker as mtick
 from astropy import units,table
 from astropy.units.typing import UnitLike
-from .constants import length,velocity
+from . import run_units
 from .types import FloatOrArray
 
 def random_angle(like:NDArray[np.float64],acos:bool) -> NDArray[np.float64]:
@@ -73,7 +73,7 @@ def linear_interpolation(xs:NDArray[np.float64],ys:NDArray[np.float64],x:float) 
     return (1-w)*ys[i]+w*ys[i+1]
 
 def plot_2d(grid:NDArray[Any],extent:tuple[units.Quantity,units.Quantity,units.Quantity,units.Quantity]|None=None,x_range:units.Quantity|None=None,
-            y_range:units.Quantity|None=None,x_units:UnitLike=length,y_units:UnitLike=velocity,x_nbins:int|None=6,y_nbins:int|None=6,
+            y_range:units.Quantity|None=None,x_units:UnitLike=run_units.length,y_units:UnitLike=run_units.velocity,x_nbins:int|None=6,y_nbins:int|None=6,
             x_tick_format:str='%.0f',y_tick_format:str='%.0f',title:str|None=None,xlabel:str|None=None,ylabel:str|None=None,cbar_label:str|None=None,
             fig:Figure|None=None,ax:Axes|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
     if extent is None:
@@ -101,8 +101,8 @@ def plot_2d(grid:NDArray[Any],extent:tuple[units.Quantity,units.Quantity,units.Q
     return fig,ax
 
 def plot_phase_space(grid:NDArray[Any],r_range:units.Quantity['length']|None=np.array([1e-2,50])*units.kpc,
-                     v_range:units.Quantity['velocity']|None=np.array([0,100])*units.Unit('km/second'),length_units:UnitLike=length,
-                     velocity_units:UnitLike=velocity,**kwargs:Any) -> tuple[Figure,Axes]:
+                     v_range:units.Quantity['velocity']|None=np.array([0,100])*units.Unit('km/second'),length_units:UnitLike=run_units.length,
+                     velocity_units:UnitLike=run_units.velocity,**kwargs:Any) -> tuple[Figure,Axes]:
     return plot_2d(grid,xlabel=add_label_unit('Radius',length_units),ylabel=add_label_unit('Velocity',velocity_units),x_units=length_units,
                    y_units=velocity_units,**drop_None(x_range=r_range,y_range=v_range),**kwargs)
 

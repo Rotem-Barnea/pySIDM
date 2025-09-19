@@ -11,20 +11,19 @@ from astropy.units.typing import UnitLike
 from .spatial_approximation import Lattice
 from .density.density import Density
 from .background import Mass_Distribution
-from . import utils
+from . import utils,run_units
 from .physics import sidm,leapfrog
 from .physics.utils import Mass_calculation_methods,get_default_mass_method,M_below,orbit_circular_velocity
-from .constants import time,length,velocity,mass
 
 class Halo:
-    def __init__(self,dt:units.Quantity['time'],r:units.Quantity['length'],v:units.Quantity['velocity'],density:Density,time:units.Quantity['time']=0*time,
-                 n_interactions:int=0,background:Mass_Distribution|None=None,save_steps:NDArray[np.int64]|list[int]|None=None,
+    def __init__(self,dt:units.Quantity['time'],r:units.Quantity['length'],v:units.Quantity['velocity'],density:Density,n_interactions:int=0,
+                 time:units.Quantity['time']=0*run_units.time,background:Mass_Distribution|None=None,save_steps:NDArray[np.int64]|list[int]|None=None,
                  dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={'sigma':units.Quantity(0,'cm^2/gram')},
                  sigma:units.Quantity['opacity']|None=None,scatter_live_only:bool=False,mass_calculation_method:Mass_calculation_methods|None=None) -> None:
-        self.time:units.Quantity['time'] = time
+        self.time:units.Quantity['time'] = time.to(run_units.time)
         self.dt:units.Quantity['time'] = dt
-        self._r:NDArray[np.float64] = r.to(length).value
-        self._v:NDArray[np.float64] = v.to(velocity).value
+        self._r:NDArray[np.float64] = r.to(run_units.length).value
+        self._v:NDArray[np.float64] = v.to(run_units.velocity).value
         self.particle_index = np.arange(len(r))
         self.live_particles = np.full(len(r),True)
         self.initial_particles = self.particles.copy()
@@ -61,12 +60,12 @@ class Halo:
         return np.arange(0,int((total_run_time/dt).value),int((save_every/dt).value))
 
     def reset(self) -> None:
-        self.time = 0*time
+        self.time = 0*run_units.time
         self.n_interactions = 0
-        self.particle_index = self.initial_particles.index.to_numpy()
-        self._r = self.initial_particles.r.to_numpy().value
-        self.live_particles = self.initial_particles.live.to_numpy()
-        self._v = self.initial_particles[['vx','vy','vr']].to_numpy().value
+        self.particle_index = np.array(self.initial_particles['particle_index'])
+        self._r = self.initial_particles['r'].to(run_units.length).value
+        self.live_particles = np.array(self.initial_particles['live'])
+        self._v = np.vstack([np.array(self.initial_particles[i]) for i in ['vx','vy','vr']]).T
         self.interactions_track = []
         self.snapshots = table.QTable()
 
@@ -89,7 +88,7 @@ class Halo:
 
     @property
     def Tdyn_value(self) -> float:
-        return cast(float,self.density.Tdyn.to(time))
+        return cast(float,self.density.Tdyn.to(run_units.time))
 
     @property
     def _M(self) -> NDArray[np.float64]:
@@ -102,15 +101,15 @@ class Halo:
 
     @property
     def M(self) -> units.Quantity['mass']:
-        return self._M*mass
+        return self._M*run_units.mass
 
     @property
     def v(self) -> units.Quantity['velocity']:
-        return self._v*velocity
+        return self._v*run_units.velocity
 
     @property
     def r(self) -> units.Quantity['length']:
-        return self._r*length
+        return self._r*run_units.length
 
     @property
     def orbit_circular_velocity(self) -> units.Quantity['velocity']:
@@ -135,6 +134,14 @@ class Halo:
     @property
     def v_norm(self) -> units.Quantity['velocity']:
         return cast(units.Quantity['velocity'],np.sqrt(self.vr**2+self.vp**2))
+
+    @property
+    def kinetic_energy(self) -> units.Quantity:
+        return cast(units.Quantity,0.5*self.v_norm**2)
+
+    @property
+    def Psi(self) -> units.Quantity:
+        return cast(units.Quantity,0.5*self.v_norm**2)
 
     @property
     def ranks(self) -> NDArray[np.int64]:
@@ -163,7 +170,7 @@ class Halo:
             n_interactions,indices = sidm.scatter(r=self._r,v=self._v,blacklist=blacklist,dt=self.dt,m=self.unit_mass,**self.scatter_params)
             self.n_interactions += n_interactions
             self.interactions_track += [self._r[indices]]
-        leapfrog.step(r=self._r,v=self._v,M=self._M,live=self.live_particles,dt=self.dt.value,**self.dynamics_params)
+        leapfrog.step(r=self._r,v=self._v,M=self._M,live=self.live_particles,dt=self.dt,**self.dynamics_params)
         self.time += self.dt
 
     def evolve(self,n_steps:int|None=None,t:units.Quantity['time']|None=None,disable_tqdm:bool=False) -> None:
@@ -201,7 +208,7 @@ class Halo:
                                  fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
         x_units = units.Unit(cast(str,x_units))
         time_units = self.Tdyn if time_units == 'Tdyn' else units.Unit(cast(str,time_units))
-        fig,ax = utils.setup_plot(fig,ax,**utils.drop_None(title=title,xlabel=f'{xlabel} [{x_units:latex}]',ylabel=ylabel))
+        fig,ax = utils.setup_plot(fig,ax,**utils.drop_None(title=title,xlabel=utils.add_label_unit(xlabel,x_units),ylabel=ylabel))
         legend = []
         for group in self.snapshots.group_by('time'):
             sns.kdeplot(group['r'].to(x_units),ax=ax,clip=clip)
