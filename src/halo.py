@@ -128,17 +128,25 @@ class Halo:
     def vr(self) -> units.Quantity['velocity']:
         return cast(units.Quantity['velocity'],self.v[:,2])
 
+    # @property
+    # def vp(self) -> units.Quantity['velocity']:
+    #     return cast(units.Quantity['velocity'],np.sqrt(self.vx**2+self.vy**2))
+
     @property
     def vp(self) -> units.Quantity['velocity']:
-        return cast(units.Quantity['velocity'],np.sqrt(self.vx**2+self.vy**2))
+        return units.Quantity(utils.fast_norm(self._v[:,:2]),run_units.velocity)
+
+    # @property
+    # def v_norm(self) -> units.Quantity['velocity']:
+    #     return cast(units.Quantity['velocity'],np.sqrt(self.vr**2+self.vp**2))
 
     @property
     def v_norm(self) -> units.Quantity['velocity']:
-        return cast(units.Quantity['velocity'],np.sqrt(self.vr**2+self.vp**2))
+        return units.Quantity(utils.fast_norm(self._v),run_units.velocity)
 
     @property
     def kinetic_energy(self) -> units.Quantity['specific energy']:
-        return (0.5*self.v_norm**2).to(run_units.specific_energy)
+        return 0.5*self.v_norm**2
 
     @property
     def Phi(self) -> units.Quantity['specific energy']:
@@ -175,14 +183,15 @@ class Halo:
         if self.scatter_params['sigma'] > 0 or self.mass_calculation_method == 'rank presorted':
             self.sort_particles()
         if self.scatter_params['sigma'] > 0:
-            blacklist = list(np.arange(len(self._r))[~self.live_particles]) if self.scatter_live_only else []
+            blacklist = np.arange(len(self._r))[~self.live_particles] if self.scatter_live_only else np.array([],dtype=np.int64)
             n_interactions,indices = sidm.scatter(r=self._r,v=self._v,blacklist=blacklist,dt=self.dt,m=self.unit_mass,**self.scatter_params)
             self.n_interactions += n_interactions
             self.interactions_track += [self._r[indices]]
         Ein = self.E.copy()
         leapfrog.step(r=self._r,v=self._v,M=self._M,live=self.live_particles,dt=self.dt,**self.dynamics_params)
         if self.ensure_energy_conservation:
-            self._v *= np.expand_dims(np.array(np.sqrt(np.abs(2*(self.Psi-Ein)))/self.v_norm),1)
+            self._v *= utils.fast_v_correction(self.Psi.value,Ein.value,self.v_norm.value)
+            # self._v *= np.expand_dims(np.array(np.sqrt(np.abs(2*(self.Psi-Ein)))/self.v_norm),1)
         self.time += self.dt
 
     def evolve(self,n_steps:int|None=None,t:units.Quantity['time']|None=None,disable_tqdm:bool=False) -> None:
