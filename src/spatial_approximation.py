@@ -130,7 +130,7 @@ class Lattice:
 
     def assign_spatial_density(self,r:FloatOrArray,unit_mass:float) -> FloatOrArray:
         x = np.atleast_1d(self(r))
-        density = unit_mass*self.lattice_to_density(x)/self.volume
+        density = unit_mass*self.lattice_to_density(x)/self.post_volume
         assigned = utils.fast_assign(x,density)
         if np.isscalar(r):
             return assigned[0]
