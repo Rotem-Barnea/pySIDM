@@ -154,3 +154,21 @@ def add_label_unit(label:str|None,plot_units:UnitLike) -> str|None:
     if label is None:
         return None
     return f'{label} [{units.Unit(cast(str,plot_units)):latex}]'
+
+@njit(parallel=True)
+def fast_norm(x:NDArray[np.float64],square:bool=False) -> NDArray[np.float64]:
+    output = np.empty(len(x),dtype=np.float64)
+    for i in prange(len(x)):
+        s = (x[i]**2).sum()
+        if square:
+            output[i] = s
+        else:
+            output[i] = np.sqrt(s)
+    return output
+
+@njit(parallel=True)
+def fast_v_correction(Psi:NDArray[np.float64],Ein:NDArray[np.float64],v_norm:NDArray[np.float64]) -> NDArray[np.float64]:
+    output = np.empty((len(v_norm),1),dtype=np.float64)
+    for i in prange(len(v_norm)):
+        output[i,0] = np.sqrt(np.abs(2*(Psi[i]-Ein[i])))/v_norm[i]
+    return output
