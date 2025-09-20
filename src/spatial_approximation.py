@@ -24,19 +24,26 @@ class Lattice:
     def from_density(cls,density:Density,start:float=1e-4,overide_start:bool=True,n_posts:int|float=int(1e4),**kwargs:Any) -> Self:
         return cls(start=density.Rmin.value if overide_start else start,end=density.Rmax.value,n_posts=n_posts,**kwargs)
 
-    def __len__(self):
+    def __len__(self) -> int:
         return self.n_posts
 
     def __call__(self,x:FloatOrArray) -> FloatOrArray:
         return self.to_lattice_coordinates(x)
 
     @property
-    def posts(self):
+    def posts(self) -> NDArray[np.float64]:
         if self.log:
             return np.geomspace(self.start,self.end,self.n_posts)
         return np.linspace(self.start,self.end,self.n_posts)
 
-    def update(self,r:NDArray[np.float64],n_posts:int|float|None=None):
+    @property
+    def post_volume(self) -> NDArray[np.float64]:
+        if self.log:
+            posts = self.posts
+            return 4*np.pi*posts**2*np.diff(posts,1,append=posts[-1])
+        return 4*np.pi*self.posts**2*self.lattice_spacing
+
+    def update(self,r:NDArray[np.float64],n_posts:int|float|None=None) -> None:
         self.end = np.max([r.max(),self.end])
         if self.log:
             self.start_lattice = np.log10(self.start)
@@ -113,10 +120,18 @@ class Lattice:
         density = self.lattice_to_density(x)
         return np.cumsum(density)
 
-    def assign_from_density(self,x:FloatOrArray) -> FloatOrArray:
-        x_lattice = self(x)
-        density_cumsum = self.lattice_to_density_cumsum(np.atleast_1d(x_lattice)).astype(np.float64)
-        assigned = utils.fast_assign(np.atleast_1d(x_lattice),density_cumsum)
-        if np.isscalar(x):
+    def assign_from_density(self,r:FloatOrArray) -> FloatOrArray:
+        x = np.atleast_1d(self(r))
+        density_cumsum = self.lattice_to_density_cumsum(x).astype(np.float64)
+        assigned = utils.fast_assign(x,density_cumsum)
+        if np.isscalar(r):
+            return assigned[0]
+        return cast(FloatOrArray,assigned)
+
+    def assign_spatial_density(self,r:FloatOrArray,unit_mass:float) -> FloatOrArray:
+        x = np.atleast_1d(self(r))
+        density = unit_mass*self.lattice_to_density(x)/self.volume
+        assigned = utils.fast_assign(x,density)
+        if np.isscalar(r):
             return assigned[0]
         return cast(FloatOrArray,assigned)
