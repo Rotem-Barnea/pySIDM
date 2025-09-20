@@ -18,8 +18,9 @@ from .physics.utils import Mass_calculation_methods,get_default_mass_method,M_be
 class Halo:
     def __init__(self,dt:units.Quantity['time'],r:units.Quantity['length'],v:units.Quantity['velocity'],density:Density,n_interactions:int=0,
                  time:units.Quantity['time']=0*run_units.time,background:Mass_Distribution|None=None,save_steps:NDArray[np.int64]|list[int]|None=None,
-                 dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={'sigma':units.Quantity(0,'cm^2/gram')},ensure_energy_conservation:bool=True,
-                 sigma:units.Quantity['opacity']|None=None,scatter_live_only:bool=False,mass_calculation_method:Mass_calculation_methods|None=None) -> None:
+                 dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={},sigma:units.Quantity['opacity']=units.Quantity(0,'cm^2/gram'),
+                 ensure_energy_conservation:bool=True,scatter_live_only:bool=False,mass_calculation_method:Mass_calculation_methods|None=None,
+                 local_density_n_posts:int=5000) -> None:
         self.time:units.Quantity['time'] = time.to(run_units.time)
         self.dt:units.Quantity['time'] = dt
         self._r:NDArray[np.float64] = r.to(run_units.length).value
@@ -33,10 +34,9 @@ class Halo:
         self.density:Density = density
         self.lattice:Lattice = Lattice.from_density(self.density)
         self.dynamics_params:leapfrog.Params = dynamics_params
-        self.scatter_params:sidm.Params = scatter_params
-        if sigma is not None:
-            self.scatter_params['sigma'] = sigma
+        self.scatter_params:sidm.Params = {'sigma':sigma,**scatter_params}
         self.scatter_live_only = scatter_live_only
+        self.local_density_n_posts:int = local_density_n_posts
         self.ensure_energy_conservation = ensure_energy_conservation
         self.mass_calculation_method:Mass_calculation_methods = get_default_mass_method(mass_calculation_method,self.scatter_params['sigma'])
         self.interactions_track = []
@@ -161,6 +161,14 @@ class Halo:
         return (self.Psi-self.kinetic_energy).to(run_units.specific_energy)
 
     @property
+    def _local_density(self) -> NDArray[np.float64]:
+        return Lattice(self.local_density_n_posts,self._r.min()*0.9,self._r.max()*1.1,log=False).assign_spatial_density(self._r,self.unit_mass.value)
+
+    @property
+    def local_density(self) -> units.Quantity['mass density']:
+        return units.Quantity(self._local_density,run_units.density)
+
+    @property
     def ranks(self) -> NDArray[np.int64]:
         return utils.rank_array(self._r)
 
@@ -180,18 +188,18 @@ class Halo:
     def step(self,current_time_step:int|None=None) -> None:
         if current_time_step in self.save_steps:
             self.save_snapshot(current_time_step)
-        if self.scatter_params['sigma'] > 0 or self.mass_calculation_method == 'rank presorted':
+        if self.scatter_params.get('sigma',0) > 0 or self.mass_calculation_method == 'rank presorted':
             self.sort_particles()
-        if self.scatter_params['sigma'] > 0:
+        if self.scatter_params.get('sigma',0) > 0:
             blacklist = np.arange(len(self._r))[~self.live_particles] if self.scatter_live_only else np.array([],dtype=np.int64)
-            n_interactions,indices = sidm.scatter(r=self._r,v=self._v,blacklist=blacklist,dt=self.dt,m=self.unit_mass,**self.scatter_params)
+            self._v,n_interactions,indices = sidm.scatter(r=self._r,v=self._v,blacklist=blacklist,density=self._local_density,dt=self.dt,m=self.unit_mass,
+                                                          **self.scatter_params)
             self.n_interactions += n_interactions
             self.interactions_track += [self._r[indices]]
         Ein = self.E.copy()
         leapfrog.step(r=self._r,v=self._v,M=self._M,live=self.live_particles,dt=self.dt,**self.dynamics_params)
         if self.ensure_energy_conservation:
             self._v *= utils.fast_v_correction(self.Psi.value,Ein.value,self.v_norm.value)
-            # self._v *= np.expand_dims(np.array(np.sqrt(np.abs(2*(self.Psi-Ein)))/self.v_norm),1)
         self.time += self.dt
 
     def evolve(self,n_steps:int|None=None,t:units.Quantity['time']|None=None,disable_tqdm:bool=False) -> None:
