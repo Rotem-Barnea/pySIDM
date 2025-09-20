@@ -25,6 +25,6 @@ def M_below(r:NDArray[np.float64],unit_mass:float=1,lattice:Lattice|None=None,de
     else:
         return (utils.rank_array(r)+count_self)*unit_mass
 
-@njit()
+@njit
 def orbit_circular_velocity(r:units.Quantity['length'],M:units.Quantity['mass']) -> units.Quantity['velocity']:
     return np.sqrt(constants.G*M/r)
