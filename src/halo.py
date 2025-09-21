@@ -85,7 +85,7 @@ class Halo:
 
     @property
     def time_step(self) -> units.Unit:
-        return units.def_unit('time step',self.dt.to(run_units.time))
+        return units.def_unit('time step',self.dt.to(run_units.time),format={'latex':r'time\ step'})
 
     @property
     def Tdyn(self) -> units.Unit:
