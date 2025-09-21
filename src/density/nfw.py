@@ -4,6 +4,7 @@ from typing import Any
 from astropy import units
 from .density import Density
 from ..types import FloatOrArray
+from .. import run_units
 
 class NFW(Density):
     def __init__(self,Rs:units.Quantity['length'],c:float,**kwargs:Any) -> None:
@@ -19,7 +20,7 @@ class NFW(Density):
   - Mdm = {self.unit_mass:.3e}
   - Rvir = {self.Rvir:.4f}
   - rho_s = {self.rho_s:.4f}
-  - Tdyn = {self.Tdyn:.4f}
+  - Tdyn = {(1*self.Tdyn).to(run_units.time):.4f}
 
   - Rmin = {self.Rmin:.4f}
   - Rmax = {self.Rmax:.4f}

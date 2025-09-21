@@ -16,9 +16,15 @@ class Params(TypedDict,total=False):
     r_convergence_threshold:units.Quantity['length']
     vr_convergence_threshold:units.Quantity['velocity']
 
-default_params:Params={'simple_radius':units.Quantity(1,'kpc').to(run_units.length),'regulator':units.Quantity(1e-10,'kpc').to(run_units.length),
-                       'consider_all':True,'kill_divergent':False,'r_convergence_threshold':units.Quantity(1e-3,'kpc').to(run_units.length),
-                       'vr_convergence_threshold':units.Quantity(5,'km/second').to(run_units.velocity),'max_ministeps':1000}
+default_params:Params={
+    'max_ministeps':1000,
+    'consider_all':True,
+    'kill_divergent':False,
+    'regulator':units.Quantity(1e-10,'kpc').to(run_units.length),
+    'simple_radius':units.Quantity(1,'kpc').to(run_units.length),
+    'r_convergence_threshold':units.Quantity(1e-3,'kpc').to(run_units.length),
+    'vr_convergence_threshold':units.Quantity(5,'km/second').to(run_units.velocity)
+}
 
 @njit
 def acceleration(r:float,L:float,M:float,regulator:float=0) -> float:

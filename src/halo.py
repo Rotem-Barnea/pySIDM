@@ -2,6 +2,9 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import seaborn as sns
+from pathlib import Path
+import pickle
+import scipy
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from numpy.typing import NDArray
@@ -20,27 +23,28 @@ class Halo:
                  time:units.Quantity['time']=0*run_units.time,background:Mass_Distribution|None=None,save_steps:NDArray[np.int64]|list[int]|None=None,
                  dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={},sigma:units.Quantity['opacity']=units.Quantity(0,'cm^2/gram'),
                  ensure_energy_conservation:bool=True,scatter_live_only:bool=False,mass_calculation_method:Mass_calculation_methods|None=None,
-                 local_density_n_posts:int=5000) -> None:
+                 local_density_n_posts:int=5000,interactions_track:list[NDArray[np.float64]]=[],snapshots:table.QTable=table.QTable(),
+                 lattice:Lattice|None=None) -> None:
         self.time:units.Quantity['time'] = time.to(run_units.time)
         self.dt:units.Quantity['time'] = dt
+        self.density:Density = density
+        self.lattice:Lattice = lattice if lattice is not None else Lattice.from_density(self.density)
         self._r:NDArray[np.float64] = r.to(run_units.length).value
         self._v:NDArray[np.float64] = v.to(run_units.velocity).value
         self.particle_index = np.arange(len(r))
         self.live_particles = np.full(len(r),True)
-        self.initial_particles = self.particles.copy()
         self.n_interactions = n_interactions
-        self.snapshots:table.QTable = table.QTable()
+        self.snapshots:table.QTable = snapshots
         self.save_steps = list(save_steps) if save_steps is not None else []
-        self.density:Density = density
-        self.lattice:Lattice = Lattice.from_density(self.density)
         self.dynamics_params:leapfrog.Params = dynamics_params
         self.scatter_params:sidm.Params = {'sigma':sigma,**scatter_params}
         self.scatter_live_only = scatter_live_only
         self.local_density_n_posts:int = local_density_n_posts
         self.ensure_energy_conservation = ensure_energy_conservation
         self.mass_calculation_method:Mass_calculation_methods = get_default_mass_method(mass_calculation_method,self.scatter_params['sigma'])
-        self.interactions_track = []
+        self.interactions_track = interactions_track
         self.background:Mass_Distribution|None = background
+        self.initial_particles = self.particles.copy()
 
     @classmethod
     def setup(cls,density:Density,steps_per_Tdyn:int|float,n_particles:int|float,save_steps:NDArray[np.int64]|list[int]|None=None,
@@ -146,7 +150,9 @@ class Halo:
 
     @property
     def Phi(self) -> units.Quantity['specific energy']:
-        return (constants.G*self.M/self.r).to(run_units.specific_energy)
+        indices = np.argsort(self._r)
+        integral = scipy.integrate.cumulative_trapezoid((self._M/self._r**2)[indices],self._r[indices],initial=0)[indices]
+        return -(constants.G*units.Quantity(integral,'Msun/kpc')).to(run_units.specific_energy)
 
     @property
     def Psi(self) -> units.Quantity['specific energy']:
@@ -192,9 +198,9 @@ class Halo:
                                                           **self.scatter_params)
             self.n_interactions += n_interactions
             self.interactions_track += [self._r[indices]]
-        Ein = self.E.copy()
+        Ein = self.E.copy() if self.ensure_energy_conservation else None
         self._r,self._v = leapfrog.step(r=self._r,v=self._v,M=self._M,live=self.live_particles,dt=self.dt,**self.dynamics_params)
-        if self.ensure_energy_conservation:
+        if self.ensure_energy_conservation and Ein is not None:
             self._v *= utils.fast_v_correction(self.Psi.value,Ein.value,self.v_norm.value)
         self.time += self.dt
 
@@ -206,6 +212,53 @@ class Halo:
                 raise ValueError("Either n_steps or t must be specified")
         for step in tqdm(range(int(n_steps)),disable=disable_tqdm):
             self.step(step)
+
+##Save/Load
+
+    def to_payload(self) -> tuple[dict[str,Any],dict[str,Any]]:
+        payload =  {
+            'time':self.time,
+            'dt':self.dt,
+            'density':self.density,
+            'lattice':self.lattice,
+            'n_interactions':self.n_interactions,
+            'save_steps':self.save_steps,
+            'dynamics_params':self.dynamics_params,
+            'scatter_params':self.scatter_params,
+            'scatter_live_only':self.scatter_live_only,
+            'local_density_n_posts':self.local_density_n_posts,
+            'ensure_energy_conservation':self.ensure_energy_conservation,
+            'mass_calculation_method':self.mass_calculation_method,
+            'interactions_track':self.interactions_track,
+            'background':self.background,
+        }
+        tables = {
+            'particles':self.particles,
+            'initial_particles':self.initial_particles,
+            'snapshots':self.snapshots,
+        }
+        return payload,tables
+
+    def save(self,path:str|Path=Path('halo_state')) -> None:
+        path = Path(path)
+        path.mkdir(exist_ok=True)
+        payload,tables = self.to_payload()
+        with open(path/'halo_payload.pkl','wb') as f:
+            pickle.dump(payload,f)
+        for name,data in tables.items():
+            data.write(path/f'{name}.fits',overwrite=True)
+
+    @classmethod
+    def load(cls,path:str|Path=Path('halo_state')) -> Self:
+        path = Path('halo_state')
+        with open(path/'halo_payload.pkl','rb') as f:
+            payload = pickle.load(f)
+        tables = {name:table.QTable.read(path/f'{name}.fits') for name in ['particles','initial_particles','snapshots']}
+        r = tables['particles']['r']
+        v = cast(units.Quantity['velocity'],np.vstack([tables['particles']['vx'],tables['particles']['vy'],tables['particles']['vr']]).T)
+        output = cls(r=r,v=v,**payload,snapshots=tables['snapshots'])
+        output.initial_particles = tables['initial_particles']
+        return output
 
 ##Plots
 
@@ -249,14 +302,21 @@ class Halo:
         return fig,ax
 
     def plot_distribution(self,key:str,data:table.QTable,cumulative:bool=False,absolute:bool=False,title:str|None=None,xlabel:str|None=None,
-                          x_units:UnitLike|None=None,ylabel:str|None=None,fig:Figure|None=None,ax:Axes|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
+                          x_range:units.Quantity|None=None,x_plot_range:units.Quantity|None=None,stat:str='density',x_units:UnitLike|None=None,
+                          ylabel:str|None=None,fig:Figure|None=None,ax:Axes|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
         x_units = self.plot_unit_type(key,x_units)
-        x = data[key].to(x_units)
+        #
+        if x_range is not None:
+            x = data[key][(data[key]>x_range[0])*(data[key]<x_range[1])].to(x_units)
+        else:
+            x = data[key].to(x_units)
         if absolute:
             x = np.abs(x)
         params = {**self.default_plot_text(key,x_units),**utils.drop_None(title=title,xlabel=xlabel,ylabel=ylabel)}
         fig,ax = utils.setup_plot(fig,ax,**params,**kwargs)
-        sns.histplot(x,cumulative=cumulative,ax=ax,stat='density')
+        sns.histplot(x,cumulative=cumulative,ax=ax,stat=stat)
+        if x_plot_range is not None:
+            ax.set_xlim(*x_plot_range.to(x_units).value)
         return fig,ax
 
     def plot_r_distribution(self,data:table.QTable,cumulative:bool=False,add_density:bool=True,x_units:UnitLike|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
@@ -353,4 +413,11 @@ class Halo:
             title = title.format(time=self.time.to(time_units).to_string(format="latex",formatter=time_format),n_interactions=self.n_interactions)
         fig,ax = utils.setup_plot(fig,ax,figsize=figsize,minorticks=True,**utils.drop_None(title=title,xlabel=xlabel))
         sns.histplot(units.Quantity(np.hstack(self.interactions_track),run_units.length).to(length_units),ax=ax)
+        return fig,ax
+
+    def plot_before_after_histogram(self,time_units:UnitLike='Tdyn',time_format:str='.1f',**kwargs:Any) -> tuple[Figure,Axes]:
+        time_units = self.fill_time_unit(time_units)
+        fig,ax = self.plot_distribution(data=self.initial_particles,**kwargs)
+        fig,ax = self.plot_distribution(data=self.particles,fig=fig,ax=ax,**kwargs)
+        ax.legend(['start',f'after {self.time.to(time_units).to_string(format="latex",formatter=time_format)}'])
         return fig,ax
