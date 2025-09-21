@@ -7,11 +7,10 @@ from .. import utils,run_units
 
 class Zones(TypedDict):
     cutoff: units.Quantity['mass density']
-    mini_rounds: list[int]
+    mini_rounds: NDArray[np.int64]
 
 class Params(TypedDict,total=False):
-    radius_j: tuple[int,int]
-    max_radius_r: units.Quantity['length']
+    max_radius_j: int
     regulator: units.Quantity['length']
     base_rounds: int
     max_interactions_allowed_per_timestep:int
@@ -19,13 +18,34 @@ class Params(TypedDict,total=False):
     sigma: units.Quantity['opacity']
 
 default_density_zones:Zones={
-    'cutoff':units.Quantity([10**8,10**9],'Msun/kpc^3'),
-    'mini_rounds':[5,10]
+    'cutoff':units.Quantity([10**7,10**8,10**9],'Msun/kpc^3'),
+    'mini_rounds':np.array([10,20,50],dtype=np.int64),
 }
 
-default_params:Params={'radius_j':(10,10),'max_radius_r':units.Quantity(1,'pc').to(run_units.length),'base_rounds':1,
-                       'regulator':units.Quantity(1e-10,'kpc').to(run_units.length),'density_zones':default_density_zones,
-                       'max_interactions_allowed_per_timestep':10000,'sigma':units.Quantity(0,'cm^2/gram').to(run_units.cross_section)}
+default_params:Params={
+    'max_radius_j':10,
+    'regulator':units.Quantity(1e-10,'kpc').to(run_units.length),
+    'base_rounds':1,
+    'max_interactions_allowed_per_timestep':10000,
+    'density_zones':default_density_zones,
+    'sigma':units.Quantity(0,'cm^2/gram').to(run_units.cross_section)
+}
+
+def prepare_zones(density_zones:Zones,density:NDArray[np.float64],dt:float) -> tuple[NDArray[np.float64],NDArray[np.int64],int]:
+    cutoff = density_zones['cutoff'].to(run_units.density).value
+    indices = np.argsort(cutoff)
+    cutoff = np.hstack([0,cutoff[indices],np.inf])
+    rounds = np.hstack([1,density_zones['mini_rounds'][indices]])
+    output_dt = np.zeros_like(density)
+    mini_rounds = np.zeros_like(density,dtype=np.int64)
+    max_mini_rounds = 0
+    for low,high,rounds in zip(cutoff[:-1],cutoff[1:],rounds):
+        mask = (density >= low)*(density < high)
+        output_dt[mask] = dt/rounds
+        mini_rounds[mask] = rounds
+        if mask.any():
+            max_mini_rounds = max(max_mini_rounds,rounds)
+    return output_dt,mini_rounds,max_mini_rounds
 
 @njit
 def scatter_pair_kinematics(v0:NDArray[np.float64],v1:NDArray[np.float64]) -> tuple[NDArray[np.float64],NDArray[np.float64]]:
@@ -72,15 +92,15 @@ def scatter_pair_kinematics(v0:NDArray[np.float64],v1:NDArray[np.float64]) -> tu
     return v0_new,v1_new
 
 @njit(parallel=True)
-def roll_scattering_pairs(r:NDArray[np.float64],v:NDArray[np.float64],dt:float,m:float,sigma:float,regulator:float,min_radius_j:int,
-                          max_radius_j:int,max_radius_r:float,whitelist_mask:NDArray[np.bool_],blacklist:NDArray[np.int64]=np.array([],dtype=np.int64)) -> tuple[NDArray[np.int64],NDArray[np.bool_],NDArray[np.float64]]:
+def roll_scattering_pairs(r:NDArray[np.float64],v:NDArray[np.float64],dt:NDArray[np.float64],m:float,sigma:float,regulator:float,max_radius_j:int,
+                          whitelist_mask:NDArray[np.bool_],blacklist:NDArray[np.int64]=np.array([],dtype=np.int64)) -> tuple[NDArray[np.int64],NDArray[np.bool_],NDArray[np.float64]]:
     pairs = np.empty((len(r),2),dtype=np.int64)
     pair_found = np.full(len(r),False)
     probabilities = np.zeros_like(r)
     if sigma > 0:
         delta_r:NDArray[np.float64] = np.zeros_like(r)
-        delta_r[:-min_radius_j] = r[min_radius_j:]
-        delta_r[-min_radius_j:] = r[-1]
+        delta_r[:-max_radius_j] = r[max_radius_j:]
+        delta_r[-max_radius_j:] = r[-1]
         delta_r -= r
 
         whitelist = np.arange(len(r))[whitelist_mask]
@@ -89,17 +109,18 @@ def roll_scattering_pairs(r:NDArray[np.float64],v:NDArray[np.float64],dt:float,m
             particle = whitelist[i]
             if delta_r[particle] == 0 or particle in blacklist:
                 continue
-            volume = 4*np.pi*r[particle]**2*delta_r[particle]+regulator
+            # volume = 4*np.pi*r[particle]**2*delta_r[particle]+regulator
+            volume = 4/3*np.pi*((r[particle]+delta_r[particle])**3-r[particle]**3)+regulator
             p = np.random.rand()
             for offset in range(1,max_radius_j+1):
                 partner = particle+offset
-                if partner >= len(r) or partner in blacklist or (np.abs(r[partner]-r[particle]) > max_radius_r and offset > min_radius_j):
+                if partner >= len(r) or partner in blacklist:
                     continue
                 v_rel = v[partner]-v[particle]
                 v_rel_norm = np.sqrt((v_rel**2).sum())
                 # volume = 4/3*np.pi*(r[partner]**3-r[particle]**3)+regulator
                 cross_section_term = sigma*v_rel_norm
-                probabilities[particle] += dt/2*(m/volume)*cross_section_term
+                probabilities[particle] += dt[particle]/2*(m/volume)*cross_section_term
                 if p <= probabilities[particle]:
                     pairs[particle] = [particle,partner]
                     pair_found[particle] = True
@@ -116,38 +137,30 @@ def scatter_unique_pairs(v:NDArray[np.float64],pairs:NDArray[np.int64]) -> NDArr
         output[i0],output[i1] = scatter_pair_kinematics(v0=v[i0],v1=v[i1])
     return output
 
-def scatter_found_pairs(v:NDArray[np.float64],pairs:NDArray[np.int64],memory_allocated:int) -> NDArray[np.float64]:
-    if len(pairs) == 0:
+def scatter_found_pairs(v:NDArray[np.float64],found_pairs:NDArray[np.int64],memory_allocated:int) -> NDArray[np.float64]:
+    if len(found_pairs) == 0:
         return v
-    pairs_buffer = np.full((memory_allocated,2),-1,dtype=np.int64)
-    pairs_buffer[:len(pairs)] = pairs
-    return scatter_unique_pairs(v=v,pairs=pairs_buffer)
+    pairs = np.full((memory_allocated,2),-1,dtype=np.int64)
+    pairs[:len(found_pairs)] = found_pairs
+    return scatter_unique_pairs(v=v,pairs=pairs)
 
 def scatter(r:NDArray[np.float64],v:NDArray[np.float64],density:NDArray[np.float64],dt:units.Quantity['time'],m:units.Quantity['mass'],
             sigma:units.Quantity['opacity'],blacklist:NDArray[np.int64]=np.array([],dtype=np.int64),base_rounds:int=default_params['base_rounds'],
-            regulator:units.Quantity['length']=default_params['regulator'],radius_j:tuple[int,int]=default_params['radius_j'],
-            max_radius_r:units.Quantity['length']=default_params['max_radius_r'],density_zones:Zones=default_params['density_zones'],
-            max_interactions_allowed_per_timestep:int=default_params['max_interactions_allowed_per_timestep']) -> tuple[NDArray[np.float64],int,NDArray[np.int64]]:
+            regulator:units.Quantity['length']=default_params['regulator'],max_radius_j:int=default_params['max_radius_j'],
+            density_zones:Zones=default_params['density_zones'],max_interactions_allowed_per_timestep:int=default_params['max_interactions_allowed_per_timestep']) -> tuple[NDArray[np.float64],int,NDArray[np.int64]]:
     output = v.copy()
     sigma_value:float = sigma.to(run_units.cross_section).value
     n_interactions = 0
     interacted:list[NDArray[np.int64]] = []
     if sigma_value > 0:
-        dt_value = dt.to(run_units.time).value
-        m_value = m.to(run_units.mass).value
-        regulator_value = regulator.to(run_units.length).value
-        max_radius_r_value = max_radius_r.to(run_units.length).value
-        density_zones_cutoff_value = density_zones['cutoff'].to(run_units.density).value
-
+        zone_dt,mini_rounds,max_mini_rounds = prepare_zones(density_zones=density_zones,density=density,dt=dt.to(run_units.time).value/base_rounds)
+        values = {'m':m.to(run_units.mass).value,'regulator':regulator.to(run_units.length).value,'sigma':sigma_value}
         for _ in range(base_rounds):
-            for low,high,mini_rounds in zip([0]+density_zones_cutoff_value,density_zones_cutoff_value+[np.inf],[1]+density_zones['mini_rounds']):
-                mask = (density >= low)*(density < high)
-                for _ in range(mini_rounds):
-                    pairs,pair_found,_ = roll_scattering_pairs(r=r,v=v,dt=dt_value/(mini_rounds*base_rounds),m=m_value,sigma=sigma_value,
-                                                               regulator=regulator_value,min_radius_j=radius_j[0],whitelist_mask=mask,
-                                                               blacklist=blacklist,max_radius_j=radius_j[1],max_radius_r=max_radius_r_value)
-                    pairs = utils.clean_pairs(pairs[pair_found],blacklist=blacklist.tolist())
-                    output = scatter_found_pairs(v=output,pairs=pairs,memory_allocated=max_interactions_allowed_per_timestep)
-                    n_interactions += len(pairs)
-                    interacted += [pairs.ravel()]
+            for mini_round in range(max_mini_rounds):
+                whitelist_mask = (mini_rounds >= mini_round)
+                pairs,pair_found,_ = roll_scattering_pairs(r=r,v=v,dt=zone_dt,max_radius_j=max_radius_j,whitelist_mask=whitelist_mask,blacklist=blacklist,**values)
+                found_pairs = utils.clean_pairs(pairs[pair_found],blacklist=blacklist)
+                output = scatter_found_pairs(v=output,found_pairs=found_pairs,memory_allocated=max_interactions_allowed_per_timestep)
+                n_interactions += len(found_pairs)
+                interacted += [found_pairs.ravel()]
     return output,n_interactions,np.hstack(interacted).astype(np.int64)
