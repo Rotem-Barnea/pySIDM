@@ -84,6 +84,10 @@ class Halo:
         return self.density.unit_mass
 
     @property
+    def time_step(self) -> units.Unit:
+        return units.def_unit('time step',self.dt.to(run_units.time))
+
+    @property
     def Tdyn(self) -> units.Unit:
         return self.density.Tdyn
 
@@ -200,8 +204,8 @@ class Halo:
                 n_steps = int((t/self.dt).value)
             else:
                 raise ValueError("Either n_steps or t must be specified")
-        for time_step in tqdm(range(int(n_steps)),disable=disable_tqdm):
-            self.step(time_step)
+        for step in tqdm(range(int(n_steps)),disable=disable_tqdm):
+            self.step(step)
 
 ##Plots
 
@@ -224,11 +228,17 @@ class Halo:
             return units.Unit('km/second')
         return ''
 
+    def fill_time_unit(self,unit:UnitLike) -> UnitLike:
+        if unit == 'Tdyn':
+            return self.Tdyn
+        elif unit == 'time step':
+            return self.time_step
+        return unit
+
     def plot_r_density_over_time(self,clip:units.Quantity['length']|None=None,x_units:UnitLike='kpc',time_units:UnitLike='Tdyn',
                                  title:str|None='Density progression over time',xlabel:str|None='Radius',ylabel:str|None=None,
                                  fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
-        if time_units == 'Tdyn':
-            time_units = self.Tdyn
+        time_units = self.fill_time_unit(time_units)
         fig,ax = utils.setup_plot(fig,ax,**utils.drop_None(title=title,xlabel=utils.add_label_unit(xlabel,x_units),ylabel=ylabel))
         legend = []
         clip_tuple = tuple(clip.to(x_units).value) if clip is not None else None
@@ -239,14 +249,13 @@ class Halo:
         return fig,ax
 
     def plot_distribution(self,key:str,data:table.QTable,cumulative:bool=False,absolute:bool=False,title:str|None=None,xlabel:str|None=None,
-                          x_units:UnitLike|None=None,ylabel:str|None=None,grid:bool=True,minorticks:bool=False,fig:Figure|None=None,
-                          ax:Axes|None=None) -> tuple[Figure,Axes]:
+                          x_units:UnitLike|None=None,ylabel:str|None=None,fig:Figure|None=None,ax:Axes|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
         x_units = self.plot_unit_type(key,x_units)
         x = data[key].to(x_units)
         if absolute:
             x = np.abs(x)
         params = {**self.default_plot_text(key,x_units),**utils.drop_None(title=title,xlabel=xlabel,ylabel=ylabel)}
-        fig,ax = utils.setup_plot(fig,ax,grid=grid,minorticks=minorticks,**params)
+        fig,ax = utils.setup_plot(fig,ax,**params,**kwargs)
         sns.histplot(x,cumulative=cumulative,ax=ax,stat='density')
         return fig,ax
 
@@ -277,7 +286,7 @@ class Halo:
     def plot_inner_core_density(self,radius:units.Quantity['length']=0.2*units.kpc,time_units:UnitLike='Tdyn',xlabel:str|None='time',
                                 ylabel:str|None='#particles',title:str|None='',fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
         data = self.snapshots.copy()
-        time_units = self.Tdyn if time_units == 'Tdyn' else units.Unit(cast(str,time_units))
+        time_units = self.fill_time_unit(time_units)
         data['time'] = data['time'].to(time_units)
         data['in_radius'] = data['r'] <= radius
 
@@ -315,8 +324,7 @@ class Halo:
                                time_range:tuple[units.Quantity['time'],units.Quantity['time']]|None=None,length_units:UnitLike='kpc',
                                time_units:UnitLike='Tdyn',xlabel:str|None='Radius',ylabel:str|None='Time',
                                cbar_label:str|None='#Particles',**kwargs:Any) -> tuple[Figure,Axes]:
-        if time_units == 'Tdyn':
-            time_units = self.Tdyn
+        time_units = self.fill_time_unit(time_units)
         data = self.snapshots.copy()
         data['output'] = data['r']
         grid,extent = self.prep_2d_data(data,radius_range,time_range,length_units,time_units,agg_fn='count')
@@ -328,8 +336,7 @@ class Halo:
                          time_range:tuple[units.Quantity['time'],units.Quantity['time']]|None=None,velocity_units:UnitLike='km/second',
                          length_units:UnitLike='kpc',time_units:UnitLike='Tdyn',xlabel:str|None='Radius',ylabel:str|None='Time',
                          cbar_label:str|None='Temperature (velocity std)',**kwargs:Any) -> tuple[Figure,Axes]:
-        if time_units == 'Tdyn':
-            time_units = self.Tdyn
+        time_units = self.fill_time_unit(time_units)
         data = self.snapshots.copy()
         data['output'] = data['v_norm']
         grid,extent = self.prep_2d_data(data,radius_range,time_range,length_units,time_units,agg_fn='std')
@@ -338,13 +345,12 @@ class Halo:
                              ylabel=utils.add_label_unit(ylabel,time_units),cbar_label=utils.add_label_unit(cbar_label,velocity_units),**kwargs)
 
     def plot_scattering_location(self,title:str|None='Scattering location distribution within the first {time}, total of {n_interactions} events',
-                                 xlabel:str|None='Radius',length_units:UnitLike='kpc',time_units:UnitLike='Gyr',fig:Figure|None=None,
-                                 time_format:str='.1f',ax:Axes|None=None) -> tuple[Figure,Axes]:
+                                 xlabel:str|None='Radius',length_units:UnitLike='kpc',time_units:UnitLike='Gyr',time_format:str='.1f',
+                                 figsize:tuple[int,int]=(12,6),fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
         xlabel = utils.add_label_unit(xlabel,length_units)
-        if time_units == 'Tdyn':
-            time_units = self.Tdyn
+        time_units = self.fill_time_unit(time_units)
         if title is not None:
             title = title.format(time=self.time.to(time_units).to_string(format="latex",formatter=time_format),n_interactions=self.n_interactions)
-        fig,ax = utils.setup_plot(fig,ax,minorticks=True,**utils.drop_None(title=title,xlabel=xlabel))
+        fig,ax = utils.setup_plot(fig,ax,figsize=figsize,minorticks=True,**utils.drop_None(title=title,xlabel=xlabel))
         sns.histplot(units.Quantity(np.hstack(self.interactions_track),run_units.length).to(length_units),ax=ax)
         return fig,ax
