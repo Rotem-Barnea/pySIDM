@@ -36,7 +36,7 @@ def joint_clean(arrays:list[NDArray[Any]],keys:list[str],clean_by:str) -> NDArra
     data = data.drop_duplicates(clean_by).sort_values(clean_by)
     return data.to_numpy().T
 
-def clean_pairs(pairs:NDArray[np.int64],blacklist:list[int]=[]) -> NDArray[np.int64]:
+def clean_pairs(pairs:NDArray[np.int64],blacklist:list[int]|NDArray[np.int64]=[]) -> NDArray[np.int64]:
     cleaned_pairs = pd.DataFrame(pairs).drop_duplicates(0).drop_duplicates(1).to_numpy() #Ensures there are no particles considered multiple times
     if len(blacklist) > 0:
         cleaned_pairs = np.array([pair for pair in cleaned_pairs if pair[0] not in blacklist and pair[1] not in blacklist])
