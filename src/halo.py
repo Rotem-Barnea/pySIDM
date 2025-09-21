@@ -232,15 +232,16 @@ class Halo:
             return units.Unit('km/second')
         return ''
 
-    def plot_r_density_over_time(self,clip:tuple[float,float]|None=None,x_units:UnitLike='kpc',time_units:UnitLike='Tdyn',
-                                 title:str|None='Density progression over time',xlabel:str|None='radius',ylabel:str|None=None,
+    def plot_r_density_over_time(self,clip:units.Quantity['length']|None=None,x_units:UnitLike='kpc',time_units:UnitLike='Tdyn',
+                                 title:str|None='Density progression over time',xlabel:str|None='Radius',ylabel:str|None=None,
                                  fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
-        x_units = units.Unit(cast(str,x_units))
-        time_units = self.Tdyn if time_units == 'Tdyn' else units.Unit(cast(str,time_units))
+        if time_units == 'Tdyn':
+            time_units = self.Tdyn
         fig,ax = utils.setup_plot(fig,ax,**utils.drop_None(title=title,xlabel=utils.add_label_unit(xlabel,x_units),ylabel=ylabel))
         legend = []
-        for group in self.snapshots.group_by('time'):
-            sns.kdeplot(group['r'].to(x_units),ax=ax,clip=clip)
+        clip_tuple = tuple(clip.to(x_units).value) if clip is not None else None
+        for group in self.snapshots.group_by('time').groups:
+            sns.kdeplot(group['r'].to(x_units).value,ax=ax,clip=clip_tuple)
             legend += [group['time'][0].to(time_units).to_string(format="latex",formatter=".1f")]
         fig.legend(legend,loc='outside center right')
         return fig,ax
