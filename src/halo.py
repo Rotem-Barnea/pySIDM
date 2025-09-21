@@ -128,17 +128,9 @@ class Halo:
     def vr(self) -> units.Quantity['velocity']:
         return cast(units.Quantity['velocity'],self.v[:,2])
 
-    # @property
-    # def vp(self) -> units.Quantity['velocity']:
-    #     return cast(units.Quantity['velocity'],np.sqrt(self.vx**2+self.vy**2))
-
     @property
     def vp(self) -> units.Quantity['velocity']:
         return units.Quantity(utils.fast_norm(self._v[:,:2]),run_units.velocity)
-
-    # @property
-    # def v_norm(self) -> units.Quantity['velocity']:
-    #     return cast(units.Quantity['velocity'],np.sqrt(self.vr**2+self.vp**2))
 
     @property
     def v_norm(self) -> units.Quantity['velocity']:
@@ -197,7 +189,7 @@ class Halo:
             self.n_interactions += n_interactions
             self.interactions_track += [self._r[indices]]
         Ein = self.E.copy()
-        leapfrog.step(r=self._r,v=self._v,M=self._M,live=self.live_particles,dt=self.dt,**self.dynamics_params)
+        self._r,self._v = leapfrog.step(r=self._r,v=self._v,M=self._M,live=self.live_particles,dt=self.dt,**self.dynamics_params)
         if self.ensure_energy_conservation:
             self._v *= utils.fast_v_correction(self.Psi.value,Ein.value,self.v_norm.value)
         self.time += self.dt
@@ -247,12 +239,14 @@ class Halo:
         return fig,ax
 
     def plot_distribution(self,key:str,data:table.QTable,cumulative:bool=False,absolute:bool=False,title:str|None=None,xlabel:str|None=None,
-                          x_units:UnitLike|None=None,ylabel:str|None=None,grid:bool=True,fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
+                          x_units:UnitLike|None=None,ylabel:str|None=None,grid:bool=True,minorticks:bool=False,fig:Figure|None=None,
+                          ax:Axes|None=None) -> tuple[Figure,Axes]:
         x_units = self.plot_unit_type(key,x_units)
         x = data[key].to(x_units)
         if absolute:
             x = np.abs(x)
-        fig,ax = utils.setup_plot(fig,ax,grid=grid,**{**self.default_plot_text(key,x_units),**utils.drop_None(title=title,xlabel=xlabel,ylabel=ylabel)})
+        params = {**self.default_plot_text(key,x_units),**utils.drop_None(title=title,xlabel=xlabel,ylabel=ylabel)}
+        fig,ax = utils.setup_plot(fig,ax,grid=grid,minorticks=minorticks,**params)
         sns.histplot(x,cumulative=cumulative,ax=ax,stat='density')
         return fig,ax
 
@@ -281,13 +275,16 @@ class Halo:
         return utils.plot_phase_space(grid,r_range,v_range,length_units,velocity_units,fig=fig,ax=ax)
 
     def plot_inner_core_density(self,radius:units.Quantity['length']=0.2*units.kpc,time_units:UnitLike='Tdyn',xlabel:str|None='time',
-                                ylabel:str|None='#particles',title:str|None='#particles in inner density',fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
+                                ylabel:str|None='#particles',title:str|None='',fig:Figure|None=None,ax:Axes|None=None) -> tuple[Figure,Axes]:
         data = self.snapshots.copy()
         time_units = self.Tdyn if time_units == 'Tdyn' else units.Unit(cast(str,time_units))
         data['time'] = data['time'].to(time_units)
         data['in_radius'] = data['r'] <= radius
 
         agg_data = utils.aggregate_QTable(data,groupby='time',keys=['in_radius'],agg_fn='sum',final_units={'time':time_units})
+
+        if title == '':
+            title = f'#particles in inner core ({radius.to_string(format="latex",formatter=".2f")})'
 
         xlabel = f'{xlabel} [{time_units}]' if xlabel is not None else None
         fig,ax = utils.setup_plot(fig,ax,**utils.drop_None(title=title,xlabel=xlabel,ylabel=ylabel))
@@ -339,3 +336,15 @@ class Halo:
 
         return utils.plot_2d(grid=grid,extent=extent,x_units=length_units,y_units=time_units,xlabel=utils.add_label_unit(xlabel,velocity_units),
                              ylabel=utils.add_label_unit(ylabel,time_units),cbar_label=utils.add_label_unit(cbar_label,velocity_units),**kwargs)
+
+    def plot_scattering_location(self,title:str|None='Scattering location distribution within the first {time}, total of {n_interactions} events',
+                                 xlabel:str|None='Radius',length_units:UnitLike='kpc',time_units:UnitLike='Gyr',fig:Figure|None=None,
+                                 time_format:str='.1f',ax:Axes|None=None) -> tuple[Figure,Axes]:
+        xlabel = utils.add_label_unit(xlabel,length_units)
+        if time_units == 'Tdyn':
+            time_units = self.Tdyn
+        if title is not None:
+            title = title.format(time=self.time.to(time_units).to_string(format="latex",formatter=time_format),n_interactions=self.n_interactions)
+        fig,ax = utils.setup_plot(fig,ax,minorticks=True,**utils.drop_None(title=title,xlabel=xlabel))
+        sns.histplot(units.Quantity(np.hstack(self.interactions_track),run_units.length).to(length_units),ax=ax)
+        return fig,ax

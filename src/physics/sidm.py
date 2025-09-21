@@ -20,12 +20,12 @@ class Params(TypedDict,total=False):
 
 default_density_zones:Zones={
     'cutoff':units.Quantity([10**8,10**9],'Msun/kpc^3'),
-    'mini_rounds':[2,4]
+    'mini_rounds':[5,10]
 }
 
 default_params:Params={'radius_j':(10,10),'max_radius_r':units.Quantity(1,'pc').to(run_units.length),'base_rounds':1,
-                               'regulator':units.Quantity(1e-10,'kpc').to(run_units.length),'density_zones':default_density_zones,
-                               'max_interactions_allowed_per_timestep':10000,'sigma':units.Quantity(0,'cm^2/gram').to(run_units.cross_section),}
+                       'regulator':units.Quantity(1e-10,'kpc').to(run_units.length),'density_zones':default_density_zones,
+                       'max_interactions_allowed_per_timestep':10000,'sigma':units.Quantity(0,'cm^2/gram').to(run_units.cross_section)}
 
 @njit
 def scatter_pair_kinematics(v0:NDArray[np.float64],v1:NDArray[np.float64]) -> tuple[NDArray[np.float64],NDArray[np.float64]]:
@@ -143,9 +143,9 @@ def scatter(r:NDArray[np.float64],v:NDArray[np.float64],density:NDArray[np.float
             for low,high,mini_rounds in zip([0]+density_zones_cutoff_value,density_zones_cutoff_value+[np.inf],[1]+density_zones['mini_rounds']):
                 mask = (density >= low)*(density < high)
                 for _ in range(mini_rounds):
-                    pairs,pair_found,_ = roll_scattering_pairs(r=r,v=v,dt=dt_value/mini_rounds,m=m_value,sigma=sigma_value,regulator=regulator_value,
-                                                               min_radius_j=radius_j[0],max_radius_j=radius_j[1],max_radius_r=max_radius_r_value,
-                                                               whitelist_mask=mask,blacklist=blacklist)
+                    pairs,pair_found,_ = roll_scattering_pairs(r=r,v=v,dt=dt_value/(mini_rounds*base_rounds),m=m_value,sigma=sigma_value,
+                                                               regulator=regulator_value,min_radius_j=radius_j[0],whitelist_mask=mask,
+                                                               blacklist=blacklist,max_radius_j=radius_j[1],max_radius_r=max_radius_r_value)
                     pairs = utils.clean_pairs(pairs[pair_found],blacklist=blacklist.tolist())
                     output = scatter_found_pairs(v=output,pairs=pairs,memory_allocated=max_interactions_allowed_per_timestep)
                     n_interactions += len(pairs)

@@ -16,10 +16,9 @@ class Params(TypedDict,total=False):
     r_convergence_threshold:units.Quantity['length']
     vr_convergence_threshold:units.Quantity['velocity']
 
-default_step_params:Params={'max_ministeps':1000,'consider_all':True,'kill_divergent':False,'regulator':units.Quantity(1e-10,'kpc').to(run_units.length),
-                            'simple_radius':units.Quantity(1,'kpc').to(run_units.length),
-                            'r_convergence_threshold':units.Quantity(1e-3,'kpc').to(run_units.length),
-                            'vr_convergence_threshold':units.Quantity(5,'km/second').to(run_units.velocity)}
+default_params:Params={'simple_radius':units.Quantity(1,'kpc').to(run_units.length),'regulator':units.Quantity(1e-10,'kpc').to(run_units.length),
+                       'consider_all':True,'kill_divergent':False,'r_convergence_threshold':units.Quantity(1e-3,'kpc').to(run_units.length),
+                       'vr_convergence_threshold':units.Quantity(5,'km/second').to(run_units.velocity),'max_ministeps':1000}
 
 @njit
 def acceleration(r:float,L:float,M:float,regulator:float=0) -> float:
@@ -42,33 +41,37 @@ def particle_step(r:float,vx:float,vy:float,vr:float,M:float,dt:float,N:int=1,re
     return r,np.array([Lx/r,Ly/r,vr])
 
 @njit(parallel=True)
-def fast_step(r:NDArray[np.float64],v:NDArray[np.float64],M:NDArray[np.float64],live:NDArray[np.bool_],dt:float,regulator:float=0,max_ministeps:int=100,
-         r_convergence_threshold:float=1e-3,vr_convergence_threshold:float=0.005,simple_radius:float=1,consider_all:bool=True,kill_divergent:bool=False) -> None:
+def fast_step(r:NDArray[np.float64],v:NDArray[np.float64],M:NDArray[np.float64],live:NDArray[np.bool_],dt:float,regulator:float=0,
+              max_ministeps:int=100,r_convergence_threshold:float=1e-3,vr_convergence_threshold:float=0.005,simple_radius:float=1,
+              consider_all:bool=True,kill_divergent:bool=False) -> tuple[NDArray[np.float64],NDArray[np.float64]]:
+    output_r = r.copy()
+    output_v = v.copy()
     for i in prange(len(r)):
         if not consider_all and not live[i]:
             continue
         if r[i] > simple_radius:
-            r[i],v[i] = particle_step(r=r[i],vx=v[i,0],vy=v[i,1],vr=v[i,2],M=M[i],dt=dt,regulator=regulator)
+            output_r[i],output_v[i] = particle_step(r=r[i],vx=v[i,0],vy=v[i,1],vr=v[i,2],M=M[i],dt=dt,regulator=regulator)
             continue
         for N in range(1,max_ministeps+1):
             r_coarse,v_coarse = particle_step(r=r[i],vx=v[i,0],vy=v[i,1],vr=v[i,2],M=M[i],dt=dt,regulator=regulator,N=N)
             r_fine,v_fine = particle_step(r=r[i],vx=v[i,0],vy=v[i,1],vr=v[i,2],M=M[i],dt=dt,regulator=regulator,N=2*N)
             if (np.abs(r_coarse-r_fine) < r_convergence_threshold) and (np.abs(v_coarse[2]-v_fine[2]) < vr_convergence_threshold):
-                r[i],v[i] = r_fine,v_fine
+                output_r[i],output_v[i] = r_fine,v_fine
                 break
             if N == max_ministeps:
                 if kill_divergent:
                     live[i] = False
                 else:
-                    r[i],v[i] = r_fine,v_fine
+                    output_r[i],output_v[i] = r_fine,v_fine
+    return output_r,output_v
 
 def step(r:NDArray[np.float64],v:NDArray[np.float64],M:NDArray[np.float64],live:NDArray[np.bool_],dt:units.Quantity['time'],
-         regulator:units.Quantity['length']=default_step_params['regulator'],max_ministeps:int=default_step_params['max_ministeps'],
-         r_convergence_threshold:units.Quantity['length']=default_step_params['r_convergence_threshold'],
-         vr_convergence_threshold:units.Quantity['velocity']=default_step_params['vr_convergence_threshold'],
-         simple_radius:units.Quantity['length']=default_step_params['simple_radius'],
-         consider_all:bool=default_step_params['consider_all'],kill_divergent:bool=default_step_params['kill_divergent']) -> None:
-    fast_step(r=r,v=v,M=M,live=live,dt=dt.to(run_units.time).value,regulator=regulator.to(run_units.length).value,max_ministeps=max_ministeps,
-              r_convergence_threshold=r_convergence_threshold.to(run_units.length).value,
-              vr_convergence_threshold=vr_convergence_threshold.to(run_units.velocity).value,
-              simple_radius=simple_radius.to(run_units.length).value,consider_all=consider_all,kill_divergent=kill_divergent)
+         regulator:units.Quantity['length']=default_params['regulator'],max_ministeps:int=default_params['max_ministeps'],
+         consider_all:bool=default_params['consider_all'],kill_divergent:bool=default_params['kill_divergent'],
+         simple_radius:units.Quantity['length']=default_params['simple_radius'],
+         r_convergence_threshold:units.Quantity['length']=default_params['r_convergence_threshold'],
+         vr_convergence_threshold:units.Quantity['velocity']=default_params['vr_convergence_threshold']) -> tuple[NDArray[np.float64],NDArray[np.float64]]:
+    return fast_step(r=r,v=v,M=M,live=live,dt=dt.to(run_units.time).value,regulator=regulator.to(run_units.length).value,
+                     max_ministeps=max_ministeps,r_convergence_threshold=r_convergence_threshold.to(run_units.length).value,
+                     vr_convergence_threshold=vr_convergence_threshold.to(run_units.velocity).value,consider_all=consider_all,
+                     kill_divergent=kill_divergent,simple_radius=simple_radius.to(run_units.length).value)
