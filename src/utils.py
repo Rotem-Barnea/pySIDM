@@ -134,7 +134,7 @@ def fast_unique_mask(x:NDArray[np.int64]) -> NDArray[np.int64]:
         output[x[i]] += 1
     return output
 
-def setup_plot(fig:Figure|None=None,ax:Axes|None=None,grid:bool=True,minorticks:bool=False,figsize:tuple[int,int]|None=(6,5),
+def setup_plot(fig:Figure|None=None,ax:Axes|None=None,grid:bool=True,minorticks:bool=False,figsize:tuple[int,int]|None=(6,5),ax_set:dict[str,str]|None=None,
                title:str|None=None,xlabel:str|None=None,ylabel:str|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
     if fig is None or ax is None:
         fig,ax = plt.subplots(figsize=figsize,**kwargs)
@@ -143,6 +143,8 @@ def setup_plot(fig:Figure|None=None,ax:Axes|None=None,grid:bool=True,minorticks:
     ax.grid(grid)
     if minorticks:
         ax.minorticks_on()
+    if ax_set is not None:
+        ax.set(**ax_set)
     if title is not None:
         ax.set_title(title)
     if xlabel is not None:

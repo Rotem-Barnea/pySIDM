@@ -28,3 +28,20 @@ def M_below(r:NDArray[np.float64],unit_mass:float=1,lattice:Lattice|None=None,de
 @njit
 def orbit_circular_velocity(r:units.Quantity['length'],M:units.Quantity['mass']) -> units.Quantity['velocity']:
     return np.sqrt(constants.G*M/r)
+
+def local_density(r:NDArray[np.float64],max_radius_j:int=10,regulator:float=0,accuracy_cutoff:float=0.1) -> NDArray[np.float64]:
+    """Assumes the array is sorted"""
+    delta_r = np.zeros_like(r)
+    delta_r[:-max_radius_j] = r[max_radius_j:]
+    delta_r[-max_radius_j:] = r[-1]
+    delta_r -= r
+    n = np.full(len(r),max_radius_j,dtype=np.int64)
+    n[-max_radius_j:] = np.arange(max_radius_j-1,-1,-1)
+
+    volume = np.full_like(r,regulator)
+    mask = delta_r/r > accuracy_cutoff
+    volume[~mask] += 4*np.pi*r[~mask]**2*delta_r[~mask]
+    volume[mask] += 4/3*np.pi*((r[mask]+delta_r[mask])**3-r[mask]**3)
+    density = n[:-1]/volume[:-1]
+    density = np.hstack([density,density[-1]])
+    return density
