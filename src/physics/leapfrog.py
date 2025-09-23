@@ -46,7 +46,7 @@ def particle_step(r:float,vx:float,vy:float,vr:float,M:float,dt:float,N:int=1,re
 
 @njit(parallel=True)
 def fast_step(r:NDArray[np.float64],v:NDArray[np.float64],M:NDArray[np.float64],live:NDArray[np.bool_],dt:float,regulator:float=0,max_ministeps:int=100,
-              r_convergence_threshold:float=1e-3,vr_convergence_threshold:float=0.005,consider_all:bool=True,kill_divergent:bool=False) -> tuple[NDArray[np.float64],NDArray[np.float64]]:
+              r_convergence_threshold:float=1e-3,vr_convergence_threshold:float=0.001,consider_all:bool=True,kill_divergent:bool=False) -> tuple[NDArray[np.float64],NDArray[np.float64]]:
     output_r = r.copy()
     output_v = v.copy()
     for i in prange(len(r)):
@@ -54,13 +54,9 @@ def fast_step(r:NDArray[np.float64],v:NDArray[np.float64],M:NDArray[np.float64],
             continue
         r_fine:float = 0
         v_fine:NDArray[np.float64] = np.zeros(3,dtype=np.float64)
+        r_coarse,v_coarse = particle_step(r=r[i],vx=v[i,0],vy=v[i,1],vr=v[i,2],M=M[i],dt=dt,regulator=regulator,N=1)
         for mini_step in range(0,max_ministeps):
             N = 2**(mini_step)
-            if mini_step == 0:
-                r_coarse,v_coarse = particle_step(r=r[i],vx=v[i,0],vy=v[i,1],vr=v[i,2],M=M[i],dt=dt,regulator=regulator,N=N)
-            else:
-                r_coarse = r_fine
-                v_coarse = v_fine
             r_fine,v_fine = particle_step(r=r[i],vx=v[i,0],vy=v[i,1],vr=v[i,2],M=M[i],dt=dt,regulator=regulator,N=2*N)
             if (np.abs(r_coarse-r_fine) < r_convergence_threshold) and (np.abs(v_coarse[2]-v_fine[2]) < vr_convergence_threshold):
                 output_r[i],output_v[i] = r_fine,v_fine
@@ -70,6 +66,8 @@ def fast_step(r:NDArray[np.float64],v:NDArray[np.float64],M:NDArray[np.float64],
                     live[i] = False
                 else:
                     output_r[i],output_v[i] = r_fine,v_fine
+            r_coarse = r_fine
+            v_coarse = v_fine
     return output_r,output_v
 
 def step(r:NDArray[np.float64],v:NDArray[np.float64],M:NDArray[np.float64],live:NDArray[np.bool_],dt:units.Quantity['time'],

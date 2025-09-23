@@ -16,14 +16,14 @@ from .density.density import Density
 from .background import Mass_Distribution
 from . import utils,run_units,physics
 from .physics import sidm,leapfrog
-from .physics.utils import Mass_calculation_methods,get_default_mass_method,M_below,orbit_circular_velocity
+from .physics.utils import Mass_calculation_methods,M_below,orbit_circular_velocity
 
 class Halo:
     def __init__(self,dt:units.Quantity['time'],r:units.Quantity['length'],v:units.Quantity['velocity'],density:Density,n_interactions:int=0,
                  time:units.Quantity['time']=0*run_units.time,background:Mass_Distribution|None=None,last_saved_time:units.Quantity['time']=0*run_units.time,
                  save_every_n_steps:int|None=None,save_every_time:units.Quantity['time']|None=None,scatter_rounds:list[int]=[],
                  dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={},sigma:units.Quantity['opacity']=units.Quantity(0,'cm^2/gram'),
-                 ensure_energy_conservation:bool=False,scatter_live_only:bool=False,mass_calculation_method:Mass_calculation_methods|None=None,
+                 ensure_energy_conservation:bool=False,scatter_live_only:bool=False,mass_calculation_method:Mass_calculation_methods='rank presorted',
                  interactions_track:list[NDArray[np.float64]]=[],snapshots:table.QTable=table.QTable(),lattice:Lattice|None=None) -> None:
         self.time:units.Quantity['time'] = time.to(run_units.time)
         self.dt:units.Quantity['time'] = dt.to(run_units.time)
@@ -41,7 +41,7 @@ class Halo:
         self.scatter_params:sidm.Params = {'sigma':sigma.to(run_units.cross_section),**scatter_params}
         self.scatter_live_only = scatter_live_only
         self.ensure_energy_conservation = ensure_energy_conservation
-        self.mass_calculation_method:Mass_calculation_methods = get_default_mass_method(mass_calculation_method,self.scatter_params['sigma'])
+        self.mass_calculation_method:Mass_calculation_methods = mass_calculation_method
         self.interactions_track = interactions_track
         self.background:Mass_Distribution|None = background
         self.initial_particles = self.particles.copy()
