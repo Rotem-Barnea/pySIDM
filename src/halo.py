@@ -21,7 +21,7 @@ from .physics.utils import Mass_calculation_methods,get_default_mass_method,M_be
 class Halo:
     def __init__(self,dt:units.Quantity['time'],r:units.Quantity['length'],v:units.Quantity['velocity'],density:Density,n_interactions:int=0,
                  time:units.Quantity['time']=0*run_units.time,background:Mass_Distribution|None=None,last_saved_time:units.Quantity['time']=0*run_units.time,
-                 save_every_n_steps:int|None=None,save_every_time:units.Quantity['time']|None=None,
+                 save_every_n_steps:int|None=None,save_every_time:units.Quantity['time']|None=None,scatter_rounds:list[int]=[],
                  dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={},sigma:units.Quantity['opacity']=units.Quantity(0,'cm^2/gram'),
                  ensure_energy_conservation:bool=False,scatter_live_only:bool=False,mass_calculation_method:Mass_calculation_methods|None=None,
                  interactions_track:list[NDArray[np.float64]]=[],snapshots:table.QTable=table.QTable(),lattice:Lattice|None=None) -> None:
@@ -46,6 +46,7 @@ class Halo:
         self.background:Mass_Distribution|None = background
         self.initial_particles = self.particles.copy()
         self.last_saved_time = last_saved_time
+        self.scatter_rounds = scatter_rounds
 
     @classmethod
     def setup(cls,density:Density,steps_per_Tdyn:int|float,n_particles:int|float,**kwargs:Any) -> Self:
@@ -205,9 +206,10 @@ class Halo:
             self.sort_particles()
         if self.scatter_params.get('sigma',0) > 0:
             blacklist = np.arange(len(self._r))[~self.live_particles] if self.scatter_live_only else np.array([],dtype=np.int64)
-            self._v,n_interactions,indices = sidm.scatter(r=self._r,v=self._v,blacklist=blacklist,dt=self.dt,m=self.unit_mass,**self.scatter_params)
+            self._v,n_interactions,indices,scatter_rounds = sidm.scatter(r=self._r,v=self._v,blacklist=blacklist,dt=self.dt,m=self.unit_mass,**self.scatter_params)
             self.n_interactions += n_interactions
             self.interactions_track += [self.r[indices]]
+            self.scatter_rounds += [scatter_rounds]
         Ein = self.E.copy() if self.ensure_energy_conservation else None
         self._r,self._v = leapfrog.step(r=self._r,v=self._v,M=self._M,live=self.live_particles,dt=self.dt,**self.dynamics_params)
         if self.ensure_energy_conservation and Ein is not None:
@@ -241,7 +243,8 @@ class Halo:
             'mass_calculation_method':self.mass_calculation_method,
             'interactions_track':self.interactions_track,
             'background':self.background,
-            'last_saved_time':self.last_saved_time
+            'last_saved_time':self.last_saved_time,
+            'scatter_rounds':self.scatter_rounds
         }
         tables = {
             'particles':self.particles,
@@ -316,11 +319,9 @@ class Halo:
                           x_range:units.Quantity|None=None,x_plot_range:units.Quantity|None=None,stat:str='density',x_units:UnitLike|None=None,
                           ylabel:str|None=None,fig:Figure|None=None,ax:Axes|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
         x_units = self.plot_unit_type(key,x_units)
-        #
+        x = data[key].to(x_units)
         if x_range is not None:
-            x = data[key][(data[key]>x_range[0])*(data[key]<x_range[1])].to(x_units)
-        else:
-            x = data[key].to(x_units)
+            x = x[(x>x_range[0])*(x<x_range[1])]
         if absolute:
             x = np.abs(x)
         params = {**self.default_plot_text(key,x_units),**utils.drop_None(title=title,xlabel=xlabel,ylabel=ylabel)}
@@ -330,10 +331,12 @@ class Halo:
             ax.set_xlim(*x_plot_range.to(x_units).value)
         return fig,ax
 
-    def plot_r_distribution(self,data:table.QTable,cumulative:bool=False,add_density:bool=True,x_units:UnitLike|None=None,**kwargs:Any) -> tuple[Figure,Axes]:
-        fig,ax = self.plot_distribution(key='r',data=data,cumulative=cumulative,x_units=x_units,**kwargs)
+    def plot_r_distribution(self,data:table.QTable,cumulative:bool=False,add_density:bool=True,x_units:UnitLike|None=None,x_range:units.Quantity|None=None,
+                            **kwargs:Any) -> tuple[Figure,Axes]:
+        fig,ax = self.plot_distribution(key='r',data=data,cumulative=cumulative,x_units=x_units,x_range=x_range,**kwargs)
         if add_density:
-            return self.density.plot_radius_distribution(cumulative=cumulative,plot_units=self.plot_unit_type('r',x_units),fig=fig,ax=ax)
+            params = {'r_start':cast(units.Quantity,x_range[0]),'r_end':cast(units.Quantity,x_range[1])} if x_range is not None else {}
+            return self.density.plot_radius_distribution(cumulative=cumulative,plot_units=self.plot_unit_type('r',x_units),fig=fig,ax=ax,**params)
         return fig,ax
 
     def plot_phase_space(self,data:table.QTable,r_range:units.Quantity['length']=np.linspace(1e-2,50,200)*units.kpc,
@@ -452,4 +455,15 @@ class Halo:
             title = title.format(time=self.time.to(time_units).to_string(format="latex",formatter=time_format),n_interactions=self.n_interactions)
         fig,ax = utils.setup_plot(**kwargs,ax_set={'yscale':'log'},**utils.drop_None(title=title,xlabel=xlabel))
         sns.lineplot(x=r_bins,y=smoothed_density,ax=ax)
+        return fig,ax
+
+    def plot_scattering_rounds_amount(self,xlabel:str|None='Time',ylabel:str|None='Number of scattering rounds',time_units:UnitLike='Gyr',
+                                      title:str|None='Number of scattering rounds per time step',smooth_sigma:float=1,**kwargs:Any) -> tuple[Figure,Axes]:
+        time_units = self.fill_time_unit(time_units)
+        xlabel = utils.add_label_unit(xlabel,time_units)
+        fig,ax = utils.setup_plot(**kwargs,**utils.drop_None(title=title,xlabel=xlabel,ylabel=ylabel))
+        rounds = np.array(self.scatter_rounds)
+        smoothed_rounds = scipy.ndimage.gaussian_filter1d(rounds,sigma=smooth_sigma) if smooth_sigma > 0 else rounds
+        time = (np.arange(len(rounds))*self.dt).to(time_units)
+        sns.lineplot(x=time,y=smoothed_rounds,ax=ax)
         return fig,ax

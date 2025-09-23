@@ -107,7 +107,7 @@ class Density:
         return self.memoization['M_grid']
 
     def calculate_rho_scale(self) -> units.Quantity['mass density']:
-        return self.Mtot/(self.spherical_rho_integrate(self.Rmax,False)[0]*run_units.length**3)
+        return self.Mtot/self.spherical_rho_integrate(self.Rmax,False)[0]*run_units.density
 
     def Phi(self,r:units.Quantity['length']) -> units.Quantity['specific energy']:
         if 'Phi' not in self.memoization:
@@ -248,11 +248,12 @@ class Density:
 ##Plots
 
     def plot_phase_space(self,r_range:units.Quantity['length']=np.linspace(1e-2,50,200)*units.kpc,
-                         v_range:units.Quantity['velocity']=np.linspace(0,100,200)*units.Unit('km/second'),**kwargs:Any) -> tuple[Figure,Axes]:
+                         v_range:units.Quantity['velocity']=np.linspace(0,100,200)*units.Unit('km/second'),
+                         velocity_units:UnitLike='km/second',**kwargs:Any) -> tuple[Figure,Axes]:
         r,v = cast(tuple[units.Quantity['length'],units.Quantity['velocity']],np.meshgrid(r_range,v_range))
         f = self.f(self.E(r,v))
         grid = np.asarray((16*np.pi*r**2*v**2*f).value)
-        fig,ax = utils.plot_phase_space(grid,r_range,v_range,**kwargs)
+        fig,ax = utils.plot_phase_space(grid,r_range,v_range,velocity_units=velocity_units,**kwargs)
         return fig,ax
 
     def add_plot_R_markers(self,ax:Axes,ymax:float,x_units:UnitLike='kpc') -> Axes:
@@ -266,7 +267,12 @@ class Density:
         fig,ax = utils.setup_plot(fig,ax,title='Density distribution (rho)',xlabel=utils.add_label_unit('Radius',length_units),
                                   ylabel=utils.add_label_unit('Density',density_units))
 
-        r = cast(units.Quantity['length'],np.geomspace(r_start or self.Rmin,r_end or self.Rmax,self.space_steps))
+        if r_start is None:
+            r_start = self.Rmin
+        if r_end is None:
+            r_end = self.Rmax
+
+        r = cast(units.Quantity['length'],np.geomspace(r_start,r_end,self.space_steps))
         rho = self.rho(r)
         sns.lineplot(x=r.to(length_units).value,y=rho.to(density_units).value,ax=ax)
         ax.set(xscale='log',yscale='log')
@@ -279,7 +285,12 @@ class Density:
         title = 'Particle cumulative range distribution (cdf)' if cumulative else 'Particle range distribution (pdf)'
         fig,ax = utils.setup_plot(fig,ax,title=title,xlabel=utils.add_label_unit('Radius',plot_units),ylabel='Density')
 
-        r = cast(units.Quantity['length'],np.geomspace(r_start or self.Rmin,r_end or self.Rmax,self.space_steps))
+        if r_start is None:
+            r_start = self.Rmin
+        if r_end is None:
+            r_end = self.Rmax
+
+        r = cast(units.Quantity['length'],np.geomspace(r_start,r_end,self.space_steps))
         y = self.mass_cdf(r) if cumulative else self.mass_pdf(r)
         sns.lineplot(x=r.to(plot_units).value,y=y,color='r',ax=ax)
         ax = self.add_plot_R_markers(ax,ymax=y.max(),x_units=plot_units)
