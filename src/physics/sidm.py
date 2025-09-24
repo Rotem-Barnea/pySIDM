@@ -24,6 +24,15 @@ default_params:Params={
     'sigma':units.Quantity(0,'cm^2/gram').to(run_units.cross_section)
 }
 
+def normalize_params(params:Params,add_defaults:bool=False) -> Params:
+    if add_defaults:
+        params = {**default_params,**params}
+    if 'sigma' in params:
+        params['sigma'] = params['sigma'].to(run_units.cross_section)
+    if 'regulator' in params:
+        params['regulator'] = params['regulator'].to(run_units.number_density)
+    return params
+
 def t_scatter(local_density:units.Quantity['mass density'],sigma:units.Quantity[run_units.cross_section]|None,v_norm:units.Quantity['velocity']) -> units.Quantity['time']:
     if sigma is None or sigma.value == 0:
         return units.Quantity(np.hstack([np.full(len(local_density),np.inf)]),run_units.time)
@@ -137,10 +146,10 @@ def scatter(r:units.Quantity['length'],v:units.Quantity['velocity'],dt:units.Qua
 
     if sigma == 0:
         return v,0,np.array([],dtype=np.int64),0
-    v_output = v.to(run_units.velocity).value.copy()
+    v_output = v.value.copy()
     n_interactions = 0
     interacted:list[NDArray[np.int64]] = []
-    sigma_value:float = sigma.to(run_units.cross_section).value
+    sigma_value:float = sigma.value
     local_density = physics.utils.local_density(r,max_radius_j=max_radius_j,regulator=regulator,accuracy_cutoff=density_accuracy_coef)*m
     local_density_value = local_density.to(run_units.density).value
     scatter_rounds = calculate_scatter_rounds(v,dt,sigma,local_density,kappa,max_allowed_rounds)
@@ -152,4 +161,4 @@ def scatter(r:units.Quantity['length'],v:units.Quantity['velocity'],dt:units.Qua
         v_output = scatter_found_pairs(v=v_output,found_pairs=found_pairs,memory_allocated=max_interactions_per_mini_timestep)
         n_interactions += len(found_pairs)
         interacted += [found_pairs.ravel()]
-    return units.Quantity(v_output,v.units),n_interactions,np.hstack(interacted).astype(np.int64),scatter_rounds.max()
+    return units.Quantity(v_output,v.unit),n_interactions,np.hstack(interacted).astype(np.int64),scatter_rounds.max()

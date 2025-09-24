@@ -25,13 +25,13 @@ record_dtype = {
                                              ('L',     np.float32)])
 }
 
-def gather_files(base_filename:str,ntimesteps:int,tfinal:int,max_time:units.Quantity['time']=1*units.Gyr,
+def gather_files(base_filename:str,ntimesteps:int,tfinal:int,max_time:units.Quantity['time']=units.Quantity(1,'Gyr'),
                  root_path:str|Path=r'../../NSphere-SIDM/data/') -> pd.DataFrame:
     if not isinstance(root_path,Path):
         root_path = Path(root_path)
     files = pd.DataFrame({'path':list(root_path.glob(f'{base_filename}_t*_100000_{ntimesteps+1}_{tfinal}.dat'))})
     files['save_step'] = files.path.apply(get_save_step)
-    files['time'] = files['save_step']/files['save_step'].max()*max_time
+    files['time'] = files['save_step'].apply(lambda x:x/files['save_step'].max()*max_time)
     files['record_dtype'] = record_dtype.get(str(base_filename),{})
     return files.sort_values('time')
 

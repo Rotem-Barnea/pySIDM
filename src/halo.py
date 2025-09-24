@@ -16,15 +16,14 @@ from .density.density import Density
 from .background import Mass_Distribution
 from . import utils,run_units,physics
 from .physics import sidm,leapfrog
-from .physics.utils import Mass_calculation_methods,orbit_circular_velocity
 
 class Halo:
     def __init__(self,dt:units.Quantity['time'],r:units.Quantity['length'],v:units.Quantity['velocity'],density:Density,n_interactions:int=0,
-                 time:units.Quantity['time']=0*run_units.time,background:Mass_Distribution|None=None,last_saved_time:units.Quantity['time']=0*run_units.time,
-                 save_every_n_steps:int|None=None,save_every_time:units.Quantity['time']|None=None,scatter_rounds:list[int]=[],
-                 dynamics_params:leapfrog.Params={},scatter_params:sidm.Params={},sigma:units.Quantity['opacity']=units.Quantity(0,'cm^2/gram'),
-                 scatter_live_only:bool=False,mass_calculation_method:Mass_calculation_methods='rank presorted',
-                 interactions_track:list[NDArray[np.float64]]=[],snapshots:table.QTable=table.QTable(),lattice:Lattice|None=None) -> None:
+                 scatter_rounds:list[int]=[],interactions_track:list[NDArray[np.float64]]=[],time:units.Quantity['time']=0*run_units.time,
+                 background:Mass_Distribution|None=None,lattice:Lattice|None=None,last_saved_time:units.Quantity['time']=0*run_units.time,
+                 save_every_time:units.Quantity['time']|None=None,save_every_n_steps:int|None=None,dynamics_params:leapfrog.Params={},
+                 scatter_params:sidm.Params={},sigma:units.Quantity[run_units.cross_section]=units.Quantity(0,'cm^2/gram'),
+                 mass_calculation_method:physics.utils.Mass_calculation_methods='rank presorted',snapshots:table.QTable=table.QTable()) -> None:
         self.time:units.Quantity['time'] = time.to(run_units.time)
         self.dt:units.Quantity['time'] = dt.to(run_units.time)
         self.density:Density = density
@@ -32,15 +31,13 @@ class Halo:
         self.r:units.Quantity['length'] = r.to(run_units.length)
         self.v:units.Quantity['velocity'] = v.to(run_units.velocity)
         self.particle_index = np.arange(len(r))
-        self.live_particles = np.full(len(r),True)
         self.n_interactions = n_interactions
         self.snapshots:table.QTable = snapshots
         self.save_every_n_steps = save_every_n_steps
-        self.save_every_time = save_every_time if save_every_time is None else save_every_time.to(run_units.time)
-        self.dynamics_params:leapfrog.Params = dynamics_params
-        self.scatter_params:sidm.Params = {'sigma':sigma.to(run_units.cross_section),**scatter_params}
-        self.scatter_live_only = scatter_live_only
-        self.mass_calculation_method:Mass_calculation_methods = mass_calculation_method
+        self.save_every_time:units.Quantity['time']|None = save_every_time if save_every_time is None else save_every_time.to(run_units.time)
+        self._dynamics_params:leapfrog.Params = leapfrog.normalize_params(dynamics_params,add_defaults=True)
+        self._scatter_params:sidm.Params = sidm.normalize_params({'sigma':sigma.to(run_units.cross_section),**scatter_params},add_defaults=True)
+        self.mass_calculation_method:physics.utils.Mass_calculation_methods = mass_calculation_method
         self.interactions_track = interactions_track
         self.background:Mass_Distribution|None = background
         self.initial_particles = self.particles.copy()
@@ -63,17 +60,32 @@ class Halo:
         self.n_interactions = 0
         self.particle_index = np.array(self.initial_particles['particle_index'])
         self.r = self.initial_particles['r'].to(run_units.length)
-        self.live_particles = np.array(self.initial_particles['live'])
         self.v = np.vstack([np.array(self.initial_particles[i]) for i in ['vx','vy','vr']]).T
         self.interactions_track = []
         self.snapshots = table.QTable()
 
     @property
     def particles(self) -> table.QTable:
-        data = table.QTable({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'live':self.live_particles,
-                             'time':[self.time]*len(self.r),'particle_index':self.particle_index})
+        data = table.QTable({'r':self.r,'vx':self.vx,'vy':self.vy,'vr':self.vr,'vp':self.vp,'v_norm':self.v_norm,'time':[self.time]*len(self.r),
+                             'particle_index':self.particle_index})
         data.add_index('particle_index')
         return data
+
+    @property
+    def dynamics_params(self) -> leapfrog.Params:
+        return self._dynamics_params
+
+    @dynamics_params.setter
+    def dynamics_params(self,value:leapfrog.Params) -> None:
+        self._dynamics_params = leapfrog.normalize_params(value)
+
+    @property
+    def scatter_params(self) -> sidm.Params:
+        return self._scatter_params
+
+    @scatter_params.setter
+    def scatter_params(self,value:sidm.Params) -> None:
+        self._scatter_params = sidm.normalize_params(value)
 
 ##Physical properties
 
@@ -97,15 +109,9 @@ class Halo:
     def M(self) -> units.Quantity['mass']:
         halo_mass = physics.utils.M(r=self.r,m=self.unit_mass,lattice=self.lattice,method=self.mass_calculation_method)
         if self.background is not None:
-            background_mass = self.background.at_time(self.time)[self.lattice(self.r.to(run_units.length).value).clip(min=0,max=len(self.lattice)-1).astype(np.int64)]
-        else:
-            background_mass = 0
-        background_mass = units.Quantity(background_mass,self.unit_mass.unit)
-        return cast(units.Quantity['mass'],halo_mass + background_mass)
-
-    @property
-    def orbit_circular_velocity(self) -> units.Quantity['velocity']:
-        return orbit_circular_velocity(self.r_Q,self.M_Q)
+            background_mass = self.background.M_at_time(self.r,self.time)
+            return cast(units.Quantity['mass'],halo_mass+background_mass)
+        return halo_mass
 
     @property
     def vx(self) -> units.Quantity['velocity']:
@@ -144,10 +150,6 @@ class Halo:
     @property
     def E(self) -> units.Quantity['specific energy']:
         return (self.Psi-self.kinetic_energy).to(run_units.specific_energy)
-
-    @property
-    def _local_density(self) -> NDArray[np.float64]:
-        return self._local_density.value
 
     @property
     def local_density(self) -> units.Quantity['mass density']:
@@ -193,8 +195,7 @@ class Halo:
         if self.scatter_params.get('sigma',0) > 0 or self.mass_calculation_method == 'rank presorted':
             self.sort_particles()
         if self.scatter_params.get('sigma',0) > 0:
-            blacklist = np.arange(len(self.r))[~self.live_particles] if self.scatter_live_only else np.array([],dtype=np.int64)
-            self.v,n_interactions,indices,scatter_rounds = sidm.scatter(r=self.r,v=self.v,blacklist=blacklist,dt=self.dt,m=self.unit_mass,**self.scatter_params)
+            self.v,n_interactions,indices,scatter_rounds = sidm.scatter(r=self.r,v=self.v,dt=self.dt,m=self.unit_mass,**self.scatter_params)
             self.n_interactions += n_interactions
             self.interactions_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
@@ -223,7 +224,6 @@ class Halo:
             'save_every_time':self.save_every_time,
             'dynamics_params':self.dynamics_params,
             'scatter_params':self.scatter_params,
-            'scatter_live_only':self.scatter_live_only,
             'mass_calculation_method':self.mass_calculation_method,
             'interactions_track':self.interactions_track,
             'background':self.background,

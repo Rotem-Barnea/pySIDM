@@ -1,30 +1,20 @@
 import numpy as np
-from numba import njit
 from typing import Literal,cast
-from astropy import units,constants
+from astropy import units
 from ..spatial_approximation import Lattice
 from .. import utils,run_units
 
 Mass_calculation_methods = Literal['lattice','rank presorted','rank unsorted']
 
-def get_default_mass_method(method:Mass_calculation_methods|None=None,sigma:units.Quantity[run_units.cross_section]=0*units.Unit('cm^2/gram')) -> Mass_calculation_methods:
-    if method is None and sigma.value == 0:
-        return 'lattice'
-    return method or 'rank presorted'
-
 def M(r:units.Quantity['length'],m:units.Quantity['mass']=units.Quantity(1,run_units.mass),lattice:Lattice|None=None,
       count_self:bool=True,method:Mass_calculation_methods='lattice') -> units.Quantity['mass']:
     if method == 'lattice' and lattice is not None:
-        n_below = np.array((lattice.assign_from_density(r.to(run_units.length).value) - int(not count_self)))
+        n_below = np.array((lattice.assign_from_density(r.value) - int(not count_self)))
     elif method == 'rank presorted':
         n_below = np.arange(len(r))+count_self
     else:
         n_below = utils.rank_array(r)+count_self
     return cast(units.Quantity['mass'],n_below*m)
-
-@njit
-def orbit_circular_velocity(r:units.Quantity['length'],M:units.Quantity['mass']) -> units.Quantity['velocity']:
-    return np.sqrt(constants.G*M/r)
 
 def local_density(r:units.Quantity['length'],max_radius_j:int=10,regulator:units.Quantity['length']=units.Quantity(0,'kpc^3'),
                   accuracy_cutoff:float=0.1) -> units.Quantity['number density']:
