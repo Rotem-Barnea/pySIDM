@@ -32,5 +32,5 @@ class NFW(Density):
         return rho_s/((r/Rs)*(1+(r/Rs))**2)/(1+(r/Rvir)**10)
 
     def calculate_theoretical_M(self,r:units.Quantity['length']) -> units.Quantity['mass']:
-        x = self(r)
+        x = self.to_scale(r)
         return 4*np.pi*self.rho_s*self.Rs**3*(np.log(1+x)-x/(1+x))

@@ -10,7 +10,6 @@ from astropy import units,constants
 from astropy.units.typing import UnitLike
 from .. import utils,run_units
 from ..types import FloatOrArray
-# from ..run_units import time,length,velocity,mass,density,G_units,specific_energy,f_units
 
 class Density:
     def __init__(self,Rmin:units.Quantity['length']=1e-4*units.kpc,Rmax:units.Quantity['length']|None=None,Rs:units.Quantity['length']=1*units.kpc,
@@ -36,17 +35,16 @@ class Density:
   - Mtot = {self.Mtot:.3e}
   - particle mass = {self.unit_mass:.3e}"""
 
-    def __call__(self,x:FloatOrArray) -> FloatOrArray:
-        return self.to_scale(x)
+    def __call__(self,r:units.Quantity['length']) -> units.Quantity['mass density']:
+        return self.rho(r)
 
-    def to_scale(self,x:FloatOrArray) -> FloatOrArray:
-        return (x/self.Rs).value
+    def to_scale(self,x:units.Quantity['length']) -> units.Quantity['dimensionless']:
+        return x.to(self.Rs.unit)/self.Rs
 
     @property
     def Tdyn(self) -> units.Unit:
         if 'Tdyn' not in self.memoization:
-            self.memoization['Tdyn'] = units.def_unit('Tdyn',np.sqrt(self.Rs**3/(constants.G.to(run_units.G_units)*self.Mtot)).to(run_units.time),
-                                                      doc=f'{self.title} dynamic time')
+            self.memoization['Tdyn'] = units.def_unit('Tdyn',np.sqrt(self.Rs**3/(constants.G*self.Mtot)).to(run_units.time),doc=f'{self.title} dynamic time')
         return self.memoization['Tdyn']
 
     @Tdyn.setter

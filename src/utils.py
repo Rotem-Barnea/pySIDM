@@ -172,6 +172,10 @@ def fast_norm(x:NDArray[np.float64],square:bool=False) -> NDArray[np.float64]:
             output[i] = np.sqrt(s)
     return output
 
+def fast_quantity_norm(x:units.Quantity,square:bool=False) -> units.Quantity:
+    out_units = cast(units.Unit,x.unit)**2 if square else x.unit
+    return units.Quantity(fast_norm(x.value,square=square),unit=out_units)
+
 @njit(parallel=True)
 def fast_v_correction(Psi:NDArray[np.float64],Ein:NDArray[np.float64],v_norm:NDArray[np.float64]) -> NDArray[np.float64]:
     output = np.empty((len(v_norm),1),dtype=np.float64)
