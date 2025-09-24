@@ -30,7 +30,6 @@ def f():
 def local_density(
     r: units.Quantity['length'],
     max_radius_j: int = 10,
-    regulator: units.Quantity['length'] = units.Quantity(0, 'kpc^3'),
     accuracy_cutoff: float = 0.1,
 ) -> units.Quantity['number density']:
     """Assumes the array is sorted"""
@@ -42,10 +41,10 @@ def local_density(
     n = np.full(len(x), max_radius_j, dtype=np.int64)
     n[-max_radius_j:] = np.arange(max_radius_j - 1, -1, -1)
 
-    volume = np.full_like(x, regulator.value)
+    volume = np.zeros_like(x)
     mask = dx / x > accuracy_cutoff
-    volume[~mask] += 4 * np.pi * dx[~mask] ** 2 * x[~mask]
-    volume[mask] += 4 / 3 * np.pi * ((dx[mask] + x[mask]) ** 3 - dx[mask] ** 3)
+    volume[~mask] = 4 * np.pi * dx[~mask] ** 2 * x[~mask]
+    volume[mask] = 4 / 3 * np.pi * ((dx[mask] + x[mask]) ** 3 - dx[mask] ** 3)
     density = n[:-1] / volume[:-1]
     density = np.hstack([density, density[-1]])
     return units.Quantity(density, 1 / cast(units.Unit, r.unit) ** 3)

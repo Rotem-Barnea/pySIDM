@@ -167,7 +167,7 @@ class Halo:
     def Phi(self) -> units.Quantity['specific energy']:
         indices = np.argsort(self.r)
         integral = scipy.integrate.cumulative_trapezoid((self.M / self.r**2)[indices], self.r[indices], initial=0)[indices]
-        return -(constants.G * units.Quantity(integral, (self.M / self.r).units)).to(run_units.specific_energy)
+        return -(constants.G * units.Quantity(integral, (self.M / self.r).unit)).to(run_units.specific_energy)
 
     @property
     def Psi(self) -> units.Quantity['specific energy']:
@@ -549,7 +549,7 @@ class Halo:
         ylabel: str | None = 'Density',
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Gyr',
-        title: str | None = 'Scattering location distribution within the first {time}, total of {n_interactions} events',
+        title: str | None = 'Scattering density within the first {time}, total of {n_interactions} events',
         time_format: str = '.1f',
         smooth_sigma: float = 5,
         smooth_interpolate_kind: str = 'linear',

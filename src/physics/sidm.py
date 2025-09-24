@@ -8,7 +8,6 @@ from .. import utils, run_units, physics
 
 class Params(TypedDict, total=False):
     max_radius_j: int
-    regulator: units.Quantity['length']
     max_interactions_per_mini_timestep: int
     max_allowed_rounds: int | None
     kappa: float
@@ -18,7 +17,6 @@ class Params(TypedDict, total=False):
 
 default_params: Params = {
     'max_radius_j': 10,
-    'regulator': units.Quantity(1e-10, '1/kpc^3').to(run_units.number_density),
     'max_interactions_per_mini_timestep': 10000,
     'max_allowed_rounds': None,
     'kappa': 0.002,
@@ -32,8 +30,6 @@ def normalize_params(params: Params, add_defaults: bool = False) -> Params:
         params = {**default_params, **params}
     if 'sigma' in params:
         params['sigma'] = params['sigma'].to(run_units.cross_section)
-    if 'regulator' in params:
-        params['regulator'] = params['regulator'].to(run_units.number_density)
     return params
 
 
@@ -178,7 +174,6 @@ def scatter(
     dt: units.Quantity['time'],
     m: units.Quantity['mass'],
     sigma: units.Quantity[run_units.cross_section],
-    regulator: units.Quantity['length'] = default_params['regulator'],
     blacklist: NDArray[np.int64] = np.array([], dtype=np.int64),
     max_radius_j: int = default_params['max_radius_j'],
     density_accuracy_coef: float = default_params['density_accuracy_coef'],
@@ -192,15 +187,7 @@ def scatter(
     n_interactions = 0
     interacted: list[NDArray[np.int64]] = []
     sigma_value: float = sigma.value
-    local_density = (
-        physics.utils.local_density(
-            r,
-            max_radius_j=max_radius_j,
-            regulator=regulator,
-            accuracy_cutoff=density_accuracy_coef,
-        )
-        * m
-    )
+    local_density = m * physics.utils.local_density(r, max_radius_j=max_radius_j, accuracy_cutoff=density_accuracy_coef)
     local_density_value = local_density.to(run_units.density).value
     scatter_rounds = calculate_scatter_rounds(v, dt, sigma, local_density, kappa, max_allowed_rounds)
     round_dt = dt.value / scatter_rounds
@@ -215,16 +202,7 @@ def scatter(
             whitelist_mask=(scatter_rounds >= round),
         )
         found_pairs = utils.clean_pairs(pairs[pair_found], blacklist=blacklist)
-        v_output = scatter_found_pairs(
-            v=v_output,
-            found_pairs=found_pairs,
-            memory_allocated=max_interactions_per_mini_timestep,
-        )
+        v_output = scatter_found_pairs(v=v_output, found_pairs=found_pairs, memory_allocated=max_interactions_per_mini_timestep)
         n_interactions += len(found_pairs)
         interacted += [found_pairs.ravel()]
-    return (
-        units.Quantity(v_output, v.unit),
-        n_interactions,
-        np.hstack(interacted).astype(np.int64),
-        scatter_rounds.max(),
-    )
+    return units.Quantity(v_output, v.unit), n_interactions, np.hstack(interacted).astype(np.int64), scatter_rounds.max()
