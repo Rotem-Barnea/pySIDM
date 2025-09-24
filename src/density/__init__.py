@@ -1,3 +1,3 @@
-from . import density,nfw
+from . import density, nfw
 
-__all__ = ['density','nfw']
+__all__ = ['density', 'nfw']

@@ -1,50 +1,51 @@
 import numpy as np
 from . import utils
-from numba import njit,prange
+from numba import njit, prange
 from .types import FloatOrArray
 from numpy.typing import NDArray
 from .density.density import Density
-from typing import Any,cast,Self
+from typing import Any, cast, Self
+
 
 class Lattice:
-    def __init__(self,n_posts:int|float,start:float,end:float,log:bool=True) -> None:
+    def __init__(self, n_posts: int | float, start: float, end: float, log: bool = True) -> None:
         self.start = float(start)
         self.end = float(end)
         if log:
-            self.start_lattice:float = np.log10(self.start)
-            self.end_lattice:float = np.log10(self.end)
+            self.start_lattice: float = np.log10(self.start)
+            self.end_lattice: float = np.log10(self.end)
         else:
             self.start_lattice = self.start
             self.end_lattice = self.end
         self.log = log
         self.n_posts = int(n_posts)
-        self.lattice_spacing:float = np.abs(self.end_lattice-self.start_lattice)/self.n_posts
+        self.lattice_spacing: float = np.abs(self.end_lattice - self.start_lattice) / self.n_posts
 
     @classmethod
-    def from_density(cls,density:Density,start:float=1e-4,overide_start:bool=True,n_posts:int|float=int(1e4),**kwargs:Any) -> Self:
-        return cls(start=density.Rmin.value if overide_start else start,end=density.Rmax.value,n_posts=n_posts,**kwargs)
+    def from_density(cls, density: Density, start: float = 1e-4, overide_start: bool = True, n_posts: int | float = int(1e4), **kwargs: Any) -> Self:
+        return cls(start=density.Rmin.value if overide_start else start, end=density.Rmax.value, n_posts=n_posts, **kwargs)
 
     def __len__(self) -> int:
         return self.n_posts
 
-    def __call__(self,x:FloatOrArray) -> FloatOrArray:
+    def __call__(self, x: FloatOrArray) -> FloatOrArray:
         return self.to_lattice_coordinates(x)
 
     @property
     def posts(self) -> NDArray[np.float64]:
         if self.log:
-            return np.geomspace(self.start,self.end,self.n_posts)
-        return np.linspace(self.start,self.end,self.n_posts)
+            return np.geomspace(self.start, self.end, self.n_posts)
+        return np.linspace(self.start, self.end, self.n_posts)
 
     @property
     def post_volume(self) -> NDArray[np.float64]:
         if self.log:
             posts = self.posts
-            return 4*np.pi*posts**2*np.diff(posts,1,append=posts[-1])
-        return 4*np.pi*self.posts**2*self.lattice_spacing
+            return 4 * np.pi * posts**2 * np.diff(posts, 1, append=posts[-1])
+        return 4 * np.pi * self.posts**2 * self.lattice_spacing
 
-    def update(self,r:NDArray[np.float64],n_posts:int|float|None=None) -> None:
-        self.end = np.max([r.max(),self.end])
+    def update(self, r: NDArray[np.float64], n_posts: int | float | None = None) -> None:
+        self.end = np.max([r.max(), self.end])
         if self.log:
             self.start_lattice = np.log10(self.start)
             self.end_lattice = np.log10(self.end)
@@ -53,11 +54,13 @@ class Lattice:
             self.end_lattice = self.end
         if n_posts:
             self.n_posts = int(n_posts)
-        self.lattice_spacing = np.abs(self.end_lattice-self.start_lattice)/self.n_posts
+        self.lattice_spacing = np.abs(self.end_lattice - self.start_lattice) / self.n_posts
 
     @staticmethod
     @njit(parallel=True)
-    def fast_augment_to_lattice(x:NDArray[np.float64],start_lattice:float,log:bool,clip:bool=False,min_lattice:float=0,max_lattice:int=100000) -> NDArray[np.float64]:
+    def fast_augment_to_lattice(
+        x: NDArray[np.float64], start_lattice: float, log: bool, clip: bool = False, min_lattice: float = 0, max_lattice: int = 100000
+    ) -> NDArray[np.float64]:
         output = np.empty_like(x)
         for i in prange(len(x)):
             if log:
@@ -74,64 +77,64 @@ class Lattice:
 
     @staticmethod
     @njit(parallel=True)
-    def fast_augment_from_lattice(x:NDArray[np.float64],start_lattice:float,log:bool) -> NDArray[np.float64]:
+    def fast_augment_from_lattice(x: NDArray[np.float64], start_lattice: float, log: bool) -> NDArray[np.float64]:
         output = np.empty_like(x)
         for i in prange(len(x)):
             if log:
-                output[i] = 10**(x[i] + start_lattice)
+                output[i] = 10 ** (x[i] + start_lattice)
             else:
                 output[i] = x[i] + start_lattice
         return output
 
-    def augment_to_lattice(self,x:FloatOrArray,clip:bool=True) -> FloatOrArray:
-        output = self.fast_augment_to_lattice(np.atleast_1d(x),self.start_lattice,self.log,clip,0,len(self))
+    def augment_to_lattice(self, x: FloatOrArray, clip: bool = True) -> FloatOrArray:
+        output = self.fast_augment_to_lattice(np.atleast_1d(x), self.start_lattice, self.log, clip, 0, len(self))
         if np.isscalar(x):
             output = output[0]
-        return cast(FloatOrArray,output)
+        return cast(FloatOrArray, output)
 
-    def augment_from_lattice(self,x:FloatOrArray) -> FloatOrArray:
-        output = self.fast_augment_from_lattice(np.atleast_1d(x),self.start_lattice,self.log)
+    def augment_from_lattice(self, x: FloatOrArray) -> FloatOrArray:
+        output = self.fast_augment_from_lattice(np.atleast_1d(x), self.start_lattice, self.log)
         if np.isscalar(x):
             output = output[0]
-        return cast(FloatOrArray,output)
+        return cast(FloatOrArray, output)
 
-    def in_lattice(self,x:FloatOrArray) -> FloatOrArray:
-        return cast(FloatOrArray,(x >= self.start) * (x <= self.end))
+    def in_lattice(self, x: FloatOrArray) -> FloatOrArray:
+        return cast(FloatOrArray, (x >= self.start) * (x <= self.end))
 
-    def to_lattice_coordinates(self,x:FloatOrArray,clip:bool=True) -> FloatOrArray:
-        x_lattice = self.augment_to_lattice(x,clip)/self.lattice_spacing
+    def to_lattice_coordinates(self, x: FloatOrArray, clip: bool = True) -> FloatOrArray:
+        x_lattice = self.augment_to_lattice(x, clip) / self.lattice_spacing
         if np.isscalar(x):
             if x_lattice == 0:
-                return cast(FloatOrArray,0)
+                return cast(FloatOrArray, 0)
             else:
-                return cast(FloatOrArray,int(x_lattice))
+                return cast(FloatOrArray, int(x_lattice))
         assert isinstance(x_lattice, np.ndarray)
         x_lattice[x == 0] = 0
         x_lattice = (x_lattice).astype(int)
-        return cast(FloatOrArray,x_lattice)
+        return cast(FloatOrArray, x_lattice)
 
-    def to_space_coordinates(self,x:FloatOrArray) -> FloatOrArray:
-        return self.augment_from_lattice(x*self.lattice_spacing)
+    def to_space_coordinates(self, x: FloatOrArray) -> FloatOrArray:
+        return self.augment_from_lattice(x * self.lattice_spacing)
 
-    def lattice_to_density(self,x:NDArray[np.float64]) -> NDArray[np.int64]:
-        return np.bincount(x.clip(min=0),minlength=len(self))
+    def lattice_to_density(self, x: NDArray[np.float64]) -> NDArray[np.int64]:
+        return np.bincount(x.clip(min=0), minlength=len(self))
 
-    def lattice_to_density_cumsum(self,x:NDArray[np.float64]) -> NDArray[np.int64]:
+    def lattice_to_density_cumsum(self, x: NDArray[np.float64]) -> NDArray[np.int64]:
         density = self.lattice_to_density(x)
         return np.cumsum(density)
 
-    def assign_from_density(self,r:FloatOrArray) -> FloatOrArray:
+    def assign_from_density(self, r: FloatOrArray) -> FloatOrArray:
         x = np.atleast_1d(self(r))
         density_cumsum = self.lattice_to_density_cumsum(x).astype(np.float64)
-        assigned = utils.fast_assign(x,density_cumsum)
+        assigned = utils.fast_assign(x, density_cumsum)
         if np.isscalar(r):
             return assigned[0]
-        return cast(FloatOrArray,assigned)
+        return cast(FloatOrArray, assigned)
 
-    def assign_spatial_density(self,r:FloatOrArray,unit_mass:float) -> FloatOrArray:
+    def assign_spatial_density(self, r: FloatOrArray, unit_mass: float) -> FloatOrArray:
         x = np.atleast_1d(self(r))
-        density = unit_mass*self.lattice_to_density(x)/self.post_volume
-        assigned = utils.fast_assign(x,density)
+        density = unit_mass * self.lattice_to_density(x) / self.post_volume
+        assigned = utils.fast_assign(x, density)
         if np.isscalar(r):
             return assigned[0]
-        return cast(FloatOrArray,assigned)
+        return cast(FloatOrArray, assigned)
