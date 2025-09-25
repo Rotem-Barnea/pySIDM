@@ -11,7 +11,6 @@ class Params(TypedDict, total=False):
     max_interactions_per_mini_timestep: int
     max_allowed_rounds: int | None
     kappa: float
-    density_accuracy_coef: float
     sigma: units.Quantity[run_units.cross_section]
 
 
@@ -20,7 +19,6 @@ default_params: Params = {
     'max_interactions_per_mini_timestep': 10000,
     'max_allowed_rounds': None,
     'kappa': 0.002,
-    'density_accuracy_coef': 0.1,
     'sigma': units.Quantity(0, 'cm^2/gram').to(run_units.cross_section),
 }
 
@@ -176,7 +174,6 @@ def scatter(
     sigma: units.Quantity[run_units.cross_section],
     blacklist: NDArray[np.int64] = np.array([], dtype=np.int64),
     max_radius_j: int = default_params['max_radius_j'],
-    density_accuracy_coef: float = default_params['density_accuracy_coef'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
     max_interactions_per_mini_timestep: int = default_params['max_interactions_per_mini_timestep'],
@@ -187,7 +184,7 @@ def scatter(
     n_interactions = 0
     interacted: list[NDArray[np.int64]] = []
     sigma_value: float = sigma.value
-    local_density = m * physics.utils.local_density(r, max_radius_j=max_radius_j, accuracy_cutoff=density_accuracy_coef)
+    local_density = physics.utils.local_density(r, m, max_radius_j=max_radius_j)
     local_density_value = local_density.to(run_units.density).value
     scatter_rounds = calculate_scatter_rounds(v, dt, sigma, local_density, kappa, max_allowed_rounds)
     round_dt = dt.value / scatter_rounds

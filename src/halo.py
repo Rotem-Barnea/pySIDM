@@ -24,13 +24,16 @@ class Halo:
         dt: units.Quantity['time'],
         r: units.Quantity['length'],
         v: units.Quantity['velocity'],
-        density: Density,
+        m: units.Quantity['mass'],
+        particle_type: NDArray[np.int64] | None = None,
+        Tdyn: units.Quantity['time'] | None = None,
+        Phi0: units.Quantity['energy'] = units.Quantity(0, run_units.energy),
+        densities: list[Density] = [],
         n_interactions: int = 0,
         scatter_rounds: list[int] = [],
         interactions_track: list[NDArray[np.float64]] = [],
         time: units.Quantity['time'] = 0 * run_units.time,
         background: Mass_Distribution | None = None,
-        lattice: Lattice | None = None,
         last_saved_time: units.Quantity['time'] = 0 * run_units.time,
         save_every_time: units.Quantity['time'] | None = None,
         save_every_n_steps: int | None = None,
@@ -42,11 +45,20 @@ class Halo:
     ) -> None:
         self.time: units.Quantity['time'] = time.to(run_units.time)
         self.dt: units.Quantity['time'] = dt.to(run_units.time)
-        self.density: Density = density
-        self.lattice: Lattice = lattice if lattice is not None else Lattice.from_density(self.density)
+        self.densities: list[Density] = densities
         self.r: units.Quantity['length'] = r.to(run_units.length)
         self.v: units.Quantity['velocity'] = v.to(run_units.velocity)
+        self.m: units.Quantity['mass'] = m.to(run_units.mass)
+        self.particle_type: NDArray[np.int64] = particle_type if particle_type is not None else np.zeros(len(r), dtype=np.int64)
         self.particle_index = np.arange(len(r))
+        self.Tdyn: units.Quantity['time']
+        if Tdyn is not None:
+            self.Tdyn = Tdyn.to(run_units.time)
+        elif len(self.densities) > 0:
+            self.Tdyn = self.densities[0].Tdyn.to(run_units.time)
+        elif len(self.densities) == 0:
+            self.Tdyn = units.Quantity(1, run_units.time)
+        self.Phi0: units.Quantity['energy'] = Phi0
         self.n_interactions = n_interactions
         self.snapshots: table.QTable = snapshots
         self.save_every_n_steps = save_every_n_steps
@@ -61,27 +73,41 @@ class Halo:
         self.scatter_rounds = scatter_rounds
 
     @classmethod
-    def setup(cls, density: Density, steps_per_Tdyn: int | float, n_particles: int | float, **kwargs: Any) -> Self:
-        r = density.roll_r(int(n_particles))
-        v = density.roll_v_3d(r)
-        dt: units.Quantity = cast(units.Quantity, (density.Tdyn / int(steps_per_Tdyn)))
-        return cls(r=r, v=v, dt=dt, density=density, **kwargs)
+    def setup(cls, densities: list[Density], particle_types: list[int], n_particles: list[int | float], **kwargs: Any) -> Self:
+        r, v, particle_type, m = [], [], [], []
+        for density, p_type, n in zip(densities, particle_types, n_particles):
+            r_sub = density.roll_r(int(n)).to(run_units.length)
+            v_sub = density.roll_v_3d(r_sub).to(run_units.velocity)
+            r += [r_sub]
+            v += [v_sub]
+            particle_type += [[p_type] * int(n)]
+            m += [[1] * int(n) * density.unit_mass]
+
+        return cls(
+            r=cast(units.Quantity['length'], np.hstack(r)),
+            v=cast(units.Quantity['length'], np.hstack(v)),
+            m=cast(units.Quantity['length'], np.hstack(m)),
+            particle_type=np.hstack(particle_type),
+            densities=densities,
+            **kwargs,
+        )
 
     def add_background(self, background: Mass_Distribution) -> None:
         self.background = background
-        self.lattice = background.lattice
 
     def reset(self) -> None:
         self.time = 0 * run_units.time
         self.n_interactions = 0
         self.particle_index = np.array(self.initial_particles['particle_index'])
         self.r = self.initial_particles['r'].to(run_units.length)
-        self.v = np.vstack([np.array(self.initial_particles[i]) for i in ['vx', 'vy', 'vr']]).T
+        self.v = np.vstack([cast(units.Quantity, self.initial_particles[i]) for i in ['vx', 'vy', 'vr']]).T.to(run_units.velocity)
+        self.particle_type = self.initial_particles['particle_type']
         self.interactions_track = []
         self.snapshots = table.QTable()
 
     @property
     def particles(self) -> table.QTable:
+        self.sort_particles()
         data = table.QTable(
             {
                 'r': self.r,
@@ -89,8 +115,11 @@ class Halo:
                 'vy': self.vy,
                 'vr': self.vr,
                 'vp': self.vp,
+                'm': self.m,
                 'v_norm': self.v_norm,
                 'time': [self.time] * len(self.r),
+                'E': self.E,
+                'particle_type': self.particle_type,
                 'particle_index': self.particle_index,
             }
         )
@@ -116,24 +145,12 @@ class Halo:
     ##Physical properties
 
     @property
-    def unit_mass(self) -> units.Quantity['mass']:
-        return self.density.unit_mass
-
-    @property
     def time_step(self) -> units.Unit:
         return units.def_unit('time step', self.dt.to(run_units.time), format={'latex': r'time\ step'})
 
     @property
-    def Tdyn(self) -> units.Unit:
-        return self.density.Tdyn
-
-    @property
-    def Tdyn_value(self) -> float:
-        return cast(float, self.density.Tdyn.to(run_units.time))
-
-    @property
     def M(self) -> units.Quantity['mass']:
-        halo_mass = physics.utils.M(r=self.r, m=self.unit_mass, lattice=self.lattice, method=self.mass_calculation_method)
+        halo_mass = physics.utils.M(r=self.r, m=self.m, method=self.mass_calculation_method)
         if self.background is not None:
             background_mass = self.background.M_at_time(self.r, self.time)
             return cast(units.Quantity['mass'], halo_mass + background_mass)
@@ -160,26 +177,24 @@ class Halo:
         return utils.fast_quantity_norm(self.v)
 
     @property
-    def kinetic_energy(self) -> units.Quantity['specific energy']:
-        return 0.5 * self.v_norm**2
+    def kinetic_energy(self) -> units.Quantity['energy']:
+        return 0.5 * self.m * self.v_norm**2
 
     @property
-    def Phi(self) -> units.Quantity['specific energy']:
-        indices = np.argsort(self.r)
-        integral = scipy.integrate.cumulative_trapezoid((self.M / self.r**2)[indices], self.r[indices], initial=0)[indices]
-        return -(constants.G * units.Quantity(integral, (self.M / self.r).unit)).to(run_units.specific_energy)
+    def Phi(self) -> units.Quantity['energy']:
+        return -(constants.G * self.M * self.m / self.r).to(run_units.energy)
 
     @property
     def Psi(self) -> units.Quantity['specific energy']:
-        return (self.density.Phi0 - self.Phi).to(run_units.specific_energy)
+        return (self.Phi0 - self.Phi).to(run_units.energy)
 
     @property
     def E(self) -> units.Quantity['specific energy']:
-        return (self.Psi - self.kinetic_energy).to(run_units.specific_energy)
+        return (self.Psi - self.kinetic_energy).to(run_units.energy)
 
     @property
     def local_density(self) -> units.Quantity['mass density']:
-        return physics.utils.local_density(self.r) * self.unit_mass
+        return physics.utils.local_density(self.r, self.m)
 
     @property
     def ranks(self) -> NDArray[np.int64]:
@@ -189,6 +204,8 @@ class Halo:
         indices = np.argsort(self.r)
         self.r = self.r[indices]
         self.v = self.v[indices]
+        self.m = self.m[indices]
+        self.particle_type = self.particle_type[indices]
         self.particle_index = self.particle_index[indices]
 
     ##Dynamic evolution
@@ -216,12 +233,11 @@ class Halo:
         return False
 
     def step(self) -> None:
+        self.sort_particles()
         if self.is_save_round():
             self.save_snapshot()
-        if self.scatter_params.get('sigma', 0) > 0 or self.mass_calculation_method == 'rank presorted':
-            self.sort_particles()
         if self.scatter_params.get('sigma', 0) > 0:
-            self.v, n_interactions, indices, scatter_rounds = sidm.scatter(r=self.r, v=self.v, dt=self.dt, m=self.unit_mass, **self.scatter_params)
+            self.v, n_interactions, indices, scatter_rounds = sidm.scatter(r=self.r, v=self.v, dt=self.dt, m=self.m, **self.scatter_params)
             self.n_interactions += n_interactions
             self.interactions_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
@@ -243,8 +259,7 @@ class Halo:
         payload = {
             'time': self.time,
             'dt': self.dt,
-            'density': self.density,
-            'lattice': self.lattice,
+            'densities': self.densities,
             'n_interactions': self.n_interactions,
             'save_every_n_steps': self.save_every_n_steps,
             'save_every_time': self.save_every_time,
@@ -375,7 +390,7 @@ class Halo:
         fig, ax = self.plot_distribution(key='r', data=data, cumulative=cumulative, x_units=x_units, x_range=x_range, **kwargs)
         if add_density:
             params = {'r_start': cast(units.Quantity, x_range[0]), 'r_end': cast(units.Quantity, x_range[1])} if x_range is not None else {}
-            return self.density.plot_radius_distribution(
+            return self.densities[0].plot_radius_distribution(
                 cumulative=cumulative, plot_units=self.plot_unit_type('r', x_units), fig=fig, ax=ax, **params
             )
         return fig, ax

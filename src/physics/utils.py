@@ -1,50 +1,42 @@
 import numpy as np
 from typing import Literal, cast
 from astropy import units
-from ..spatial_approximation import Lattice
 from .. import utils, run_units
 
-Mass_calculation_methods = Literal['lattice', 'rank presorted', 'rank unsorted']
+Mass_calculation_methods = Literal['rank presorted', 'rank unsorted']
 
 
 def M(
     r: units.Quantity['length'],
-    m: units.Quantity['mass'] = units.Quantity(1, run_units.mass),
-    lattice: Lattice | None = None,
+    m: units.Quantity['mass'] | None = None,
     count_self: bool = True,
-    method: Mass_calculation_methods = 'lattice',
+    method: Mass_calculation_methods = 'rank unsorted',
 ) -> units.Quantity['mass']:
-    if method == 'lattice' and lattice is not None:
-        n_below = np.array((lattice.assign_from_density(r.value) - int(not count_self)))
-    elif method == 'rank presorted':
-        n_below = np.arange(len(r)) + count_self
-    else:
-        n_below = utils.rank_array(r) + count_self
-    return cast(units.Quantity['mass'], n_below * m)
+    masses = m if m is not None else units.Quantity([1] * len(r), run_units.mass)
+    if method == 'rank unsorted':
+        masses = masses[utils.rank_array(r)]
+    M = masses.cumsum()
+    if not count_self:
+        M -= masses
+    return cast(units.Quantity['mass'], M)
 
 
-def f():
-    return
-
-
-def local_density(
-    r: units.Quantity['length'],
-    max_radius_j: int = 10,
-    accuracy_cutoff: float = 0.1,
-) -> units.Quantity['number density']:
+def local_density(r: units.Quantity['length'], m: units.Quantity['mass'], max_radius_j: int = 10) -> units.Quantity['mass density']:
     """Assumes the array is sorted"""
     x = r.value
-    dx = np.zeros_like(x)
-    dx[:-max_radius_j] = x[max_radius_j:]
-    dx[-max_radius_j:] = x[-1]
-    dx -= x
+    x_end = np.zeros_like(x)
+    x_end[:-max_radius_j] = x[max_radius_j:]
+    x_end[-max_radius_j:] = x[-1]
     n = np.full(len(x), max_radius_j, dtype=np.int64)
     n[-max_radius_j:] = np.arange(max_radius_j - 1, -1, -1)
 
+    y = m.value.cumsum()
+    mass = np.zeros_like(y)
+    mass[:-max_radius_j] = y[max_radius_j:]
+    mass[-max_radius_j:] = y[-1]
+
     volume = np.zeros_like(x)
-    mask = dx / x > accuracy_cutoff
-    volume[~mask] = 4 * np.pi * dx[~mask] ** 2 * x[~mask]
-    volume[mask] = 4 / 3 * np.pi * ((dx[mask] + x[mask]) ** 3 - dx[mask] ** 3)
-    density = n[:-1] / volume[:-1]
+    volume = 4 / 3 * np.pi * (x_end**3 - x**3)
+    density = mass[:-1] / volume[:-1]
     density = np.hstack([density, density[-1]])
-    return units.Quantity(density, 1 / cast(units.Unit, r.unit) ** 3)
+    return units.Quantity(density, m.unit / cast(units.Unit, r.unit) ** 3)

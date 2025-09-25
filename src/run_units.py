@@ -9,6 +9,7 @@ mass: units.UnitBase = cast(units.UnitBase, units.Msun)
 ## Compound units
 velocity: units.UnitBase = cast(units.UnitBase, length / time)
 acceleration: units.UnitBase = cast(units.UnitBase, length / time**2)
+energy: units.UnitBase = cast(units.UnitBase, mass * velocity**2)
 specific_energy: units.UnitBase = cast(units.UnitBase, velocity**2)
 density: units.UnitBase = cast(units.UnitBase, mass / length**3)
 number_density: units.UnitBase = cast(units.UnitBase, 1 / length**3)
