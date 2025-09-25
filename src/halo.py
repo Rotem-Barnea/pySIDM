@@ -202,10 +202,6 @@ class Halo:
     def ranks(self) -> NDArray[np.int64]:
         return utils.rank_array(self.r)
 
-    @property
-    def dt_scatter(self) -> Quantity['time']:
-        return self.scatter_every_n_steps * self.dt
-
     def sort_particles(self) -> None:
         indices = np.argsort(self.r)
         self.r = self.r[indices]
@@ -213,6 +209,40 @@ class Halo:
         self.m = self.m[indices]
         self.particle_type = self.particle_type[indices]
         self.particle_index = self.particle_index[indices]
+
+    ##Scatter-related properties
+
+    @property
+    def dt_scatter(self) -> Quantity['time']:
+        return self.scatter_every_n_steps * self.dt
+
+    @property
+    def scatter_timescale(self) -> Quantity['time']:
+        return sidm.t_scatter(local_density=self.local_density, sigma=self.scatter_params.get('sigma', None), v_norm=self.v_norm)
+
+    @property
+    def required_scatter_rounds(self) -> NDArray[np.int64]:
+        return sidm.calculate_scatter_rounds(
+            v=self.v,
+            dt=self.dt_scatter,
+            local_density=self.local_density,
+            sigma=self.scatter_params.get('sigma', None),
+            kappa=self.scatter_params.get('kappa', sidm.default_params.get('kappa', 1)),
+            max_allowed_rounds=self.scatter_params.get('max_allowed_rounds', sidm.default_params.get('max_allowed_rounds', None)),
+            random_round_rounding=self.scatter_params.get('random_round_rounding', sidm.default_params.get('random_round_rounding', False)),
+        )
+
+    @property
+    def required_scatter_rounds_uncapped(self) -> NDArray[np.int64]:
+        return sidm.calculate_scatter_rounds(
+            v=self.v,
+            dt=self.dt_scatter,
+            local_density=self.local_density,
+            sigma=self.scatter_params.get('sigma', None),
+            kappa=self.scatter_params.get('kappa', sidm.default_params.get('kappa', 1)),
+            max_allowed_rounds=None,
+            random_round_rounding=self.scatter_params.get('random_round_rounding', sidm.default_params.get('random_round_rounding', False)),
+        )
 
     ##Dynamic evolution
 
@@ -628,4 +658,101 @@ class Halo:
         smoothed_rounds = scipy.ndimage.gaussian_filter1d(rounds, sigma=smooth_sigma) if smooth_sigma > 0 else rounds
         time = (np.arange(len(rounds)) * self.dt).to(time_units)
         sns.lineplot(x=time, y=smoothed_rounds, ax=ax)
+        return fig, ax
+
+    def plot_required_scatter_rounds(
+        self,
+        x_range: Quantity['length'] | None = None,
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = 'Number of required scattering rounds',
+        title: str | None = r'Number of required scattering rounds to match $\kappa$={kappa} rate after t={time}',
+        x_units: UnitLike = 'kpc',
+        time_units: UnitLike = 'Gyr',
+        time_format: str = '.1f',
+        smooth_sigma: float = 50,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        self.sort_particles()
+        time_units = self.fill_time_unit(time_units)
+        x = self.r
+        rounds_uncapped = self.required_scatter_rounds_uncapped
+        smoothed_rounds_uncapped = scipy.ndimage.gaussian_filter1d(rounds_uncapped, sigma=smooth_sigma) if smooth_sigma > 0 else rounds_uncapped
+        rounds = self.required_scatter_rounds
+        smoothed_rounds = scipy.ndimage.gaussian_filter1d(rounds, sigma=smooth_sigma) if smooth_sigma > 0 else rounds
+        if x_range is not None:
+            smoothed_rounds_uncapped = smoothed_rounds_uncapped[(x > x_range[0]) * (x < x_range[1])]
+            smoothed_rounds = smoothed_rounds[(x > x_range[0]) * (x < x_range[1])]
+            x = x[(x > x_range[0]) * (x < x_range[1])]
+        if title is not None:
+            title = title.format(
+                kappa=self.scatter_params.get('kappa', None),
+                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
+            )
+        xlabel = utils.add_label_unit(xlabel, x_units)
+        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
+        sns.lineplot(x=x, y=smoothed_rounds_uncapped, label='Required', ax=ax)
+        sns.lineplot(x=x, y=smoothed_rounds, label='After cap', ax=ax)
+        ax.legend()
+        return fig, ax
+
+    def plot_scattering_timescale(
+        self,
+        x_range: Quantity['length'] | None = None,
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = r'$t_{\mathrm{scatter}}$',
+        title: str | None = r'Scattering timescale after t={time}',
+        x_units: UnitLike = 'kpc',
+        title_units: UnitLike = 'Gyr',
+        time_units: UnitLike = 'Myr',
+        title_time_format: str = '.1f',
+        smooth_sigma: float = 50,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        self.sort_particles()
+        x = self.r
+        time_units = self.fill_time_unit(time_units)
+        title_units = self.fill_time_unit(title_units)
+        time = self.scatter_timescale.to(time_units)
+        smoothed_time = scipy.ndimage.gaussian_filter1d(time, sigma=smooth_sigma) if smooth_sigma > 0 else time
+        if x_range is not None:
+            smoothed_time = smoothed_time[(x > x_range[0]) * (x < x_range[1])]
+            x = x[(x > x_range[0]) * (x < x_range[1])]
+        if title is not None:
+            title = title.format(time=self.time.to(title_units).to_string(format='latex', formatter=title_time_format))
+        xlabel = utils.add_label_unit(xlabel, x_units)
+        ylabel = utils.add_label_unit(ylabel, time_units)
+        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
+        sns.lineplot(x=x, y=smoothed_time, ax=ax)
+        return fig, ax
+
+    def plot_local_density(
+        self,
+        x_range: Quantity['length'] | None = None,
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = 'local density',
+        title: str | None = r'Local density ({nn} nearest neighbors) after t={time}',
+        x_units: UnitLike = 'kpc',
+        density_units: UnitLike = 'Msun/kpc**3',
+        time_units: UnitLike = 'Gyr',
+        time_format: str = '.1f',
+        smooth_sigma: float = 50,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        self.sort_particles()
+        x = self.r
+        time_units = self.fill_time_unit(time_units)
+        local_density = self.local_density.to(density_units)
+        smoothed_local_density = scipy.ndimage.gaussian_filter1d(local_density, sigma=smooth_sigma) if smooth_sigma > 0 else local_density
+        if x_range is not None:
+            smoothed_local_density = smoothed_local_density[(x > x_range[0]) * (x < x_range[1])]
+            x = x[(x > x_range[0]) * (x < x_range[1])]
+        if title is not None:
+            title = title.format(
+                nn=self.scatter_params.get('max_radius_j', None),
+                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
+            )
+        xlabel = utils.add_label_unit(xlabel, x_units)
+        ylabel = utils.add_label_unit(ylabel, density_units)
+        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
+        sns.lineplot(x=x, y=smoothed_local_density, ax=ax)
         return fig, ax

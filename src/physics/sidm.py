@@ -46,7 +46,7 @@ def t_scatter(
 def calculate_scatter_rounds(
     v: Quantity['velocity'],
     dt: Quantity['time'],
-    sigma: Quantity[run_units.cross_section],
+    sigma: Quantity[run_units.cross_section] | None,
     local_density: Quantity['mass density'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = None,
