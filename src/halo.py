@@ -327,6 +327,21 @@ class Halo:
             return self.time_step
         return unit
 
+    def print_energy_change_summary(self) -> str:
+        initial = self.initial_particles.copy()
+        final = self.particles.copy()
+        return f"""After {self.current_step} steps with dt={self.dt:.4f} | {self.time:.1f}
+        Total energy at the start:      {initial['E'].sum():.1f}
+        Total energy at the end:        {final['E'].sum():.1f}
+        Energy change:                  {np.abs(final['E'].sum() - initial['E'].sum()):.1f}
+        Energy change per step:         {np.abs(final['E'].sum() - initial['E'].sum()) / self.current_step:.1e}
+        Energy change per dt:           {np.abs(final['E'].sum() - initial['E'].sum()) / self.dt:.1e}
+        Relative energy change:         {np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum():.3%}
+        Mean velocity change:           {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second'):.1f}
+        Mean velocity change per step:  {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.current_step:.1e}
+        Mean velocity change per dt:    {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.dt:.1e}
+        Relative Mean velocity change:  {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()) / initial['v_norm'].mean():.3%}"""
+
     def plot_r_density_over_time(
         self,
         clip: units.Quantity['length'] | None = None,

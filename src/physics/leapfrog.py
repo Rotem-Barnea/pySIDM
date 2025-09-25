@@ -67,16 +67,16 @@ def fast_step(
     r_convergence_threshold: float = 1e-3,
     vr_convergence_threshold: float = 0.001,
     richardson_extrapolation: bool = False,
+    first_mini_step: int = 0,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     output_r = np.empty_like(r)
     output_v = np.empty_like(v)
     for i in prange(len(r)):
         r_fine: float = 0.0
         v_fine: NDArray[np.float64] = np.zeros(3, dtype=np.float64)
-        r_coarse, v_coarse = particle_step(r=r[i], vx=v[i, 0], vy=v[i, 1], vr=v[i, 2], M=M[i], dt=dt, N=1)
-        for mini_step in range(0, max_minirounds):
-            N = 2 ** (mini_step)
-            r_fine, v_fine = particle_step(r=r[i], vx=v[i, 0], vy=v[i, 1], vr=v[i, 2], M=M[i], dt=dt, N=2 * N + 1)
+        r_coarse, v_coarse = particle_step(r=r[i], vx=v[i, 0], vy=v[i, 1], vr=v[i, 2], M=M[i], dt=dt, N=2**first_mini_step + 1)
+        for mini_step in range(first_mini_step, first_mini_step + max_minirounds):
+            r_fine, v_fine = particle_step(r=r[i], vx=v[i, 0], vy=v[i, 1], vr=v[i, 2], M=M[i], dt=dt, N=2 ** (mini_step + 1) + 1)
             if (np.abs(r_coarse - r_fine) < r_convergence_threshold) and (np.abs(v_coarse[2] - v_fine[2]) < vr_convergence_threshold):
                 break
             r_coarse = r_fine
