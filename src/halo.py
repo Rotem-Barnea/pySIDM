@@ -9,7 +9,8 @@ from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from numpy.typing import NDArray
 from typing import Any, Self, Callable, cast
-from astropy import units, table, constants
+from astropy import table, constants
+from astropy.units import Quantity, Unit, def_unit
 from astropy.units.typing import UnitLike
 from .spatial_approximation import Lattice
 from .density.density import Density
@@ -21,56 +22,57 @@ from .physics import sidm, leapfrog
 class Halo:
     def __init__(
         self,
-        dt: units.Quantity['time'],
-        r: units.Quantity['length'],
-        v: units.Quantity['velocity'],
-        m: units.Quantity['mass'],
+        dt: Quantity['time'],
+        r: Quantity['length'],
+        v: Quantity['velocity'],
+        m: Quantity['mass'],
         particle_type: NDArray[np.int64] | None = None,
-        Tdyn: units.Quantity['time'] | None = None,
-        Phi0: units.Quantity['energy'] = units.Quantity(0, run_units.energy),
+        Tdyn: Quantity['time'] | None = None,
+        Phi0: Quantity['energy'] = Quantity(0, run_units.energy),
         densities: list[Density] = [],
         n_interactions: int = 0,
         scatter_rounds: list[int] = [],
         interactions_track: list[NDArray[np.float64]] = [],
-        time: units.Quantity['time'] = 0 * run_units.time,
+        time: Quantity['time'] = 0 * run_units.time,
         background: Mass_Distribution | None = None,
-        last_saved_time: units.Quantity['time'] = 0 * run_units.time,
-        save_every_time: units.Quantity['time'] | None = None,
+        last_saved_time: Quantity['time'] = 0 * run_units.time,
+        save_every_time: Quantity['time'] | None = None,
         save_every_n_steps: int | None = None,
         dynamics_params: leapfrog.Params = {},
         scatter_params: sidm.Params = {},
-        sigma: units.Quantity[run_units.cross_section] = units.Quantity(0, 'cm^2/gram'),
         mass_calculation_method: physics.utils.Mass_calculation_methods = 'rank presorted',
         snapshots: table.QTable = table.QTable(),
+        scatter_every_n_steps: int = 1,
     ) -> None:
-        self.time: units.Quantity['time'] = time.to(run_units.time)
-        self.dt: units.Quantity['time'] = dt.to(run_units.time)
+        self.time: Quantity['time'] = time.to(run_units.time)
+        self.dt: Quantity['time'] = dt.to(run_units.time)
         self.densities: list[Density] = densities
-        self.r: units.Quantity['length'] = r.to(run_units.length)
-        self.v: units.Quantity['velocity'] = v.to(run_units.velocity)
-        self.m: units.Quantity['mass'] = m.to(run_units.mass)
+        self.r: Quantity['length'] = r.to(run_units.length)
+        self.v: Quantity['velocity'] = v.to(run_units.velocity)
+        self.m: Quantity['mass'] = m.to(run_units.mass)
         self.particle_type: NDArray[np.int64] = particle_type if particle_type is not None else np.zeros(len(r), dtype=np.int64)
         self.particle_index = np.arange(len(r))
-        self.Tdyn: units.Quantity['time']
+        self.Tdyn: Quantity['time']
         if Tdyn is not None:
             self.Tdyn = Tdyn.to(run_units.time)
         elif len(self.densities) > 0:
             self.Tdyn = self.densities[0].Tdyn.to(run_units.time)
         elif len(self.densities) == 0:
-            self.Tdyn = units.Quantity(1, run_units.time)
-        self.Phi0: units.Quantity['energy'] = Phi0
+            self.Tdyn = Quantity(1, run_units.time)
+        self.Phi0: Quantity['energy'] = Phi0
         self.n_interactions = n_interactions
         self.snapshots: table.QTable = snapshots
         self.save_every_n_steps = save_every_n_steps
-        self.save_every_time: units.Quantity['time'] | None = save_every_time if save_every_time is None else save_every_time.to(run_units.time)
+        self.save_every_time: Quantity['time'] | None = save_every_time if save_every_time is None else save_every_time.to(run_units.time)
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
-        self._scatter_params: sidm.Params = sidm.normalize_params({'sigma': sigma.to(run_units.cross_section), **scatter_params}, add_defaults=True)
+        self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
         self.mass_calculation_method: physics.utils.Mass_calculation_methods = mass_calculation_method
         self.interactions_track = interactions_track
         self.background: Mass_Distribution | None = background
         self.initial_particles = self.particles.copy()
         self.last_saved_time = last_saved_time
         self.scatter_rounds = scatter_rounds
+        self.scatter_every_n_steps: int = scatter_every_n_steps
 
     @classmethod
     def setup(cls, densities: list[Density], particle_types: list[int], n_particles: list[int | float], **kwargs: Any) -> Self:
@@ -84,9 +86,9 @@ class Halo:
             m += [[1] * int(n) * density.unit_mass]
 
         return cls(
-            r=cast(units.Quantity['length'], np.hstack(r)),
-            v=cast(units.Quantity['length'], np.hstack(v)),
-            m=cast(units.Quantity['length'], np.hstack(m)),
+            r=cast(Quantity['length'], np.hstack(r)),
+            v=cast(Quantity['length'], np.hstack(v)),
+            m=cast(Quantity['length'], np.hstack(m)),
             particle_type=np.hstack(particle_type),
             densities=densities,
             **kwargs,
@@ -100,7 +102,7 @@ class Halo:
         self.n_interactions = 0
         self.particle_index = np.array(self.initial_particles['particle_index'])
         self.r = self.initial_particles['r'].to(run_units.length)
-        self.v = np.vstack([cast(units.Quantity, self.initial_particles[i]) for i in ['vx', 'vy', 'vr']]).T.to(run_units.velocity)
+        self.v = np.vstack([cast(Quantity, self.initial_particles[i]) for i in ['vx', 'vy', 'vr']]).T.to(run_units.velocity)
         self.particle_type = self.initial_particles['particle_type']
         self.interactions_track = []
         self.snapshots = table.QTable()
@@ -145,60 +147,64 @@ class Halo:
     ##Physical properties
 
     @property
-    def time_step(self) -> units.Unit:
-        return units.def_unit('time step', self.dt.to(run_units.time), format={'latex': r'time\ step'})
+    def time_step(self) -> Unit:
+        return def_unit('time step', self.dt.to(run_units.time), format={'latex': r'time\ step'})
 
     @property
-    def M(self) -> units.Quantity['mass']:
+    def M(self) -> Quantity['mass']:
         halo_mass = physics.utils.M(r=self.r, m=self.m, method=self.mass_calculation_method)
         if self.background is not None:
             background_mass = self.background.M_at_time(self.r, self.time)
-            return cast(units.Quantity['mass'], halo_mass + background_mass)
+            return cast(Quantity['mass'], halo_mass + background_mass)
         return halo_mass
 
     @property
-    def vx(self) -> units.Quantity['velocity']:
-        return cast(units.Quantity['velocity'], self.v[:, 0])
+    def vx(self) -> Quantity['velocity']:
+        return cast(Quantity['velocity'], self.v[:, 0])
 
     @property
-    def vy(self) -> units.Quantity['velocity']:
-        return cast(units.Quantity['velocity'], self.v[:, 1])
+    def vy(self) -> Quantity['velocity']:
+        return cast(Quantity['velocity'], self.v[:, 1])
 
     @property
-    def vr(self) -> units.Quantity['velocity']:
-        return cast(units.Quantity['velocity'], self.v[:, 2])
+    def vr(self) -> Quantity['velocity']:
+        return cast(Quantity['velocity'], self.v[:, 2])
 
     @property
-    def vp(self) -> units.Quantity['velocity']:
-        return utils.fast_quantity_norm(cast(units.Quantity['velocity'], self.v[:, :2]))
+    def vp(self) -> Quantity['velocity']:
+        return utils.fast_quantity_norm(cast(Quantity['velocity'], self.v[:, :2]))
 
     @property
-    def v_norm(self) -> units.Quantity['velocity']:
+    def v_norm(self) -> Quantity['velocity']:
         return utils.fast_quantity_norm(self.v)
 
     @property
-    def kinetic_energy(self) -> units.Quantity['energy']:
+    def kinetic_energy(self) -> Quantity['energy']:
         return 0.5 * self.m * self.v_norm**2
 
     @property
-    def Phi(self) -> units.Quantity['energy']:
+    def Phi(self) -> Quantity['energy']:
         return -(constants.G * self.M * self.m / self.r).to(run_units.energy)
 
     @property
-    def Psi(self) -> units.Quantity['specific energy']:
+    def Psi(self) -> Quantity['specific energy']:
         return (self.Phi0 - self.Phi).to(run_units.energy)
 
     @property
-    def E(self) -> units.Quantity['specific energy']:
+    def E(self) -> Quantity['specific energy']:
         return (self.Psi - self.kinetic_energy).to(run_units.energy)
 
     @property
-    def local_density(self) -> units.Quantity['mass density']:
-        return physics.utils.local_density(self.r, self.m)
+    def local_density(self) -> Quantity['mass density']:
+        return physics.utils.local_density(self.r, self.m, self.scatter_params.get('max_radius_j', sidm.default_params.get('max_radius_j', 10)))
 
     @property
     def ranks(self) -> NDArray[np.int64]:
         return utils.rank_array(self.r)
+
+    @property
+    def dt_scatter(self) -> Quantity['time']:
+        return self.scatter_every_n_steps * self.dt
 
     def sort_particles(self) -> None:
         indices = np.argsort(self.r)
@@ -210,7 +216,7 @@ class Halo:
 
     ##Dynamic evolution
 
-    def to_step(self, time: units.Quantity['time']) -> int:
+    def to_step(self, time: Quantity['time']) -> int:
         return int(time / self.dt)
 
     @property
@@ -236,15 +242,15 @@ class Halo:
         self.sort_particles()
         if self.is_save_round():
             self.save_snapshot()
-        if self.scatter_params.get('sigma', 0) > 0:
-            self.v, n_interactions, indices, scatter_rounds = sidm.scatter(r=self.r, v=self.v, dt=self.dt, m=self.m, **self.scatter_params)
+        if self.scatter_params.get('sigma', 0) > 0 and self.current_step % self.scatter_every_n_steps == 0:
+            self.v, n_interactions, indices, scatter_rounds = sidm.scatter(r=self.r, v=self.v, dt=self.dt_scatter, m=self.m, **self.scatter_params)
             self.n_interactions += n_interactions
             self.interactions_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
         self.r, self.v = leapfrog.step(r=self.r, v=self.v, M=self.M, dt=self.dt, **self.dynamics_params)
         self.time += self.dt
 
-    def evolve(self, n_steps: int | None = None, t: units.Quantity['time'] | None = None, disable_tqdm: bool = False) -> None:
+    def evolve(self, n_steps: int | None = None, t: Quantity['time'] | None = None, disable_tqdm: bool = False) -> None:
         if n_steps is None:
             if t is not None:
                 n_steps = self.to_step(t)
@@ -270,6 +276,7 @@ class Halo:
             'background': self.background,
             'last_saved_time': self.last_saved_time,
             'scatter_rounds': self.scatter_rounds,
+            'scatter_every_n_steps': self.scatter_every_n_steps,
         }
         tables = {
             'particles': self.particles,
@@ -294,7 +301,7 @@ class Halo:
             payload = pickle.load(f)
         tables = {name: table.QTable.read(path / f'{name}.fits') for name in ['particles', 'initial_particles', 'snapshots']}
         r = tables['particles']['r']
-        v = cast(units.Quantity['velocity'], np.vstack([tables['particles']['vx'], tables['particles']['vy'], tables['particles']['vr']]).T)
+        v = cast(Quantity['velocity'], np.vstack([tables['particles']['vx'], tables['particles']['vy'], tables['particles']['vr']]).T)
         output = cls(r=r, v=v, **payload, snapshots=tables['snapshots'])
         output.initial_particles = tables['initial_particles']
         return output
@@ -315,9 +322,9 @@ class Halo:
         if plot_unit is not None:
             return plot_unit
         if key == 'r':
-            return units.kpc
+            return Unit('kpc')
         elif key in ['vr', 'vx', 'vy', 'vp', 'v_norm']:
-            return units.Unit('km/second')
+            return Unit('km/second')
         return ''
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
@@ -344,7 +351,7 @@ class Halo:
 
     def plot_r_density_over_time(
         self,
-        clip: units.Quantity['length'] | None = None,
+        clip: Quantity['length'] | None = None,
         x_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
         title: str | None = 'Density progression over time',
@@ -371,8 +378,8 @@ class Halo:
         absolute: bool = False,
         title: str | None = None,
         xlabel: str | None = None,
-        x_range: units.Quantity | None = None,
-        x_plot_range: units.Quantity | None = None,
+        x_range: Quantity | None = None,
+        x_plot_range: Quantity | None = None,
         stat: str = 'density',
         x_units: UnitLike | None = None,
         ylabel: str | None = None,
@@ -399,12 +406,12 @@ class Halo:
         cumulative: bool = False,
         add_density: bool = True,
         x_units: UnitLike | None = None,
-        x_range: units.Quantity | None = None,
+        x_range: Quantity | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         fig, ax = self.plot_distribution(key='r', data=data, cumulative=cumulative, x_units=x_units, x_range=x_range, **kwargs)
         if add_density:
-            params = {'r_start': cast(units.Quantity, x_range[0]), 'r_end': cast(units.Quantity, x_range[1])} if x_range is not None else {}
+            params = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
             return self.densities[0].plot_radius_distribution(
                 cumulative=cumulative, plot_units=self.plot_unit_type('r', x_units), fig=fig, ax=ax, **params
             )
@@ -413,8 +420,8 @@ class Halo:
     def plot_phase_space(
         self,
         data: table.QTable,
-        r_range: units.Quantity['length'] = np.linspace(1e-2, 50, 200) * units.kpc,
-        v_range: units.Quantity['velocity'] = np.linspace(0, 100, 200) * units.Unit('km/second'),
+        r_range: Quantity['length'] = Quantity(np.linspace(1e-2, 50, 200), 'kpc'),
+        v_range: Quantity['velocity'] = Quantity(np.linspace(0, 100, 200), 'km/second'),
         length_units: UnitLike = 'kpc',
         velocity_units: UnitLike = 'km/second',
         fig: Figure | None = None,
@@ -437,7 +444,7 @@ class Halo:
 
     def plot_inner_core_density(
         self,
-        radius: units.Quantity['length'] = 0.2 * units.kpc,
+        radius: Quantity['length'] = Quantity(0.2, 'kpc'),
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'time',
         ylabel: str | None = '#particles',
@@ -463,13 +470,13 @@ class Halo:
     @staticmethod
     def prep_2d_data(
         data: table.QTable,
-        radius_range: tuple[units.Quantity['length'], units.Quantity['length']],
-        time_range: tuple[units.Quantity['time'], units.Quantity['time']] | None = None,
+        radius_range: tuple[Quantity['length'], Quantity['length']],
+        time_range: tuple[Quantity['time'], Quantity['time']] | None = None,
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Myr',
         agg_fn: str | Callable[[Any], Any] = 'count',
         n_posts: int = 100,
-    ) -> tuple[NDArray[Any], tuple[units.Quantity['length'], units.Quantity['length'], units.Quantity['time'], units.Quantity['time']]]:
+    ) -> tuple[NDArray[Any], tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']]]:
         data = data.copy()
         data['r'] = data['r'].to(length_units)
         data['time'] = data['time'].to(time_units)
@@ -484,17 +491,17 @@ class Halo:
         pad['output'] = np.nan
         agg_data = pd.concat([agg_data, pad]).drop_duplicates(['time', 'bin']).sort_values(['time', 'bin'])
         extent = (
-            units.Quantity(r.min(), length_units),
-            units.Quantity(r.max(), length_units),
-            units.Quantity(time.min(), time_units),
-            units.Quantity(time.max(), time_units),
+            Quantity(r.min(), length_units),
+            Quantity(r.max(), length_units),
+            Quantity(time.min(), time_units),
+            Quantity(time.max(), time_units),
         )
         return agg_data.output.to_numpy().reshape(r.shape), extent
 
     def plot_density_evolution(
         self,
-        radius_range: tuple[units.Quantity['length'], units.Quantity['length']] = (0 * units.kpc, 40 * units.kpc),
-        time_range: tuple[units.Quantity['time'], units.Quantity['time']] | None = None,
+        radius_range: tuple[Quantity['length'], Quantity['length']] = (Quantity(0, 'kpc'), Quantity(40, 'kpc')),
+        time_range: tuple[Quantity['time'], Quantity['time']] | None = None,
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
@@ -520,8 +527,8 @@ class Halo:
 
     def plot_temperature(
         self,
-        radius_range: tuple[units.Quantity['length'], units.Quantity['length']] = (0 * units.kpc, 40 * units.kpc),
-        time_range: tuple[units.Quantity['time'], units.Quantity['time']] | None = None,
+        radius_range: tuple[Quantity['length'], Quantity['length']] = (Quantity(0, 'kpc'), Quantity(40, 'kpc')),
+        time_range: tuple[Quantity['time'], Quantity['time']] | None = None,
         velocity_units: UnitLike = 'km/second',
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
@@ -569,7 +576,7 @@ class Halo:
         if title is not None:
             title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_interactions=self.n_interactions)
         fig, ax = utils.setup_plot(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
-        sns.histplot(units.Quantity(np.hstack(self.interactions_track), run_units.length).to(length_units), ax=ax)
+        sns.histplot(Quantity(np.hstack(self.interactions_track), run_units.length).to(length_units), ax=ax)
         return fig, ax
 
     def plot_scattering_density(
@@ -588,7 +595,7 @@ class Halo:
         r = np.hstack(self.interactions_track).to(length_units)
         r_bins = np.linspace(0, r.max(), num=num)
         dr = r_bins[1] - r_bins[0]
-        density = units.Quantity(
+        density = Quantity(
             [((r >= low) * (r < high)).sum() / (4 * np.pi * dr * ((low + high) / 2) ** 2) for low, high in zip(r_bins[:-1], r_bins[1:])]
         )
         r_bins = r_bins[:-1]

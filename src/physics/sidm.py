@@ -2,7 +2,7 @@ import numpy as np
 from numba import njit, prange
 from typing import TypedDict
 from numpy.typing import NDArray
-from astropy import units
+from astropy.units import Quantity
 from .. import utils, run_units, physics
 
 
@@ -12,7 +12,7 @@ class Params(TypedDict, total=False):
     max_allowed_rounds: int | None
     random_round_rounding: bool
     kappa: float
-    sigma: units.Quantity[run_units.cross_section]
+    sigma: Quantity[run_units.cross_section]
 
 
 default_params: Params = {
@@ -21,7 +21,7 @@ default_params: Params = {
     'max_allowed_rounds': None,
     'random_round_rounding': True,
     'kappa': 0.002,
-    'sigma': units.Quantity(0, 'cm^2/gram').to(run_units.cross_section),
+    'sigma': Quantity(0, 'cm^2/gram').to(run_units.cross_section),
 }
 
 
@@ -34,20 +34,20 @@ def normalize_params(params: Params, add_defaults: bool = False) -> Params:
 
 
 def t_scatter(
-    local_density: units.Quantity['mass density'],
-    sigma: units.Quantity[run_units.cross_section] | None,
-    v_norm: units.Quantity['velocity'],
-) -> units.Quantity['time']:
+    local_density: Quantity['mass density'],
+    sigma: Quantity[run_units.cross_section] | None,
+    v_norm: Quantity['velocity'],
+) -> Quantity['time']:
     if sigma is None or sigma.value == 0:
-        return units.Quantity(np.full(len(local_density), np.inf), run_units.time)
+        return Quantity(np.full(len(local_density), np.inf), run_units.time)
     return (1 / (local_density * sigma * v_norm)).to(run_units.time)
 
 
 def calculate_scatter_rounds(
-    v: units.Quantity['velocity'],
-    dt: units.Quantity['time'],
-    sigma: units.Quantity[run_units.cross_section],
-    local_density: units.Quantity['mass density'],
+    v: Quantity['velocity'],
+    dt: Quantity['time'],
+    sigma: Quantity[run_units.cross_section],
+    local_density: Quantity['mass density'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = None,
     random_round_rounding: bool = True,
@@ -173,18 +173,18 @@ def scatter_found_pairs(
 
 
 def scatter(
-    r: units.Quantity['length'],
-    v: units.Quantity['velocity'],
-    dt: units.Quantity['time'],
-    m: units.Quantity['mass'],
-    sigma: units.Quantity[run_units.cross_section],
+    r: Quantity['length'],
+    v: Quantity['velocity'],
+    dt: Quantity['time'],
+    m: Quantity['mass'],
+    sigma: Quantity[run_units.cross_section],
     blacklist: NDArray[np.int64] = np.array([], dtype=np.int64),
     max_radius_j: int = default_params['max_radius_j'],
     random_round_rounding: bool = default_params['random_round_rounding'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
     max_interactions_per_mini_timestep: int = default_params['max_interactions_per_mini_timestep'],
-) -> tuple[units.Quantity['velocity'], int, NDArray[np.int64], int]:
+) -> tuple[Quantity['velocity'], int, NDArray[np.int64], int]:
     if sigma == 0:
         return v, 0, np.array([], dtype=np.int64), 0
     v_output = v.value.copy()
@@ -209,4 +209,4 @@ def scatter(
         v_output = scatter_found_pairs(v=v_output, found_pairs=found_pairs, memory_allocated=max_interactions_per_mini_timestep)
         n_interactions += len(found_pairs)
         interacted += [found_pairs.ravel()]
-    return units.Quantity(v_output, v.unit), n_interactions, np.hstack(interacted).astype(np.int64), scatter_rounds.max()
+    return Quantity(v_output, v.unit), n_interactions, np.hstack(interacted).astype(np.int64), scatter_rounds.max()

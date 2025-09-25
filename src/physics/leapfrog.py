@@ -2,7 +2,8 @@ import numpy as np
 from numba import njit, prange
 from numpy.typing import NDArray
 from typing import TypedDict
-from astropy import units, constants
+from astropy import constants
+from astropy.units import Quantity
 from .. import run_units
 
 G = constants.G.to(run_units.G_units).value
@@ -10,15 +11,17 @@ G = constants.G.to(run_units.G_units).value
 
 class Params(TypedDict, total=False):
     max_minirounds: int
-    r_convergence_threshold: units.Quantity['length']
-    vr_convergence_threshold: units.Quantity['velocity']
+    r_convergence_threshold: Quantity['length']
+    vr_convergence_threshold: Quantity['velocity']
+    first_mini_step: int
     richardson_extrapolation: bool
 
 
 default_params: Params = {
     'max_minirounds': 30,
-    'r_convergence_threshold': units.Quantity(1e-6, 'pc').to(run_units.length),
-    'vr_convergence_threshold': units.Quantity(1e-6, 'km/second').to(run_units.velocity),
+    'r_convergence_threshold': Quantity(1e-6, 'pc').to(run_units.length),
+    'vr_convergence_threshold': Quantity(1e-6, 'km/second').to(run_units.velocity),
+    'first_mini_step': 0,
     'richardson_extrapolation': False,
 }
 
@@ -66,8 +69,8 @@ def fast_step(
     max_minirounds: int = 100,
     r_convergence_threshold: float = 1e-3,
     vr_convergence_threshold: float = 0.001,
-    richardson_extrapolation: bool = False,
     first_mini_step: int = 0,
+    richardson_extrapolation: bool = False,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     output_r = np.empty_like(r)
     output_v = np.empty_like(v)
@@ -91,15 +94,16 @@ def fast_step(
 
 
 def step(
-    r: units.Quantity['length'],
-    v: units.Quantity['velocity'],
-    M: units.Quantity['mass'],
-    dt: units.Quantity['time'],
+    r: Quantity['length'],
+    v: Quantity['velocity'],
+    M: Quantity['mass'],
+    dt: Quantity['time'],
     max_minirounds: int = default_params['max_minirounds'],
-    r_convergence_threshold: units.Quantity['length'] = default_params['r_convergence_threshold'],
-    vr_convergence_threshold: units.Quantity['velocity'] = default_params['vr_convergence_threshold'],
+    r_convergence_threshold: Quantity['length'] = default_params['r_convergence_threshold'],
+    vr_convergence_threshold: Quantity['velocity'] = default_params['vr_convergence_threshold'],
+    first_mini_step: int = default_params['first_mini_step'],
     richardson_extrapolation: bool = default_params['richardson_extrapolation'],
-) -> tuple[units.Quantity['length'], units.Quantity['velocity']]:
+) -> tuple[Quantity['length'], Quantity['velocity']]:
     _r, _v = fast_step(
         r=r.value,
         v=v.value,
@@ -108,6 +112,7 @@ def step(
         max_minirounds=max_minirounds,
         r_convergence_threshold=r_convergence_threshold.value,
         vr_convergence_threshold=vr_convergence_threshold.value,
+        first_mini_step=first_mini_step,
         richardson_extrapolation=richardson_extrapolation,
     )
-    return units.Quantity(_r, r.unit), units.Quantity(_v, v.unit)
+    return Quantity(_r, r.unit), Quantity(_v, v.unit)

@@ -5,14 +5,14 @@ import pandas as pd
 from tqdm import tqdm
 from numpy.typing import NDArray
 import regex
-from astropy import units
+from astropy.units import Quantity
 
 
 class File_params(TypedDict):
     base_filename: str
     ntimesteps: int
     tfinal: int
-    max_time: NotRequired[units.Quantity['time']]
+    max_time: NotRequired[Quantity['time']]
     root_path: NotRequired[str | Path]
 
 
@@ -36,7 +36,7 @@ def gather_files(
     base_filename: str,
     ntimesteps: int,
     tfinal: int,
-    max_time: units.Quantity['time'] = units.Quantity(1, 'Gyr'),
+    max_time: Quantity['time'] = Quantity(1, 'Gyr'),
     root_path: str | Path = r'../../NSphere-SIDM/data/',
 ) -> pd.DataFrame:
     if not isinstance(root_path, Path):

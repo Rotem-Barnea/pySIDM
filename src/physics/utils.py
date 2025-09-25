@@ -1,27 +1,27 @@
 import numpy as np
 from typing import Literal, cast
-from astropy import units
+from astropy.units import Quantity, Unit
 from .. import utils, run_units
 
 Mass_calculation_methods = Literal['rank presorted', 'rank unsorted']
 
 
 def M(
-    r: units.Quantity['length'],
-    m: units.Quantity['mass'] | None = None,
+    r: Quantity['length'],
+    m: Quantity['mass'] | None = None,
     count_self: bool = True,
     method: Mass_calculation_methods = 'rank unsorted',
-) -> units.Quantity['mass']:
-    masses = m if m is not None else units.Quantity([1] * len(r), run_units.mass)
+) -> Quantity['mass']:
+    masses = m if m is not None else Quantity([1] * len(r), run_units.mass)
     if method == 'rank unsorted':
         masses = masses[utils.rank_array(r)]
     M = masses.cumsum()
     if not count_self:
         M -= masses
-    return cast(units.Quantity['mass'], M)
+    return cast(Quantity['mass'], M)
 
 
-def local_density(r: units.Quantity['length'], m: units.Quantity['mass'], max_radius_j: int = 10) -> units.Quantity['mass density']:
+def local_density(r: Quantity['length'], m: Quantity['mass'], max_radius_j: int = 10) -> Quantity['mass density']:
     """Assumes the array is sorted"""
     x = r.value
     x_end = np.zeros_like(x)
@@ -39,4 +39,4 @@ def local_density(r: units.Quantity['length'], m: units.Quantity['mass'], max_ra
     volume = 4 / 3 * np.pi * (x_end**3 - x**3)
     density = mass[:-1] / volume[:-1]
     density = np.hstack([density, density[-1]])
-    return units.Quantity(density, m.unit / cast(units.Unit, r.unit) ** 3)
+    return Quantity(density, m.unit / cast(Unit, r.unit) ** 3)

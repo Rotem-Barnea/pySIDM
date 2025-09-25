@@ -7,7 +7,8 @@ from matplotlib import pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 import matplotlib.ticker as mtick
-from astropy import units, table
+from astropy import table
+from astropy.units import Quantity, Unit
 from astropy.units.typing import UnitLike
 from . import run_units
 from .types import FloatOrArray
@@ -65,14 +66,14 @@ def derivate2(x: FloatOrArray, y_fn: Callable[[FloatOrArray], FloatOrArray], h: 
     return (y_fn(x + 2 * h) - 2 * y_fn(x + h) + y_fn(x)) / h**2
 
 
-def quantity_derivate(x: units.Quantity, y_fn: Callable[[units.Quantity], units.Quantity], h: float = 1e-4) -> units.Quantity:
-    t = units.Quantity(h, x.unit)
-    return cast(units.Quantity, (y_fn(cast(units.Quantity, x + t)) - y_fn(x)) / t)
+def quantity_derivate(x: Quantity, y_fn: Callable[[Quantity], Quantity], h: float = 1e-4) -> Quantity:
+    t = Quantity(h, x.unit)
+    return cast(Quantity, (y_fn(cast(Quantity, x + t)) - y_fn(x)) / t)
 
 
-def quantity_derivate2(x: units.Quantity, y_fn: Callable[[units.Quantity], units.Quantity], h: float = 1e-4) -> units.Quantity:
-    t = units.Quantity(h, x.unit)
-    return cast(units.Quantity, (y_fn(cast(units.Quantity, x + 2 * t)) - 2 * y_fn(cast(units.Quantity, x + t)) + y_fn(x)) / t**2)
+def quantity_derivate2(x: Quantity, y_fn: Callable[[Quantity], Quantity], h: float = 1e-4) -> Quantity:
+    t = Quantity(h, x.unit)
+    return cast(Quantity, (y_fn(cast(Quantity, x + 2 * t)) - 2 * y_fn(cast(Quantity, x + t)) + y_fn(x)) / t**2)
 
 
 @njit
@@ -88,9 +89,9 @@ def linear_interpolation(xs: NDArray[np.float64], ys: NDArray[np.float64], x: fl
 
 def plot_2d(
     grid: NDArray[Any],
-    extent: tuple[units.Quantity, units.Quantity, units.Quantity, units.Quantity] | None = None,
-    x_range: units.Quantity | None = None,
-    y_range: units.Quantity | None = None,
+    extent: tuple[Quantity, Quantity, Quantity, Quantity] | None = None,
+    x_range: Quantity | None = None,
+    y_range: Quantity | None = None,
     x_units: UnitLike = run_units.length,
     y_units: UnitLike = run_units.velocity,
     x_nbins: int | None = 6,
@@ -137,8 +138,8 @@ def plot_2d(
 
 def plot_phase_space(
     grid: NDArray[Any],
-    r_range: units.Quantity['length'] | None = np.array([1e-2, 50]) * units.kpc,
-    v_range: units.Quantity['velocity'] | None = np.array([0, 100]) * units.Unit('km/second'),
+    r_range: Quantity['length'] | None = Quantity([1e-2, 50], 'kpc'),
+    v_range: Quantity['velocity'] | None = Quantity([0, 100], 'km/second'),
     length_units: UnitLike = run_units.length,
     velocity_units: UnitLike = run_units.velocity,
     **kwargs: Any,
@@ -235,7 +236,7 @@ def aggregate_QTable(
 def add_label_unit(label: str | None, plot_units: UnitLike) -> str | None:
     if label is None:
         return None
-    return f'{label} [{units.Unit(cast(str, plot_units)):latex}]'
+    return f'{label} [{Unit(cast(str, plot_units)):latex}]'
 
 
 @njit(parallel=True)
@@ -250,9 +251,9 @@ def fast_norm(x: NDArray[np.float64], square: bool = False) -> NDArray[np.float6
     return output
 
 
-def fast_quantity_norm(x: units.Quantity, square: bool = False) -> units.Quantity:
-    out_units = cast(units.Unit, x.unit) ** 2 if square else x.unit
-    return units.Quantity(fast_norm(x.value, square=square), unit=out_units)
+def fast_quantity_norm(x: Quantity, square: bool = False) -> Quantity:
+    out_units = cast(Unit, x.unit) ** 2 if square else x.unit
+    return Quantity(fast_norm(x.value, square=square), unit=out_units)
 
 
 @njit(parallel=True)
