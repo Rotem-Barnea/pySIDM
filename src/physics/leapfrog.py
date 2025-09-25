@@ -12,12 +12,14 @@ class Params(TypedDict, total=False):
     max_minirounds: int
     r_convergence_threshold: units.Quantity['length']
     vr_convergence_threshold: units.Quantity['velocity']
+    richardson_extrapolation: bool
 
 
 default_params: Params = {
     'max_minirounds': 30,
     'r_convergence_threshold': units.Quantity(1e-6, 'pc').to(run_units.length),
     'vr_convergence_threshold': units.Quantity(1e-6, 'km/second').to(run_units.velocity),
+    'richardson_extrapolation': False,
 }
 
 
@@ -64,25 +66,27 @@ def fast_step(
     max_minirounds: int = 100,
     r_convergence_threshold: float = 1e-3,
     vr_convergence_threshold: float = 0.001,
+    richardson_extrapolation: bool = False,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     output_r = np.empty_like(r)
     output_v = np.empty_like(v)
     for i in prange(len(r)):
         r_fine: float = 0.0
         v_fine: NDArray[np.float64] = np.zeros(3, dtype=np.float64)
-        r_coarse, v_coarse = particle_step(r=r[i], vx=v[i, 0], vy=v[i, 1], vr=v[i, 2], M=M[i], dt=dt, N=3)
-        for mini_step in range(1, max_minirounds + 1):
+        r_coarse, v_coarse = particle_step(r=r[i], vx=v[i, 0], vy=v[i, 1], vr=v[i, 2], M=M[i], dt=dt, N=1)
+        for mini_step in range(0, max_minirounds):
             N = 2 ** (mini_step)
             r_fine, v_fine = particle_step(r=r[i], vx=v[i, 0], vy=v[i, 1], vr=v[i, 2], M=M[i], dt=dt, N=2 * N + 1)
             if (np.abs(r_coarse - r_fine) < r_convergence_threshold) and (np.abs(v_coarse[2] - v_fine[2]) < vr_convergence_threshold):
                 break
             r_coarse = r_fine
             v_coarse = v_fine
-        output_r[i] = r_fine
-        output_v[i] = v_fine
-        # Richardson extrapolation for higher-order result
-        # output_r[i] = 4 * r_fine - 3 * r_coarse
-        # output_v[i] = 4 * v_fine - 3 * v_coarse
+        if richardson_extrapolation:
+            output_r[i] = 4 * r_fine - 3 * r_coarse
+            output_v[i] = 4 * v_fine - 3 * v_coarse
+        else:
+            output_r[i] = r_fine
+            output_v[i] = v_fine
     return output_r, output_v
 
 
@@ -94,6 +98,7 @@ def step(
     max_minirounds: int = default_params['max_minirounds'],
     r_convergence_threshold: units.Quantity['length'] = default_params['r_convergence_threshold'],
     vr_convergence_threshold: units.Quantity['velocity'] = default_params['vr_convergence_threshold'],
+    richardson_extrapolation: bool = default_params['richardson_extrapolation'],
 ) -> tuple[units.Quantity['length'], units.Quantity['velocity']]:
     _r, _v = fast_step(
         r=r.value,
@@ -103,5 +108,6 @@ def step(
         max_minirounds=max_minirounds,
         r_convergence_threshold=r_convergence_threshold.value,
         vr_convergence_threshold=vr_convergence_threshold.value,
+        richardson_extrapolation=richardson_extrapolation,
     )
     return units.Quantity(_r, r.unit), units.Quantity(_v, v.unit)

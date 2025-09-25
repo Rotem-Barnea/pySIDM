@@ -10,6 +10,7 @@ class Params(TypedDict, total=False):
     max_radius_j: int
     max_interactions_per_mini_timestep: int
     max_allowed_rounds: int | None
+    random_round_rounding: bool
     kappa: float
     sigma: units.Quantity[run_units.cross_section]
 
@@ -18,6 +19,7 @@ default_params: Params = {
     'max_radius_j': 10,
     'max_interactions_per_mini_timestep': 10000,
     'max_allowed_rounds': None,
+    'random_round_rounding': True,
     'kappa': 0.002,
     'sigma': units.Quantity(0, 'cm^2/gram').to(run_units.cross_section),
 }
@@ -39,6 +41,27 @@ def t_scatter(
     if sigma is None or sigma.value == 0:
         return units.Quantity(np.full(len(local_density), np.inf), run_units.time)
     return (1 / (local_density * sigma * v_norm)).to(run_units.time)
+
+
+def calculate_scatter_rounds(
+    v: units.Quantity['velocity'],
+    dt: units.Quantity['time'],
+    sigma: units.Quantity[run_units.cross_section],
+    local_density: units.Quantity['mass density'],
+    kappa: float = default_params['kappa'],
+    max_allowed_rounds: int | None = None,
+    random_round_rounding: bool = True,
+) -> NDArray[np.int64]:
+    time_scale = t_scatter(local_density=local_density, sigma=sigma, v_norm=utils.fast_quantity_norm(v)).to(run_units.time)
+    dt_fraction = (dt / (time_scale * kappa)).value
+    if random_round_rounding:
+        ceil_mask = np.random.rand(len(dt_fraction)) <= dt_fraction % 1
+        scatter_rounds = np.empty(len(dt_fraction), dtype=np.int64)
+        scatter_rounds[ceil_mask] = np.ceil(dt_fraction[ceil_mask]).astype(np.int64)
+        scatter_rounds[~ceil_mask] = np.floor(dt_fraction[~ceil_mask]).astype(np.int64)
+    else:
+        scatter_rounds = np.ceil(dt_fraction).astype(np.int64)
+    return scatter_rounds.clip(max=max_allowed_rounds)
 
 
 @njit
@@ -149,23 +172,6 @@ def scatter_found_pairs(
     return scatter_unique_pairs(v=v, pairs=pairs)
 
 
-def calculate_scatter_rounds(
-    v: units.Quantity['velocity'],
-    dt: units.Quantity['time'],
-    sigma: units.Quantity[run_units.cross_section],
-    local_density: units.Quantity['mass density'],
-    kappa: float = default_params['kappa'],
-    max_allowed_rounds: int | None = None,
-) -> NDArray[np.int64]:
-    time_scale = t_scatter(
-        local_density=local_density,
-        sigma=sigma,
-        v_norm=utils.fast_quantity_norm(v),
-    ).to(run_units.time)
-    scatter_rounds = np.ceil(dt / (time_scale * kappa)).value.astype(np.int64)
-    return scatter_rounds.clip(min=1, max=max_allowed_rounds)
-
-
 def scatter(
     r: units.Quantity['length'],
     v: units.Quantity['velocity'],
@@ -174,6 +180,7 @@ def scatter(
     sigma: units.Quantity[run_units.cross_section],
     blacklist: NDArray[np.int64] = np.array([], dtype=np.int64),
     max_radius_j: int = default_params['max_radius_j'],
+    random_round_rounding: bool = default_params['random_round_rounding'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
     max_interactions_per_mini_timestep: int = default_params['max_interactions_per_mini_timestep'],
@@ -184,10 +191,10 @@ def scatter(
     n_interactions = 0
     interacted: list[NDArray[np.int64]] = []
     sigma_value: float = sigma.value
-    local_density = physics.utils.local_density(r, m, max_radius_j=max_radius_j)
+    local_density = physics.utils.local_density(r, m, max_radius_j)
     local_density_value = local_density.to(run_units.density).value
-    scatter_rounds = calculate_scatter_rounds(v, dt, sigma, local_density, kappa, max_allowed_rounds)
-    round_dt = dt.value / scatter_rounds
+    scatter_rounds = calculate_scatter_rounds(v, dt, sigma, local_density, kappa, max_allowed_rounds, random_round_rounding)
+    round_dt = dt.value / scatter_rounds.clip(min=1)
     for round in range(1, scatter_rounds.max() + 1):
         pairs, pair_found = roll_scattering_pairs(
             v=v_output,
@@ -195,10 +202,10 @@ def scatter(
             density=local_density_value,
             sigma=sigma_value,
             max_radius_j=max_radius_j,
-            blacklist=blacklist,
             whitelist_mask=(scatter_rounds >= round),
+            blacklist=blacklist,
         )
-        found_pairs = utils.clean_pairs(pairs[pair_found], blacklist=blacklist)
+        found_pairs = utils.clean_pairs(pairs[pair_found], blacklist)
         v_output = scatter_found_pairs(v=v_output, found_pairs=found_pairs, memory_allocated=max_interactions_per_mini_timestep)
         n_interactions += len(found_pairs)
         interacted += [found_pairs.ravel()]
