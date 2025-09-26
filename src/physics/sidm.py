@@ -1,6 +1,6 @@
 import numpy as np
 from numba import njit, prange
-from typing import TypedDict
+from typing import TypedDict, cast
 from numpy.typing import NDArray
 from astropy.units import Quantity
 from .. import utils, run_units, physics
@@ -179,6 +179,7 @@ def scatter(
     m: Quantity['mass'],
     sigma: Quantity[run_units.cross_section],
     blacklist: NDArray[np.int64] = np.array([], dtype=np.int64),
+    scattering_mask: NDArray[np.bool_] | None = None,
     max_radius_j: int = default_params['max_radius_j'],
     random_round_rounding: bool = default_params['random_round_rounding'],
     kappa: float = default_params['kappa'],
@@ -187,6 +188,10 @@ def scatter(
 ) -> tuple[Quantity['velocity'], int, NDArray[np.int64], int]:
     if sigma == 0:
         return v, 0, np.array([], dtype=np.int64), 0
+    if scattering_mask is not None:
+        r = cast(Quantity, r[scattering_mask])
+        v = cast(Quantity, v[scattering_mask])
+        m = cast(Quantity, m[scattering_mask])
     v_output = v.value.copy()
     n_interactions = 0
     interacted: list[NDArray[np.int64]] = []

@@ -17,6 +17,7 @@ from .density.density import Density
 from .background import Mass_Distribution
 from . import utils, run_units, physics
 from .physics import sidm, leapfrog
+from .types import ParticleType
 
 
 class Halo:
@@ -26,7 +27,7 @@ class Halo:
         r: Quantity['length'],
         v: Quantity['velocity'],
         m: Quantity['mass'],
-        particle_type: NDArray[np.int64] | None = None,
+        particle_type: NDArray[np.str_] | None = None,
         Tdyn: Quantity['time'] | None = None,
         Phi0: Quantity['energy'] = Quantity(0, run_units.energy),
         densities: list[Density] = [],
@@ -40,7 +41,6 @@ class Halo:
         save_every_n_steps: int | None = None,
         dynamics_params: leapfrog.Params = {},
         scatter_params: sidm.Params = {},
-        mass_calculation_method: physics.utils.Mass_calculation_methods = 'rank presorted',
         snapshots: table.QTable = table.QTable(),
         scatter_every_n_steps: int = 1,
     ) -> None:
@@ -50,7 +50,7 @@ class Halo:
         self.r: Quantity['length'] = r.to(run_units.length)
         self.v: Quantity['velocity'] = v.to(run_units.velocity)
         self.m: Quantity['mass'] = m.to(run_units.mass)
-        self.particle_type: NDArray[np.int64] = particle_type if particle_type is not None else np.zeros(len(r), dtype=np.int64)
+        self.particle_type: NDArray[np.str_] = particle_type if particle_type is not None else np.full(len(r), 'dm')
         self.particle_index = np.arange(len(r))
         self.Tdyn: Quantity['time']
         if Tdyn is not None:
@@ -66,7 +66,6 @@ class Halo:
         self.save_every_time: Quantity['time'] | None = save_every_time if save_every_time is None else save_every_time.to(run_units.time)
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
         self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
-        self.mass_calculation_method: physics.utils.Mass_calculation_methods = mass_calculation_method
         self.interactions_track = interactions_track
         self.background: Mass_Distribution | None = background
         self.initial_particles = self.particles.copy()
@@ -75,7 +74,7 @@ class Halo:
         self.scatter_every_n_steps: int = scatter_every_n_steps
 
     @classmethod
-    def setup(cls, densities: list[Density], particle_types: list[int], n_particles: list[int | float], **kwargs: Any) -> Self:
+    def setup(cls, densities: list[Density], particle_types: list[ParticleType], n_particles: list[int | float], **kwargs: Any) -> Self:
         r, v, particle_type, m = [], [], [], []
         for density, p_type, n in zip(densities, particle_types, n_particles):
             r_sub = density.roll_r(int(n)).to(run_units.length)
@@ -152,7 +151,7 @@ class Halo:
 
     @property
     def M(self) -> Quantity['mass']:
-        halo_mass = physics.utils.M(r=self.r, m=self.m, method=self.mass_calculation_method)
+        halo_mass = physics.utils.M(r=self.r, m=self.m, method='rank presorted')
         if self.background is not None:
             background_mass = self.background.M_at_time(self.r, self.time)
             return cast(Quantity['mass'], halo_mass + background_mass)
@@ -273,7 +272,10 @@ class Halo:
         if self.is_save_round():
             self.save_snapshot()
         if self.scatter_params.get('sigma', 0) > 0 and self.current_step % self.scatter_every_n_steps == 0:
-            self.v, n_interactions, indices, scatter_rounds = sidm.scatter(r=self.r, v=self.v, dt=self.dt_scatter, m=self.m, **self.scatter_params)
+            mask = self.particle_type == 'dm'
+            self.v[mask], n_interactions, indices, scatter_rounds = sidm.scatter(
+                r=self.r, v=self.v, dt=self.dt_scatter, m=self.m, scattering_mask=mask, **self.scatter_params
+            )
             self.n_interactions += n_interactions
             self.interactions_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
@@ -301,7 +303,6 @@ class Halo:
             'save_every_time': self.save_every_time,
             'dynamics_params': self.dynamics_params,
             'scatter_params': self.scatter_params,
-            'mass_calculation_method': self.mass_calculation_method,
             'interactions_track': self.interactions_track,
             'background': self.background,
             'last_saved_time': self.last_saved_time,
@@ -368,16 +369,18 @@ class Halo:
         initial = self.initial_particles.copy()
         final = self.particles.copy()
         return f"""After {self.current_step} steps with dt={self.dt:.4f} | {self.time:.1f}
-        Total energy at the start:      {initial['E'].sum():.1f}
-        Total energy at the end:        {final['E'].sum():.1f}
-        Energy change:                  {np.abs(final['E'].sum() - initial['E'].sum()):.1f}
-        Energy change per step:         {np.abs(final['E'].sum() - initial['E'].sum()) / self.current_step:.1e}
-        Energy change per dt:           {np.abs(final['E'].sum() - initial['E'].sum()) / self.dt:.1e}
-        Relative energy change:         {np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum():.3%}
-        Mean velocity change:           {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second'):.1f}
-        Mean velocity change per step:  {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.current_step:.1e}
-        Mean velocity change per dt:    {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.dt:.1e}
-        Relative Mean velocity change:  {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()) / initial['v_norm'].mean():.3%}"""
+Total energy at the start:        {initial['E'].sum():.1f}
+Total energy at the end:          {final['E'].sum():.1f}
+Energy change:                    {np.abs(final['E'].sum() - initial['E'].sum()):.1f}
+Energy change per step:           {np.abs(final['E'].sum() - initial['E'].sum()) / self.current_step:.1e}
+Energy change per dt:             {np.abs(final['E'].sum() - initial['E'].sum()) / self.dt:.1e}
+Relative energy change:           {np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum():.3%}
+Relative energy change per step:  {np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum() / self.current_step:.1e}
+Relative energy change per dt:    {np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum() / self.dt:.3%}
+Mean velocity change:             {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second'):.1f}
+Mean velocity change per step:    {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.current_step:.1e}
+Mean velocity change per dt:      {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.dt:.1e}
+Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()) / initial['v_norm'].mean():.3%}"""
 
     def plot_r_density_over_time(
         self,
@@ -660,7 +663,7 @@ class Halo:
         sns.lineplot(x=time, y=smoothed_rounds, ax=ax)
         return fig, ax
 
-    def plot_required_scatter_rounds(
+    def plot_required_scatter_rounds_by_range(
         self,
         x_range: Quantity['length'] | None = None,
         xlabel: str | None = 'Radius',
@@ -695,7 +698,7 @@ class Halo:
         ax.legend()
         return fig, ax
 
-    def plot_scattering_timescale(
+    def plot_scattering_timescale_by_range(
         self,
         x_range: Quantity['length'] | None = None,
         xlabel: str | None = 'Radius',
@@ -725,12 +728,12 @@ class Halo:
         sns.lineplot(x=x, y=smoothed_time, ax=ax)
         return fig, ax
 
-    def plot_local_density(
+    def plot_local_density_by_range(
         self,
         x_range: Quantity['length'] | None = None,
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'local density',
-        title: str | None = r'Local density ({nn} nearest neighbors) after t={time}',
+        title: str | None = 'Local density ({nn} nearest neighbors) after t={time}',
         x_units: UnitLike = 'kpc',
         density_units: UnitLike = 'Msun/kpc**3',
         time_units: UnitLike = 'Gyr',
@@ -755,4 +758,75 @@ class Halo:
         ylabel = utils.add_label_unit(ylabel, density_units)
         fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
         sns.lineplot(x=x, y=smoothed_local_density, ax=ax)
+        return fig, ax
+
+    def plot_required_scatter_rounds_distribution(
+        self,
+        xlabel: str | None = 'Number of required scattering rounds',
+        title: str | None = r'Number of required scattering rounds to match $\kappa$={kappa} rate after t={time}',
+        time_units: UnitLike = 'Gyr',
+        time_format: str = '.1f',
+        log_scale: bool = True,
+        stat: str = 'density',
+        cumulative: bool = False,
+        hist_kwargs: Any = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        self.sort_particles()
+        time_units = self.fill_time_unit(time_units)
+        if title is not None:
+            title = title.format(
+                kappa=self.scatter_params.get('kappa', None),
+                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
+            )
+        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
+        sns.histplot(self.required_scatter_rounds, log_scale=log_scale, stat=stat, cumulative=cumulative, **hist_kwargs)
+        return fig, ax
+
+    def plot_scattering_timescale_distribution(
+        self,
+        xlabel: str | None = r'$t_{\mathrm{scatter}}$',
+        title: str | None = r'Scattering timescale after t={time}',
+        time_units: UnitLike = 'Myr',
+        title_units: UnitLike = 'Gyr',
+        title_time_format: str = '.1f',
+        log_scale: bool = True,
+        stat: str = 'density',
+        cumulative: bool = False,
+        hist_kwargs: Any = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        self.sort_particles()
+        time_units = self.fill_time_unit(time_units)
+        title_units = self.fill_time_unit(title_units)
+        xlabel = utils.add_label_unit(xlabel, time_units)
+        if title is not None:
+            title = title.format(time=self.time.to(title_units).to_string(format='latex', formatter=title_time_format))
+        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
+        sns.histplot(self.scatter_timescale.to(time_units), log_scale=log_scale, stat=stat, cumulative=cumulative, **hist_kwargs)
+        return fig, ax
+
+    def plot_local_density_distribution(
+        self,
+        xlabel: str | None = 'local density',
+        title: str | None = 'Local density ({nn} nearest neighbors) after t={time}',
+        density_units: UnitLike = 'Msun/kpc**3',
+        time_units: UnitLike = 'Gyr',
+        time_format: str = '.1f',
+        log_scale: bool = True,
+        stat: str = 'density',
+        cumulative: bool = False,
+        hist_kwargs: Any = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        self.sort_particles()
+        time_units = self.fill_time_unit(time_units)
+        xlabel = utils.add_label_unit(xlabel, density_units)
+        if title is not None:
+            title = title.format(
+                nn=self.scatter_params.get('max_radius_j', None),
+                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
+            )
+        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
+        sns.histplot(self.local_density.to(density_units), log_scale=log_scale, stat=stat, cumulative=cumulative, **hist_kwargs)
         return fig, ax

@@ -15,6 +15,7 @@ class Params(TypedDict, total=False):
     vr_convergence_threshold: Quantity['velocity']
     first_mini_step: int
     richardson_extrapolation: bool
+    adaptive: bool
 
 
 default_params: Params = {
@@ -23,6 +24,7 @@ default_params: Params = {
     'vr_convergence_threshold': Quantity(1e-6, 'km/second').to(run_units.velocity),
     'first_mini_step': 0,
     'richardson_extrapolation': False,
+    'adaptive': True,
 }
 
 
@@ -42,7 +44,15 @@ def acceleration(r: float, L: float, M: float) -> float:
 
 
 @njit
-def particle_step(r: float, vx: float, vy: float, vr: float, M: float, dt: float, N: int = 1) -> tuple[float, NDArray[np.float64]]:
+def particle_step(
+    r: float,
+    vx: float,
+    vy: float,
+    vr: float,
+    M: float,
+    dt: float,
+    N: int = 1,
+) -> tuple[float, NDArray[np.float64]]:
     Lx, Ly = r * vx, r * vy
     L = np.sqrt(Lx**2 + Ly**2)
     a = acceleration(r, L, M)
@@ -71,19 +81,20 @@ def fast_step(
     vr_convergence_threshold: float = 0.001,
     first_mini_step: int = 0,
     richardson_extrapolation: bool = False,
+    adaptive: bool = True,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     output_r = np.empty_like(r)
     output_v = np.empty_like(v)
     for i in prange(len(r)):
-        r_fine: float = 0.0
-        v_fine: NDArray[np.float64] = np.zeros(3, dtype=np.float64)
         r_coarse, v_coarse = particle_step(r=r[i], vx=v[i, 0], vy=v[i, 1], vr=v[i, 2], M=M[i], dt=dt, N=2**first_mini_step + 1)
-        for mini_step in range(first_mini_step, first_mini_step + max_minirounds):
-            r_fine, v_fine = particle_step(r=r[i], vx=v[i, 0], vy=v[i, 1], vr=v[i, 2], M=M[i], dt=dt, N=2 ** (mini_step + 1) + 1)
-            if (np.abs(r_coarse - r_fine) < r_convergence_threshold) and (np.abs(v_coarse[2] - v_fine[2]) < vr_convergence_threshold):
-                break
-            r_coarse = r_fine
-            v_coarse = v_fine
+        r_fine, v_fine = r_coarse, v_coarse
+        if adaptive:
+            for mini_step in range(first_mini_step, first_mini_step + max_minirounds):
+                r_fine, v_fine = particle_step(r=r[i], vx=v[i, 0], vy=v[i, 1], vr=v[i, 2], M=M[i], dt=dt, N=2 ** (mini_step + 1) + 1)
+                if (np.abs(r_coarse - r_fine) < r_convergence_threshold) and (np.abs(v_coarse[2] - v_fine[2]) < vr_convergence_threshold):
+                    break
+                r_coarse = r_fine
+                v_coarse = v_fine
         if richardson_extrapolation:
             output_r[i] = 4 * r_fine - 3 * r_coarse
             output_v[i] = 4 * v_fine - 3 * v_coarse
@@ -103,6 +114,7 @@ def step(
     vr_convergence_threshold: Quantity['velocity'] = default_params['vr_convergence_threshold'],
     first_mini_step: int = default_params['first_mini_step'],
     richardson_extrapolation: bool = default_params['richardson_extrapolation'],
+    adaptive: bool = default_params['adaptive'],
 ) -> tuple[Quantity['length'], Quantity['velocity']]:
     _r, _v = fast_step(
         r=r.value,
@@ -114,5 +126,6 @@ def step(
         vr_convergence_threshold=vr_convergence_threshold.value,
         first_mini_step=first_mini_step,
         richardson_extrapolation=richardson_extrapolation,
+        adaptive=adaptive,
     )
     return Quantity(_r, r.unit), Quantity(_v, v.unit)
