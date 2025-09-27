@@ -43,6 +43,7 @@ class Halo:
         scatter_params: sidm.Params = {},
         snapshots: table.QTable = table.QTable(),
         scatter_every_n_steps: int = 1,
+        mass_regulator: Quantity['mass'] | None = None,
     ) -> None:
         self.time: Quantity['time'] = time.to(run_units.time)
         self.dt: Quantity['time'] = dt.to(run_units.time)
@@ -59,6 +60,13 @@ class Halo:
             self.Tdyn = self.densities[0].Tdyn.to(run_units.time)
         elif len(self.densities) == 0:
             self.Tdyn = Quantity(1, run_units.time)
+        self.mass_regulator: Quantity['mass']
+        if mass_regulator is not None:
+            self.mass_regulator = mass_regulator.to(run_units.mass)
+        elif len(self.densities) > 0:
+            self.mass_regulator = self.densities[0].Mtot.to(run_units.mass) * 0.1
+        elif len(self.densities) == 0:
+            self.mass_regulator = Quantity(0, run_units.mass)
         self.Phi0: Quantity['energy'] = Phi0
         self.n_interactions = n_interactions
         self.snapshots: table.QTable = snapshots
@@ -151,7 +159,7 @@ class Halo:
 
     @property
     def M(self) -> Quantity['mass']:
-        halo_mass = physics.utils.M(r=self.r, m=self.m, method='rank presorted')
+        halo_mass = physics.utils.M(r=self.r, m=self.m, method='rank presorted', M_below=self.mass_regulator)
         if self.background is not None:
             background_mass = self.background.M_at_time(self.r, self.time)
             return cast(Quantity['mass'], halo_mass + background_mass)

@@ -10,6 +10,7 @@ def M(
     r: Quantity['length'],
     m: Quantity['mass'] | None = None,
     count_self: bool = True,
+    M_below: Quantity['mass'] = Quantity(0, run_units.mass),
     method: Mass_calculation_methods = 'rank unsorted',
 ) -> Quantity['mass']:
     masses = m if m is not None else Quantity([1] * len(r), run_units.mass)
@@ -18,6 +19,7 @@ def M(
     M = masses.cumsum()
     if not count_self:
         M -= masses
+    M += M_below
     return cast(Quantity['mass'], M)
 
 

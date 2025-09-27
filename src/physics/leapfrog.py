@@ -70,7 +70,7 @@ def particle_step(
     return r, np.array([Lx / r, Ly / r, vr])
 
 
-@njit(parallel=True)
+@njit(parallel=True, cache=False)
 def fast_step(
     r: NDArray[np.float64],
     v: NDArray[np.float64],
