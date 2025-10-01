@@ -4,9 +4,7 @@ from typing import Literal, cast
 from astropy import constants
 from astropy.units import Quantity, Unit
 from ..types import QuantityOrArray
-from .. import utils, run_units
-
-Mass_calculation_methods = Literal['rank presorted', 'rank unsorted']
+from .. import run_units
 
 
 def M(
@@ -14,11 +12,21 @@ def M(
     m: Quantity['mass'] | None = None,
     count_self: bool = True,
     M_below: Quantity['mass'] = Quantity(0, run_units.mass),
-    method: Mass_calculation_methods = 'rank unsorted',
 ) -> Quantity['mass']:
+    """Calculate the cumulative mass of a set of particles.
+
+    Assumes the array is sorted.
+
+    Parameters
+        r: The positions of the particles.
+        m: The masses of the particles. If None, all particles are assumed to have a mass of 1 Msun (run_units.mass).
+        count_self: Whether to include the mass of the particle at the current position in the cumulative mass.
+        M_below: Additional mass below the current position from an external source.
+
+    Returns
+        The cumulative mass of the particles.
+    """
     masses = m if m is not None else Quantity([1] * len(r), run_units.mass)
-    if method == 'rank unsorted':
-        masses = masses[utils.rank_array(r)]
     M = masses.cumsum()
     if not count_self:
         M -= masses
@@ -33,7 +41,24 @@ def local_density(
     volume_kind: Literal['density', 'shell'] = 'shell',
     mass_kind: Literal['sum', 'single'] = 'single',
 ) -> QuantityOrArray:
-    """Assumes the array is sorted"""
+    """Calculate the local density of a set of particles.
+
+    Supports generally 2 modes:
+        3d mass density (sum(m)/(4/3*pi*(rmax^3-rmin^3))) = volume_kind='density' and mass_kind='sum'
+        scattering density term (m/(4*pi*rmin^2*(rmax-rmin))) = volume_kind='shell' and mass_kind='single'
+
+    Assumes the array is sorted.
+
+    Parameters
+        r: The positions of the particles.
+        m: The masses of the particles. If None, all particles are assumed to have a mass of 1 Msun (run_units.mass).
+        max_radius_j: Maximum index radius for partners for scattering.
+        volume_kind: The kind of volume to calculate (thick shell or approximation using thin-shell).
+        mass_kind: Either calculate the total mass enclosed, or count just a single mass (used for the scattering term).
+
+    Returns
+        The local density of the particles.
+    """
     x = np.array(r)
     x_end = np.zeros_like(x)
     x_end = np.pad(x, (0, max_radius_j), mode='edge')[max_radius_j:]
@@ -58,6 +83,18 @@ def local_density(
 
 
 def Phi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityOrArray:
+    """Calculate the gravitational potential at a given radius.
+
+    Performed using integration of the gravitational force G*M(<=r)*m/r^2.
+
+    Parameters
+        r: The position of the particles.
+        M: The total enclosed mass (M(<=r)) at any particle position.
+        m: The mass of each particle.
+
+    Returns
+        The gravitational potential at the given radius.
+    """
     integral = scipy.integrate.cumulative_trapezoid(y=constants.G.to(run_units.G_units).value * M * m / r**2, x=r, initial=0)
     if isinstance(r, Quantity):
         return Quantity(integral, run_units.energy)
@@ -65,6 +102,12 @@ def Phi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityO
 
 
 def Psi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityOrArray:
+    """Calculate the relative gravitational potential at a given radius.
+
+    Recalculates Phi0 (the value at infinity) based on the maximal value for the given particle array.
+
+    See Psi() for details.
+    """
     integral = scipy.integrate.cumulative_trapezoid(y=constants.G.to(run_units.G_units).value * M * m / r**2, x=r, initial=0)
     integral = integral[-1] - integral
     if isinstance(r, Quantity):
