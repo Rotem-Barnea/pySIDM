@@ -8,7 +8,19 @@ from .. import run_units
 
 
 class NFW(Density):
+    """NFW density profile."""
+
     def __init__(self, Rs: Quantity['length'], c: float, **kwargs: Any) -> None:
+        """NFW density profile.
+
+        Parameters:
+            Rs: Scale radius of the NFW profile.
+            c: Concentration of the NFW profile.
+            kwargs: Additional keyword arguments passed to the Density parent class.
+
+        Returns:
+            NFW distribution object.
+        """
         super().__init__(Rs=Rs, Rvir=c * Rs, **kwargs)
         self.title = 'NFW'
         self.c = c

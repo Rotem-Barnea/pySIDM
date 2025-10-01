@@ -6,7 +6,17 @@ from .density import Density
 
 
 class Hernquist(Density):
+    """Hernquist density profile."""
+
     def __init__(self, **kwargs: Any) -> None:
+        """Hernquist density profile.
+
+        Parameters:
+            kwargs: Additional keyword arguments passed to the Density parent class.
+
+        Returns:
+            Hernquist distribution object.
+        """
         super().__init__(**kwargs)
         self.title = 'Hernquist'
         self.rho_s = self.calculate_rho_scale()

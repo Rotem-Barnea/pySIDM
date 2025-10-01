@@ -485,7 +485,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if add_density:
             params = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
             return self.densities[0].plot_radius_distribution(
-                cumulative=cumulative, plot_units=self.plot_unit_type('r', x_units), fig=fig, ax=ax, **params
+                cumulative=cumulative, length_units=self.plot_unit_type('r', x_units), fig=fig, ax=ax, **params
             )
         return fig, ax
 
