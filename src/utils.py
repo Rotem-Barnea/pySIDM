@@ -262,3 +262,15 @@ def fast_v_correction(Psi: NDArray[np.float64], Ein: NDArray[np.float64], v_norm
     for i in prange(len(v_norm)):
         output[i, 0] = np.sqrt(np.abs(2 * (Psi[i] - Ein[i]))) / v_norm[i]
     return output
+
+
+@njit(parallel=True)
+def indices_to_mask(indices: NDArray[np.int64], length: int) -> NDArray[np.bool_]:
+    mask = np.full(length, False, dtype=np.bool_)
+    for i in prange(len(indices)):
+        mask[indices[i]] = True
+    return mask
+
+
+def expand_mask_back(mask: NDArray[np.bool_], n: int) -> NDArray[np.bool_]:
+    return np.convolve(mask.astype(int), np.hstack([np.ones(n + 1), np.zeros(n)]), mode='same') > 0

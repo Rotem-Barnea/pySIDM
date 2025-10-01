@@ -9,7 +9,7 @@ from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from numpy.typing import NDArray
 from typing import Any, Self, Callable, cast
-from astropy import table, constants
+from astropy import table
 from astropy.units import Quantity, Unit, def_unit
 from astropy.units.typing import UnitLike
 from .spatial_approximation import Lattice
@@ -27,9 +27,9 @@ class Halo:
         r: Quantity['length'],
         v: Quantity['velocity'],
         m: Quantity['mass'],
-        particle_type: NDArray[np.str_] | None = None,
+        particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         Tdyn: Quantity['time'] | None = None,
-        Phi0: Quantity['energy'] = Quantity(0, run_units.energy),
+        Phi0: Quantity['energy'] | None = None,
         densities: list[Density] = [],
         n_interactions: int = 0,
         scatter_rounds: list[int] = [],
@@ -45,19 +45,16 @@ class Halo:
         scatter_every_n_steps: int = 1,
         mass_regulator: Quantity['mass'] | None = None,
     ) -> None:
+        self._particles = self.to_dataframe(r, v, m, particle_type)
+        self._particles.sort_values('r', inplace=True)
         self.time: Quantity['time'] = time.to(run_units.time)
         self.dt: Quantity['time'] = dt.to(run_units.time)
         self.densities: list[Density] = densities
-        self.r: Quantity['length'] = r.to(run_units.length)
-        self.v: Quantity['velocity'] = v.to(run_units.velocity)
-        self.m: Quantity['mass'] = m.to(run_units.mass)
-        self.particle_type: NDArray[np.str_] = particle_type if particle_type is not None else np.full(len(r), 'dm')
-        self.particle_index = np.arange(len(r))
         self.Tdyn: Quantity['time']
         if Tdyn is not None:
-            self.Tdyn = Tdyn.to(run_units.time)
+            self.Tdyn = Tdyn
         elif len(self.densities) > 0:
-            self.Tdyn = self.densities[0].Tdyn.to(run_units.time)
+            self.Tdyn = self.densities[0].Tdyn
         elif len(self.densities) == 0:
             self.Tdyn = Quantity(1, run_units.time)
         self.mass_regulator: Quantity['mass']
@@ -67,7 +64,8 @@ class Halo:
             self.mass_regulator = self.densities[0].Mtot.to(run_units.mass) * 0.1
         elif len(self.densities) == 0:
             self.mass_regulator = Quantity(0, run_units.mass)
-        self.Phi0: Quantity['energy'] = Phi0
+        self.background: Mass_Distribution | None = background
+        self.Phi0: Quantity['energy'] = Phi0 if Phi0 is not None else physics.utils.Phi(self.r, self.M, self.m)[-1]
         self.n_interactions = n_interactions
         self.snapshots: table.QTable = snapshots
         self.save_every_n_steps = save_every_n_steps
@@ -75,7 +73,7 @@ class Halo:
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
         self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
         self.interactions_track = interactions_track
-        self.background: Mass_Distribution | None = background
+        self._initial_particles = self._particles.copy()
         self.initial_particles = self.particles.copy()
         self.last_saved_time = last_saved_time
         self.scatter_rounds = scatter_rounds
@@ -101,22 +99,42 @@ class Halo:
             **kwargs,
         )
 
+    @staticmethod
+    def to_dataframe(
+        r: Quantity['length'],
+        v: Quantity['velocity'],
+        m: Quantity['mass'],
+        particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
+        particle_index: NDArray[np.int_] | None = None,
+    ) -> pd.DataFrame:
+        vx, vy, vr = v.to(run_units.velocity).T
+        data = pd.DataFrame(
+            {
+                'r': r.to(run_units.length),
+                'vx': vx,
+                'vy': vy,
+                'vr': vr,
+                'm': m.to(run_units.mass),
+                'particle_type': particle_type if particle_type is not None else np.full(len(r), 'dm'),
+                'particle_index': particle_index if particle_index is not None else np.arange(len(r)),
+            }
+        )
+        data.set_index('particle_index', inplace=True)
+        return data
+
     def add_background(self, background: Mass_Distribution) -> None:
         self.background = background
 
     def reset(self) -> None:
         self.time = 0 * run_units.time
         self.n_interactions = 0
-        self.particle_index = np.array(self.initial_particles['particle_index'])
-        self.r = self.initial_particles['r'].to(run_units.length)
-        self.v = np.vstack([cast(Quantity, self.initial_particles[i]) for i in ['vx', 'vy', 'vr']]).T.to(run_units.velocity)
-        self.particle_type = self.initial_particles['particle_type']
+        self._particles = self._initial_particles.copy()
         self.interactions_track = []
         self.snapshots = table.QTable()
 
     @property
     def particles(self) -> table.QTable:
-        self.sort_particles()
+        self._particles.sort_values('r', inplace=True)
         data = table.QTable(
             {
                 'r': self.r,
@@ -128,11 +146,10 @@ class Halo:
                 'v_norm': self.v_norm,
                 'time': [self.time] * len(self.r),
                 'E': self.E,
-                'particle_type': self.particle_type,
-                'particle_index': self.particle_index,
+                'particle_type': self._particles['particle_type'],
+                'particle_index': self._particles.index,
             }
         )
-        data.add_index('particle_index')
         return data
 
     @property
@@ -154,6 +171,30 @@ class Halo:
     ##Physical properties
 
     @property
+    def r(self) -> Quantity['length']:
+        return Quantity(self._particles['r'], run_units.length)
+
+    @property
+    def vx(self) -> Quantity['velocity']:
+        return Quantity(self._particles['vx'], run_units.velocity)
+
+    @property
+    def vy(self) -> Quantity['velocity']:
+        return Quantity(self._particles['vy'], run_units.velocity)
+
+    @property
+    def vr(self) -> Quantity['velocity']:
+        return Quantity(self._particles['vr'], run_units.velocity)
+
+    @property
+    def v(self) -> Quantity['velocity']:
+        return Quantity(self._particles[['vx', 'vy', 'vr']], run_units.velocity)
+
+    @property
+    def _m(self) -> Quantity['mass']:
+        return Quantity(self._particles['m'], run_units.mass)
+
+    @property
     def time_step(self) -> Unit:
         return def_unit('time step', self.dt.to(run_units.time), format={'latex': r'time\ step'})
 
@@ -166,18 +207,6 @@ class Halo:
         return halo_mass
 
     @property
-    def vx(self) -> Quantity['velocity']:
-        return cast(Quantity['velocity'], self.v[:, 0])
-
-    @property
-    def vy(self) -> Quantity['velocity']:
-        return cast(Quantity['velocity'], self.v[:, 1])
-
-    @property
-    def vr(self) -> Quantity['velocity']:
-        return cast(Quantity['velocity'], self.v[:, 2])
-
-    @property
     def vp(self) -> Quantity['velocity']:
         return utils.fast_quantity_norm(cast(Quantity['velocity'], self.v[:, :2]))
 
@@ -186,16 +215,21 @@ class Halo:
         return utils.fast_quantity_norm(self.v)
 
     @property
+    def m(self) -> Quantity['mass']:
+        return Quantity(self._particles['m'], run_units.mass)
+
+    @property
     def kinetic_energy(self) -> Quantity['energy']:
         return 0.5 * self.m * self.v_norm**2
 
     @property
     def Phi(self) -> Quantity['energy']:
-        return -(constants.G * self.M * self.m / self.r).to(run_units.energy)
+        return cast(Quantity['energy'], physics.utils.Phi(self.r, self.M, self.m))
 
     @property
     def Psi(self) -> Quantity['specific energy']:
-        return (self.Phi0 - self.Phi).to(run_units.energy)
+        return cast(Quantity['energy'], physics.utils.Psi(self.r, self.M, self.m)).to(run_units.energy)
+        # return (self.Phi0 - self.Phi).to(run_units.energy)
 
     @property
     def E(self) -> Quantity['specific energy']:
@@ -203,53 +237,18 @@ class Halo:
 
     @property
     def local_density(self) -> Quantity['mass density']:
-        return physics.utils.local_density(self.r, self.m, self.scatter_params.get('max_radius_j', sidm.default_params.get('max_radius_j', 10)))
-
-    @property
-    def ranks(self) -> NDArray[np.int64]:
-        return utils.rank_array(self.r)
-
-    def sort_particles(self) -> None:
-        indices = np.argsort(self.r)
-        self.r = self.r[indices]
-        self.v = self.v[indices]
-        self.m = self.m[indices]
-        self.particle_type = self.particle_type[indices]
-        self.particle_index = self.particle_index[indices]
-
-    ##Scatter-related properties
+        return cast(
+            Quantity['mass density'],
+            physics.utils.local_density(
+                self.r,
+                self.m,
+                self.scatter_params.get('max_radius_j', sidm.default_params.get('max_radius_j', 10)),
+            ),
+        )
 
     @property
     def dt_scatter(self) -> Quantity['time']:
         return self.scatter_every_n_steps * self.dt
-
-    @property
-    def scatter_timescale(self) -> Quantity['time']:
-        return sidm.t_scatter(local_density=self.local_density, sigma=self.scatter_params.get('sigma', None), v_norm=self.v_norm)
-
-    @property
-    def required_scatter_rounds(self) -> NDArray[np.int64]:
-        return sidm.calculate_scatter_rounds(
-            v=self.v,
-            dt=self.dt_scatter,
-            local_density=self.local_density,
-            sigma=self.scatter_params.get('sigma', None),
-            kappa=self.scatter_params.get('kappa', sidm.default_params.get('kappa', 1)),
-            max_allowed_rounds=self.scatter_params.get('max_allowed_rounds', sidm.default_params.get('max_allowed_rounds', None)),
-            random_round_rounding=self.scatter_params.get('random_round_rounding', sidm.default_params.get('random_round_rounding', False)),
-        )
-
-    @property
-    def required_scatter_rounds_uncapped(self) -> NDArray[np.int64]:
-        return sidm.calculate_scatter_rounds(
-            v=self.v,
-            dt=self.dt_scatter,
-            local_density=self.local_density,
-            sigma=self.scatter_params.get('sigma', None),
-            kappa=self.scatter_params.get('kappa', sidm.default_params.get('kappa', 1)),
-            max_allowed_rounds=None,
-            random_round_rounding=self.scatter_params.get('random_round_rounding', sidm.default_params.get('random_round_rounding', False)),
-        )
 
     ##Dynamic evolution
 
@@ -276,18 +275,40 @@ class Halo:
         return False
 
     def step(self) -> None:
-        self.sort_particles()
+        self._particles.sort_values('r', inplace=True)
         if self.is_save_round():
             self.save_snapshot()
         if self.scatter_params.get('sigma', 0) > 0 and self.current_step % self.scatter_every_n_steps == 0:
-            mask = self.particle_type == 'dm'
-            self.v[mask], n_interactions, indices, scatter_rounds = sidm.scatter(
-                r=self.r, v=self.v, dt=self.dt_scatter, m=self.m, scattering_mask=mask, **self.scatter_params
+            mask = self._particles['particle_type'] == 'dm'
+            (
+                self._particles.loc[mask, 'vx'],
+                self._particles.loc[mask, 'vy'],
+                self._particles.loc[mask, 'vr'],
+                n_interactions,
+                indices,
+                scatter_rounds,
+            ) = sidm.scatter(
+                r=self._particles.loc[mask, 'r'],
+                vx=self._particles.loc[mask, 'vx'],
+                vy=self._particles.loc[mask, 'vy'],
+                vr=self._particles.loc[mask, 'vr'],
+                dt=self.dt_scatter,
+                m=self._particles.loc[mask, 'm'],
+                **self.scatter_params,
             )
             self.n_interactions += n_interactions
             self.interactions_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
-        self.r, self.v = leapfrog.step(r=self.r, v=self.v, M=self.M, dt=self.dt, **self.dynamics_params)
+        self._particles['r'], self._particles['vx'], self._particles['vy'], self._particles['vr'] = leapfrog.step(
+            r=self._particles['r'],
+            vx=self._particles['vx'],
+            vy=self._particles['vy'],
+            vr=self._particles['vr'],
+            m=self._particles['m'],
+            M=self.M,
+            dt=self.dt,
+            **self.dynamics_params,
+        )
         self.time += self.dt
 
     def evolve(self, n_steps: int | None = None, t: Quantity['time'] | None = None, disable_tqdm: bool = False) -> None:
@@ -331,17 +352,27 @@ class Halo:
         with open(path / 'halo_payload.pkl', 'wb') as f:
             pickle.dump(payload, f)
         for name, data in tables.items():
-            data.write(path / f'{name}.fits', overwrite=True)
+            data[[column for column in data.colnames if data[column].dtype != np.dtype('O')]].write(path / f'{name}.fits', overwrite=True)
+            data[[column for column in data.colnames if data[column].dtype == np.dtype('O')]].write(path / f'{name}_strings.csv', overwrite=True)
 
     @classmethod
     def load(cls, path: str | Path = Path('halo_state')) -> Self:
         path = Path('halo_state')
         with open(path / 'halo_payload.pkl', 'rb') as f:
             payload = pickle.load(f)
-        tables = {name: table.QTable.read(path / f'{name}.fits') for name in ['particles', 'initial_particles', 'snapshots']}
-        r = tables['particles']['r']
-        v = cast(Quantity['velocity'], np.vstack([tables['particles']['vx'], tables['particles']['vy'], tables['particles']['vr']]).T)
-        output = cls(r=r, v=v, **payload, snapshots=tables['snapshots'])
+        tables = {}
+        for name in ['particles', 'initial_particles', 'snapshots']:
+            tables[name] = table.hstack([table.QTable.read(path / f'{name}.fits'), table.QTable.read(path / f'{name}_strings.csv')])
+        particles = tables['particles']
+        particles.sort('particle_index')
+        output = cls(
+            r=particles['r'],
+            v=cast(Quantity['velocity'], np.vstack([particles['vx'], particles['vy'], particles['vr']]).T),
+            particle_type=particles['particle_type'],
+            m=particles['m'],
+            **payload,
+            snapshots=tables['snapshots'],
+        )
         output.initial_particles = tables['initial_particles']
         return output
 
@@ -662,6 +693,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         smooth_sigma: float = 1,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """DEPRECATED AND BROKEN"""
         time_units = self.fill_time_unit(time_units)
         xlabel = utils.add_label_unit(xlabel, time_units)
         fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
@@ -683,6 +715,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         smooth_sigma: float = 50,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """DEPRECATED AND BROKEN"""
         self.sort_particles()
         time_units = self.fill_time_unit(time_units)
         x = self.r
@@ -719,6 +752,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         smooth_sigma: float = 50,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """DEPRECATED AND BROKEN"""
         self.sort_particles()
         x = self.r
         time_units = self.fill_time_unit(time_units)
@@ -749,6 +783,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         smooth_sigma: float = 50,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """DEPRECATED AND BROKEN"""
         self.sort_particles()
         x = self.r
         time_units = self.fill_time_unit(time_units)
@@ -780,6 +815,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         hist_kwargs: Any = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """DEPRECATED AND BROKEN"""
         self.sort_particles()
         time_units = self.fill_time_unit(time_units)
         if title is not None:
@@ -804,6 +840,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         hist_kwargs: Any = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """DEPRECATED AND BROKEN"""
         self.sort_particles()
         time_units = self.fill_time_unit(time_units)
         title_units = self.fill_time_unit(title_units)
@@ -827,6 +864,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         hist_kwargs: Any = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """DEPRECATED AND BROKEN"""
         self.sort_particles()
         time_units = self.fill_time_unit(time_units)
         xlabel = utils.add_label_unit(xlabel, density_units)
