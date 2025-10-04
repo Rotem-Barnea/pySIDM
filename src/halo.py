@@ -21,6 +21,8 @@ from .types import ParticleType
 
 
 class Halo:
+    """Halo class for SIDM simulations"""
+
     def __init__(
         self,
         dt: Quantity['time'],
@@ -44,6 +46,32 @@ class Halo:
         snapshots: table.QTable = table.QTable(),
         scatter_every_n_steps: int = 1,
     ) -> None:
+        """Initialize a Halo object.
+
+        Parameters:
+            r: Radius of the halo particles.
+            v: Velocity of the halo particles, of shape (n_particles, 3), (vx,vy,vr) with vx,vy the two perpendicular components of the off-radial plane.
+            m: Mass of the halo particles.
+            particle_type: Type of the halo particles. Should comply with ParticleType (i.e. 'dm'/'baryon').
+            Tdyn: Dynamical time of the halo. If None, calculates from the first density.
+            Phi0: Potential at infinity of the halo. If None, calculates from the first density.
+            densities: List of densities of the halo.
+            n_interactions: Number of interactions the halo had.
+            scatter_rounds: Number of scatter rounds the halo had every time step.
+            interactions_track: The interacting particles (particle index) at every time step.
+            time: Time of the halo.
+            background: Background mass distribution of the halo.
+            last_saved_time: Last time a snapshot was saved.
+            save_every_time: How often should a snapshot be saved, in time units.
+            save_every_n_steps: How often should a snapshot be saved, in time-step units (integer).
+            dynamics_params: Dynamics parameters of the halo, sent to the leapfrog integrator.
+            scatter_params: Scatter parameters of the halo, used in the SIDM calculation.
+            snapshots: Snapshots of the halo.
+            scatter_every_n_steps: How often should a scattering event be conducted, in time-step units (integer).
+
+        Returns:
+            Halo object.
+        """
         self._particles = self.to_dataframe(r, v, m, particle_type)
         self._particles.sort_values('r', inplace=True)
         self.time: Quantity['time'] = time.to(run_units.time)
@@ -73,6 +101,17 @@ class Halo:
 
     @classmethod
     def setup(cls, densities: list[Density], particle_types: list[ParticleType], n_particles: list[int | float], **kwargs: Any) -> Self:
+        """Initialize a Halo object from a given set of densities.
+
+        Parameters:
+            densities: List of densities for each particle type.
+            particle_types: List of particle types.
+            n_particles: List of number of particles for each particle type.
+            kwargs: Additional keyword arguments, passed to the constructor.
+
+        Returns:
+            Halo object.
+        """
         r, v, particle_type, m = [], [], [], []
         for density, p_type, n in zip(densities, particle_types, n_particles):
             r_sub = density.roll_r(int(n)).to(run_units.length)
@@ -99,6 +138,7 @@ class Halo:
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         particle_index: NDArray[np.int_] | None = None,
     ) -> pd.DataFrame:
+        """Convert particle data to a DataFrame."""
         vx, vy, vr = v.to(run_units.velocity).T
         data = pd.DataFrame(
             {
@@ -115,9 +155,11 @@ class Halo:
         return data
 
     def add_background(self, background: Mass_Distribution) -> None:
+        """Adds a background mass distribution to the halo."""
         self.background = background
 
     def reset(self) -> None:
+        """Resets the halo to its initial state (no interactions, time=0, cleared snapshots, particles at initial positions)."""
         self.time = 0 * run_units.time
         self.n_interactions = 0
         self._particles = self._initial_particles.copy()
@@ -126,6 +168,21 @@ class Halo:
 
     @property
     def particles(self) -> table.QTable:
+        """Particle data QTable.
+
+        Has the following columns:
+            r: Radius.
+            vx: The first pernpendicular component (to the radial direction) of the velocity.
+            vy: The second pernpendicular component (to the radial direction) of the velocity.
+            vr: The radial velocity.
+            vp: Tangential velocity (np.sqrt(vx**2 + vy**2)).
+            m: Mass.
+            v_norm: Velocity norm (np.sqrt(vx**2 + vy**2 + vr**2)).
+            time: Current simulation time.
+            E: Relative energy (Psi-1/2*m*v_norm**2).
+            particle_type: Type of particle.
+            particle_index: Index of particle.
+        """
         self._particles.sort_values('r', inplace=True)
         data = table.QTable(
             {
@@ -146,52 +203,61 @@ class Halo:
 
     @property
     def dynamics_params(self) -> leapfrog.Params:
+        """Dynamics parameters of the halo, sent to the leapfrog integrator."""
         return self._dynamics_params
 
     @dynamics_params.setter
     def dynamics_params(self, value: leapfrog.Params) -> None:
+        """Normalize and set the dynamics parameters of the halo."""
         self._dynamics_params = leapfrog.normalize_params(value)
 
     @property
     def scatter_params(self) -> sidm.Params:
+        """Scatter parameters of the halo, used in the SIDM calculation."""
         return self._scatter_params
 
     @scatter_params.setter
     def scatter_params(self, value: sidm.Params) -> None:
+        """Normalize and set the scatter parameters of the halo."""
         self._scatter_params = sidm.normalize_params(value)
 
+    #####################
     ##Physical properties
+    #####################
 
     @property
     def r(self) -> Quantity['length']:
+        """Particle radius."""
         return Quantity(self._particles['r'], run_units.length)
 
     @property
     def vx(self) -> Quantity['velocity']:
+        """The first pernpendicular component (to the radial direction) of the particle velocity."""
         return Quantity(self._particles['vx'], run_units.velocity)
 
     @property
     def vy(self) -> Quantity['velocity']:
+        """The second pernpendicular component (to the radial direction) of the particle velocity."""
         return Quantity(self._particles['vy'], run_units.velocity)
 
     @property
     def vr(self) -> Quantity['velocity']:
+        """The radial component of the particle velocity."""
         return Quantity(self._particles['vr'], run_units.velocity)
 
     @property
     def v(self) -> Quantity['velocity']:
+        """The velocity of the particle, as a 3-vector (vx, vy, vr)."""
         return Quantity(self._particles[['vx', 'vy', 'vr']], run_units.velocity)
 
     @property
-    def _m(self) -> Quantity['mass']:
-        return Quantity(self._particles['m'], run_units.mass)
-
-    @property
     def time_step(self) -> Unit:
+        """Calculate the time step size, returning it as a Unit object"""
         return def_unit('time step', self.dt.to(run_units.time), format={'latex': r'time\ step'})
 
     @property
     def M(self) -> Quantity['mass']:
+        """The enclosed mass below the particle."""
         halo_mass = physics.utils.M(r=self.r, m=self.m)
         if self.background is not None:
             background_mass = self.background.M_at_time(self.r, self.time)
@@ -200,35 +266,43 @@ class Halo:
 
     @property
     def vp(self) -> Quantity['velocity']:
+        """The tangential velocity of the particle."""
         return utils.fast_quantity_norm(cast(Quantity['velocity'], self.v[:, :2]))
 
     @property
     def v_norm(self) -> Quantity['velocity']:
+        """The velocity norm of the particle."""
         return utils.fast_quantity_norm(self.v)
 
     @property
     def m(self) -> Quantity['mass']:
+        """The mass of the particle."""
         return Quantity(self._particles['m'], run_units.mass)
 
     @property
     def kinetic_energy(self) -> Quantity['energy']:
+        """The kinetic energy of the particle."""
         return 0.5 * self.m * self.v_norm**2
 
     @property
     def Phi(self) -> Quantity['energy']:
+        """The gravitational potential energy of the particle."""
         return cast(Quantity['energy'], physics.utils.Phi(self.r, self.M, self.m))
 
     @property
     def Psi(self) -> Quantity['specific energy']:
+        """The relative gravitational potential energy of the particle."""
         return cast(Quantity['energy'], physics.utils.Psi(self.r, self.M, self.m)).to(run_units.energy)
         # return (self.Phi0 - self.Phi).to(run_units.energy)
 
     @property
     def E(self) -> Quantity['specific energy']:
+        """The energy of the particle."""
         return (self.Psi - self.kinetic_energy).to(run_units.energy)
 
     @property
     def local_density(self) -> Quantity['mass density']:
+        """The local mass density around the particle."""
         return cast(
             Quantity['mass density'],
             physics.utils.local_density(
@@ -240,24 +314,31 @@ class Halo:
 
     @property
     def dt_scatter(self) -> Quantity['time']:
+        """The time step for scattering."""
         return self.scatter_every_n_steps * self.dt
 
+    #####################
     ##Dynamic evolution
+    #####################
 
     def to_step(self, time: Quantity['time']) -> int:
+        """Calculate the number of steps required to reach the given time."""
         return int(time / self.dt)
 
     @property
     def current_step(self) -> int:
+        """The current simulation step count (calculated based on the simulation time)."""
         return self.to_step(self.time)
 
     def save_snapshot(self) -> None:
+        """Save the current state of the simulation."""
         data = self.particles.copy()
         data['step'] = self.current_step
         self.snapshots = table.vstack([self.snapshots, data])
         self.last_saved_time = self.time.copy()
 
     def is_save_round(self) -> bool:
+        """Check if it's time to save the simulation state."""
         if self.save_every_time is not None:
             next_save_time = self.last_saved_time + self.save_every_time
             if self.time <= next_save_time and self.time + self.dt > next_save_time:
@@ -267,6 +348,15 @@ class Halo:
         return False
 
     def step(self) -> None:
+        """Perform a single time step of the simulation.
+
+        Every step:
+            - Sort particles by radius.
+            - Save a snapshot if it's time.
+            - Perform scattering if necessary. This is done before the leapfrog integration since it doesn't modify the particle positions and thus doesn't require resorting.
+            - Perform leapfrog integration.
+            - Update simulation time.
+        """
         self._particles.sort_values('r', inplace=True)
         if self.is_save_round():
             self.save_snapshot()
@@ -304,6 +394,7 @@ class Halo:
         self.time += self.dt
 
     def evolve(self, n_steps: int | None = None, t: Quantity['time'] | None = None, disable_tqdm: bool = False) -> None:
+        """Evolve the simulation for a given number of steps or time."""
         if n_steps is None:
             if t is not None:
                 n_steps = self.to_step(t)
@@ -312,9 +403,12 @@ class Halo:
         for _ in tqdm(range(int(n_steps)), disable=disable_tqdm):
             self.step()
 
+    #####################
     ##Save/Load
+    #####################
 
     def to_payload(self) -> tuple[dict[str, Any], dict[str, Any]]:
+        """Convert the simulation state to a payload for saving."""
         payload = {
             'time': self.time,
             'dt': self.dt,
@@ -338,6 +432,7 @@ class Halo:
         return payload, tables
 
     def save(self, path: str | Path = Path('halo_state')) -> None:
+        """Save the simulation state to a directory."""
         path = Path(path)
         path.mkdir(exist_ok=True)
         payload, tables = self.to_payload()
@@ -349,6 +444,7 @@ class Halo:
 
     @classmethod
     def load(cls, path: str | Path = Path('halo_state')) -> Self:
+        """Load the simulation state from a directory."""
         path = Path('halo_state')
         with open(path / 'halo_payload.pkl', 'rb') as f:
             payload = pickle.load(f)
@@ -368,9 +464,12 @@ class Halo:
         output.initial_particles = tables['initial_particles']
         return output
 
+    #####################
     ##Plots
+    #####################
 
     def default_plot_text(self, key: str, x_units: UnitLike) -> dict[str, str | None]:
+        """Return default plot title/xlabel/ylabel for a given key and add the appropriate units."""
         return {
             'vr': {'title': 'Radial velocity distribution', 'xlabel': utils.add_label_unit('Radial velocity', x_units), 'ylabel': 'Density'},
             'vx': {'title': 'Pendicular velocity distribution', 'xlabel': utils.add_label_unit('Pendicular velocity', x_units), 'ylabel': 'Density'},
@@ -381,6 +480,7 @@ class Halo:
         }.get(key, {})
 
     def plot_unit_type(self, key: str, plot_unit: UnitLike | None = None) -> UnitLike:
+        """Return the appropriate unit type for a given key. If plot unit is provided, return it instead."""
         if plot_unit is not None:
             return plot_unit
         if key == 'r':
@@ -390,6 +490,7 @@ class Halo:
         return ''
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
+        """If the unit is `Tdyn` return self.Tdyn. If it's `time step` return self.time_step, otherwise return unit."""
         if unit == 'Tdyn':
             return self.Tdyn
         elif unit == 'time step':
@@ -397,6 +498,7 @@ class Halo:
         return unit
 
     def print_energy_change_summary(self) -> str:
+        """Print a summary of the energy change during the simulation."""
         initial = self.initial_particles.copy()
         final = self.particles.copy()
         return f"""After {self.current_step} steps with dt={self.dt:.4f} | {self.time:.1f}
@@ -415,7 +517,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
     def plot_r_density_over_time(
         self,
-        clip: Quantity['length'] | None = None,
+        x_range: Quantity['length'] | None = None,
         x_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
         title: str | None = 'Density progression over time',
@@ -424,12 +526,26 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
+        """Plot the density progression over time.
+
+        Parameters:
+            x_range: The radius range to clip the data to. If None, ignores.
+            time_units: The time units to use in the plot.
+            title: The title of the plot.
+            xlabel: The label for the x-axis.
+            ylabel: The label for the y-axis.
+            fig: The figure to plot on.
+            ax: The axes to plot on.
+
+        Returns:
+            fig, ax.
+        """
         time_units = self.fill_time_unit(time_units)
         fig, ax = utils.setup_plot(fig, ax, **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_units), ylabel=ylabel))
         legend = []
-        clip_tuple = tuple(clip.to(x_units).value) if clip is not None else None
+        clip = tuple(x_range.to(x_units).value) if x_range is not None else None
         for group in self.snapshots.group_by('time').groups:
-            sns.kdeplot(group['r'].to(x_units).value, ax=ax, clip=clip_tuple)
+            sns.kdeplot(group['r'].to(x_units).value, ax=ax, clip=clip)
             legend += [group['time'][0].to(time_units).to_string(format='latex', formatter='.1f')]
         fig.legend(legend, loc='outside center right')
         return fig, ax
@@ -451,6 +567,27 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         ax: Axes | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """Plot the distribution of a given key in the data.
+
+        Parameters:
+            data: The data to plot.
+            key: The key to plot.
+            cumulative: Whether to plot the cumulative distribution.
+            absolute: Whether to plot the absolute values.
+            title: The title of the plot.
+            xlabel: The label for the x-axis.
+            x_range: The radius range to clip the data to. If None, ignores.
+            x_plot_range: The range to plot on the x-axis. If None, uses the data range.
+            stat: The type of statistic to plot. Gets passed to sns.histplot.
+            x_units: The x-axis units to use in the plot.
+            ylabel: The label for the y-axis.
+            fig: The figure to plot on.
+            ax: The axes to plot on.
+            kwargs: Additional keyword arguments to pass to utils.setup_plot().
+
+        Returns:
+            fig, ax.
+        """
         x_units = self.plot_unit_type(key, x_units)
         x = data[key].to(x_units)
         if x_range is not None:
@@ -473,6 +610,19 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         x_range: Quantity | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """Plot the radial distribution of the halo. Wraps plot_distribution() with additional options.
+
+        Args:
+            data: The data to plot.
+            cumulative: Whether to plot the cumulative distribution.
+            add_density: Whether to add the density distribution from the first density in the densities list.
+            x_units: The units to plot the x-axis in.
+            x_range: The range of the x-axis.
+            kwargs: Additional keyword arguments to pass to utils.setup_plot().
+
+        Returns:
+            fig, ax.
+        """
         fig, ax = self.plot_distribution(key='r', data=data, cumulative=cumulative, x_units=x_units, x_range=x_range, **kwargs)
         if add_density:
             params = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
@@ -491,6 +641,20 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
+        """Plot the phase space distribution of the particles.
+
+        Parameters:
+            data: The data to plot.
+            r_range: Range of radial distances to plot.
+            v_range: Range of velocities to plot.
+            length_units: Units to use for the length axis.
+            velocity_units: Units to use for the velocity axis. Set to default to 'km/second' and not 'kpc/Myr' and thus explicitly mentioned (the length unit use the default of the plotting function, and can be passed on as optional keyword arguments)
+            fig: Figure to use for the plot.
+            ax: Axes to use for the plot.
+
+        Returns:
+            fig, ax.
+        """
         r_lattice = Lattice(len(r_range), r_range.min().to(length_units).value, r_range.max().to(length_units).value, log=False)
         v_lattice = Lattice(len(v_range), v_range.min().to(velocity_units).value, v_range.max().to(velocity_units).value, log=False)
         grid = np.zeros((len(v_range), len(r_range)))
@@ -516,6 +680,20 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
+        """Plot the number of particles in the inner core as a function of time.
+
+        Parameters:
+            radius: Radius of the inner core.
+            time_units: The time units to use in the plot.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            title: Title for the plot.
+            fig: Figure to use for the plot.
+            ax: Axes to use for the plot.
+
+        Returns:
+            fig, ax.
+        """
         data = self.snapshots.copy()
         time_units = self.fill_time_unit(time_units)
         data['time'] = data['time'].to(time_units)
@@ -541,6 +719,20 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         agg_fn: str | Callable[[Any], Any] = 'count',
         n_posts: int = 100,
     ) -> tuple[NDArray[Any], tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']]]:
+        """Prepare data for 2D plotting.
+
+        Parameters:
+            data: Data to prepare.
+            radius_range: Range of radius to consider (filters the data).
+            time_range: Range of times to consider (filters the data).
+            length_units: Units to use for the radius axis.
+            time_units: Units to use for the time axis.
+            agg_fn: Function to aggregate data.
+            n_posts: Number of posts to use in the discretization lattice (affects resolution).
+
+        Returns:
+            data, extent
+        """
         data = data.copy()
         data['r'] = data['r'].to(length_units)
         data['time'] = data['time'].to(time_units)
@@ -573,6 +765,21 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         cbar_label: str | None = '#Particles',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """Plot the density evolution of the halo. Wraps prep_2d_data().
+
+        Parameters:
+            radius_range: Range of radius to consider (filters the data).
+            time_range: Range of times to consider (filters the data).
+            length_units: Units to use for the radius axis.
+            time_units: Units to use for the time axis.
+            xlabel: Label for the radius axis.
+            ylabel: Label for the time axis.
+            cbar_label: Label for the colorbar.
+            kwargs: Additional keyword arguments to pass to the plot function (utils.plot_2d()).
+
+        Returns:
+            fig, ax.
+        """
         time_units = self.fill_time_unit(time_units)
         data = self.snapshots.copy()
         data['output'] = data['r']
@@ -601,6 +808,22 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         cbar_label: str | None = 'Temperature (velocity std)',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """Plot the temperature evolution of the halo. Wraps prep_2d_data().
+
+        Parameters:
+            radius_range: Range of radius to consider (filters the data).
+            time_range: Range of times to consider (filters the data).
+            velocity_units: Units to use for the velocity axis.
+            length_units: Units to use for the radius axis.
+            time_units: Units to use for the time axis.
+            xlabel: Label for the radius axis.
+            ylabel: Label for the time axis.
+            cbar_label: Label for the colorbar.
+            kwargs: Additional keyword arguments to pass to the plot function (utils.plot_2d()).
+
+        Returns:
+            fig, ax.
+        """
         time_units = self.fill_time_unit(time_units)
         data = self.snapshots.copy()
         data['output'] = data['v_norm']
@@ -618,6 +841,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         )
 
     def plot_before_after_histogram(self, time_units: UnitLike = 'Tdyn', time_format: str = '.1f', **kwargs: Any) -> tuple[Figure, Axes]:
+        """Plot the distribution histogram comparison between the current state and the initial state.
+
+        the `key` keyword argument must be provided, and must match one of the keys in self.particles.
+        """
         time_units = self.fill_time_unit(time_units)
         fig, ax = self.plot_distribution(data=self.initial_particles, **kwargs)
         fig, ax = self.plot_distribution(data=self.particles, fig=fig, ax=ax, **kwargs)
@@ -635,6 +862,24 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
+        """Plot the histogram of scattering event locations.
+
+        Flattens all the events (ignores time), and plots the location of the particles at each scattering event.
+
+        Parameters:
+            title: Title for the plot.
+            xlabel: Label for the x-axis.
+            length_units: Units to use for the radius axis.
+            time_units: Units to use for time.
+            time_format: Format string for time.
+            figsize: Size of the figure.
+            fig: Figure to use for the plot.
+            ax: Axes to use for the plot.
+
+        Returns:
+            fig, ax.
+
+        """
         xlabel = utils.add_label_unit(xlabel, length_units)
         time_units = self.fill_time_unit(time_units)
         if title is not None:
@@ -648,14 +893,34 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         num: int = 500,
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Density',
+        title: str | None = 'Scattering density within the first {time}, total of {n_interactions} events',
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Gyr',
-        title: str | None = 'Scattering density within the first {time}, total of {n_interactions} events',
         time_format: str = '.1f',
         smooth_sigma: float = 5,
         smooth_interpolate_kind: str = 'linear',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """Plot the location of scattering events location densities (number of events per bin volume).
+
+        Flattens all the events (ignores time), and plots the location of the particles at each scattering event.
+        Bins are linearly spaced between 0 and max(r).
+
+        Parameters:
+            num: Number of bins to use for the radius axis.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            title: Title for the plot.
+            length_units: Units to use for the radius axis.
+            time_units: Units to use for time.
+            time_format: Format string for time.
+            smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
+            smooth_interpolate_kind: Interpolation kind for the density plot. Applied after the gaussian smoothing to further smooth the plot data.
+            kwargs: Additional keyword arguments to pass to the plot function (utils.setup_plot).
+
+        Returns:
+            fig, ax.
+        """
         r = np.hstack(self.interactions_track).to(length_units)
         r_bins = np.linspace(0, r.max(), num=num)
         dr = r_bins[1] - r_bins[0]
@@ -676,92 +941,6 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         sns.lineplot(x=r_bins, y=smoothed_density, ax=ax)
         return fig, ax
 
-    def plot_scattering_rounds_amount(
-        self,
-        xlabel: str | None = 'Time',
-        ylabel: str | None = 'Number of scattering rounds',
-        time_units: UnitLike = 'Gyr',
-        title: str | None = 'Number of scattering rounds per time step',
-        smooth_sigma: float = 1,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """DEPRECATED AND BROKEN"""
-        time_units = self.fill_time_unit(time_units)
-        xlabel = utils.add_label_unit(xlabel, time_units)
-        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
-        rounds = np.array(self.scatter_rounds)
-        smoothed_rounds = scipy.ndimage.gaussian_filter1d(rounds, sigma=smooth_sigma) if smooth_sigma > 0 else rounds
-        time = (np.arange(len(rounds)) * self.dt).to(time_units)
-        sns.lineplot(x=time, y=smoothed_rounds, ax=ax)
-        return fig, ax
-
-    def plot_required_scatter_rounds_by_range(
-        self,
-        x_range: Quantity['length'] | None = None,
-        xlabel: str | None = 'Radius',
-        ylabel: str | None = 'Number of required scattering rounds',
-        title: str | None = r'Number of required scattering rounds to match $\kappa$={kappa} rate after t={time}',
-        x_units: UnitLike = 'kpc',
-        time_units: UnitLike = 'Gyr',
-        time_format: str = '.1f',
-        smooth_sigma: float = 50,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """DEPRECATED AND BROKEN"""
-        self.sort_particles()
-        time_units = self.fill_time_unit(time_units)
-        x = self.r
-        rounds_uncapped = self.required_scatter_rounds_uncapped
-        smoothed_rounds_uncapped = scipy.ndimage.gaussian_filter1d(rounds_uncapped, sigma=smooth_sigma) if smooth_sigma > 0 else rounds_uncapped
-        rounds = self.required_scatter_rounds
-        smoothed_rounds = scipy.ndimage.gaussian_filter1d(rounds, sigma=smooth_sigma) if smooth_sigma > 0 else rounds
-        if x_range is not None:
-            smoothed_rounds_uncapped = smoothed_rounds_uncapped[(x > x_range[0]) * (x < x_range[1])]
-            smoothed_rounds = smoothed_rounds[(x > x_range[0]) * (x < x_range[1])]
-            x = x[(x > x_range[0]) * (x < x_range[1])]
-        if title is not None:
-            title = title.format(
-                kappa=self.scatter_params.get('kappa', None),
-                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
-            )
-        xlabel = utils.add_label_unit(xlabel, x_units)
-        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
-        sns.lineplot(x=x, y=smoothed_rounds_uncapped, label='Required', ax=ax)
-        sns.lineplot(x=x, y=smoothed_rounds, label='After cap', ax=ax)
-        ax.legend()
-        return fig, ax
-
-    def plot_scattering_timescale_by_range(
-        self,
-        x_range: Quantity['length'] | None = None,
-        xlabel: str | None = 'Radius',
-        ylabel: str | None = r'$t_{\mathrm{scatter}}$',
-        title: str | None = r'Scattering timescale after t={time}',
-        x_units: UnitLike = 'kpc',
-        title_units: UnitLike = 'Gyr',
-        time_units: UnitLike = 'Myr',
-        title_time_format: str = '.1f',
-        smooth_sigma: float = 50,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """DEPRECATED AND BROKEN"""
-        self.sort_particles()
-        x = self.r
-        time_units = self.fill_time_unit(time_units)
-        title_units = self.fill_time_unit(title_units)
-        time = self.scatter_timescale.to(time_units)
-        smoothed_time = scipy.ndimage.gaussian_filter1d(time, sigma=smooth_sigma) if smooth_sigma > 0 else time
-        if x_range is not None:
-            smoothed_time = smoothed_time[(x > x_range[0]) * (x < x_range[1])]
-            x = x[(x > x_range[0]) * (x < x_range[1])]
-        if title is not None:
-            title = title.format(time=self.time.to(title_units).to_string(format='latex', formatter=title_time_format))
-        xlabel = utils.add_label_unit(xlabel, x_units)
-        ylabel = utils.add_label_unit(ylabel, time_units)
-        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
-        sns.lineplot(x=x, y=smoothed_time, ax=ax)
-        return fig, ax
-
     def plot_local_density_by_range(
         self,
         x_range: Quantity['length'] | None = None,
@@ -775,7 +954,23 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         smooth_sigma: float = 50,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        """DEPRECATED AND BROKEN"""
+        """Plot the local density profile of the halo as a function of the radius.
+
+        Parameters:
+            radius_range: Range of radius to consider (filters the data).
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            title: Title for the plot.
+            x_units: Units to use for the x-axis.
+            density_units: Units to use for the y-axis.
+            time_units: Units to use for time.
+            time_format: Format string for time.
+            smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
+            kwargs: Additional keyword arguments to pass to the plot function (utils.setup_plot).
+
+        Returns:
+            fig, ax.
+        """
         self.sort_particles()
         x = self.r
         time_units = self.fill_time_unit(time_units)
@@ -795,54 +990,6 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         sns.lineplot(x=x, y=smoothed_local_density, ax=ax)
         return fig, ax
 
-    def plot_required_scatter_rounds_distribution(
-        self,
-        xlabel: str | None = 'Number of required scattering rounds',
-        title: str | None = r'Number of required scattering rounds to match $\kappa$={kappa} rate after t={time}',
-        time_units: UnitLike = 'Gyr',
-        time_format: str = '.1f',
-        log_scale: bool = True,
-        stat: str = 'density',
-        cumulative: bool = False,
-        hist_kwargs: Any = {},
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """DEPRECATED AND BROKEN"""
-        self.sort_particles()
-        time_units = self.fill_time_unit(time_units)
-        if title is not None:
-            title = title.format(
-                kappa=self.scatter_params.get('kappa', None),
-                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
-            )
-        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
-        sns.histplot(self.required_scatter_rounds, log_scale=log_scale, stat=stat, cumulative=cumulative, **hist_kwargs)
-        return fig, ax
-
-    def plot_scattering_timescale_distribution(
-        self,
-        xlabel: str | None = r'$t_{\mathrm{scatter}}$',
-        title: str | None = r'Scattering timescale after t={time}',
-        time_units: UnitLike = 'Myr',
-        title_units: UnitLike = 'Gyr',
-        title_time_format: str = '.1f',
-        log_scale: bool = True,
-        stat: str = 'density',
-        cumulative: bool = False,
-        hist_kwargs: Any = {},
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """DEPRECATED AND BROKEN"""
-        self.sort_particles()
-        time_units = self.fill_time_unit(time_units)
-        title_units = self.fill_time_unit(title_units)
-        xlabel = utils.add_label_unit(xlabel, time_units)
-        if title is not None:
-            title = title.format(time=self.time.to(title_units).to_string(format='latex', formatter=title_time_format))
-        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
-        sns.histplot(self.scatter_timescale.to(time_units), log_scale=log_scale, stat=stat, cumulative=cumulative, **hist_kwargs)
-        return fig, ax
-
     def plot_local_density_distribution(
         self,
         xlabel: str | None = 'local density',
@@ -856,7 +1003,23 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         hist_kwargs: Any = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        """DEPRECATED AND BROKEN"""
+        """Plot the local density distribution of the halo (histogram).
+
+        Parameters:
+            xlabel: Label for the x-axis.
+            title: Title for the plot.
+            density_units: Units to use for the x-axis.
+            time_units: Units to use for time.
+            time_format: Format string for time.
+            log_scale: Whether to use a logarithmic scale for the x-axis.
+            stat: The type of statistic to plot. Gets passed to sns.histplot.
+            cumulative: Whether to plot the cumulative distribution.
+            hist_kwargs: Additional keyword arguments to pass to sns.histogram().
+            kwargs: Additional keyword arguments to pass to the plot function (utils.setup_plot).
+
+        Returns:
+            fig, ax.
+        """
         self.sort_particles()
         time_units = self.fill_time_unit(time_units)
         xlabel = utils.add_label_unit(xlabel, density_units)
