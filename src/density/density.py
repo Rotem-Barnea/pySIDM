@@ -348,7 +348,7 @@ class Density:
         velocity_units: UnitLike = 'km/second',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        """Plots the phase space distribution of the density profile.
+        """Plot the phase space distribution of the density profile.
 
         Parameters:
             r_range: Range of radial distances to plot.
@@ -366,7 +366,7 @@ class Density:
         return fig, ax
 
     def add_plot_R_markers(self, ax: Axes, ymax: float, x_units: UnitLike = 'kpc') -> Axes:
-        """Adds markers for the scale radius and virial radius to the plot."""
+        """Add markers for the scale radius and virial radius to the plot."""
         ax.vlines(x=[self.Rs.to(x_units).value, self.Rvir.to(x_units).value], ymin=0, ymax=ymax, linestyles='dashed', colors='black')
         ax.text(x=self.Rs.to(x_units).value, y=ymax, s='Rs')
         ax.text(x=self.Rvir.to(x_units).value, y=ymax, s='Rvir')
@@ -381,7 +381,7 @@ class Density:
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
-        """Plots the density distribution (rho) of the density profile.
+        """Plot the density distribution (rho) of the density profile.
 
         Parameters:
             r_start: The starting radius for the plot. If None, uses Rmin.
@@ -424,7 +424,7 @@ class Density:
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
-        """Plots the radius distribution (pdf/cdf) of the density profile.
+        """Plot the radius distribution (pdf/cdf) of the density profile.
 
         Parameters:
             r_start: The starting radius for the plot. If None, uses Rmin.
