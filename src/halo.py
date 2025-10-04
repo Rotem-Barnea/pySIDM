@@ -515,39 +515,64 @@ Mean velocity change per step:    {np.abs(final['v_norm'].mean() - initial['v_no
 Mean velocity change per dt:      {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.dt:.1e}
 Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()) / initial['v_norm'].mean():.3%}"""
 
-    def plot_r_density_over_time(
+    def plot_r_kde_over_time(
         self,
+        include_start: bool = True,
+        include_now: bool = True,
         x_range: Quantity['length'] | None = None,
         x_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
+        time_format: str = '.1f',
         title: str | None = 'Density progression over time',
         xlabel: str | None = 'Radius',
-        ylabel: str | None = None,
-        fig: Figure | None = None,
-        ax: Axes | None = None,
+        indices: list[int] | None = None,
+        color_palette: str | None = None,
+        **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the density progression over time.
 
         Parameters:
+            include_start: Whether to include the initial particle distribution in the plot.
+            include_now: Whether to include the current particle distribution in the plot.
             x_range: The radius range to clip the data to. If None, ignores.
             time_units: The time units to use in the plot.
+            time_format: Format string for time.
             title: The title of the plot.
             xlabel: The label for the x-axis.
-            ylabel: The label for the y-axis.
-            fig: The figure to plot on.
-            ax: The axes to plot on.
+            indices: The snapshot indices to plot. If None plots everything.
+            color_palette: The color palette to use for the halos. If None, uses the default color palette.
+            kwargs: Additional keyword arguments to pass to the plot function (utils.setup_plot).
 
         Returns:
             fig, ax.
         """
+
+        data_tables = [] if not include_now else [self.initial_particles]
+        data_tables += [self.snapshots]
+        if include_now:
+            data_tables += [self.particles]
+        data = table.Qtable(table.vstack(data_tables))
+
+        indices = indices if indices is not None else np.unique(np.unique(data['time']))
+
+        if color_palette is not None:
+            colors = sns.color_palette(color_palette, len(indices))
+        else:
+            colors = None
+
         time_units = self.fill_time_unit(time_units)
-        fig, ax = utils.setup_plot(fig, ax, **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_units), ylabel=ylabel))
-        legend = []
+        fig, ax = utils.setup_plot(**utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_units)), **kwargs)
         clip = tuple(x_range.to(x_units).value) if x_range is not None else None
-        for group in self.snapshots.group_by('time').groups:
-            sns.kdeplot(group['r'].to(x_units).value, ax=ax, clip=clip)
-            legend += [group['time'][0].to(time_units).to_string(format='latex', formatter='.1f')]
-        fig.legend(legend, loc='outside center right')
+        for i, group in enumerate(self.snapshots.group_by('time').groups):
+            if i in indices:
+                sns.kdeplot(
+                    group['r'].to(x_units),
+                    ax=ax,
+                    clip=clip,
+                    color=colors[indices.index(i)] if colors is not None else None,
+                    label=group['time'][0].to(time_units).to_string(format='latex', formatter=time_format),
+                )
+        fig.legend(loc='outside center right')
         return fig, ax
 
     def plot_distribution(
