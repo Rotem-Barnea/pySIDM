@@ -60,17 +60,14 @@ def local_density(
         The local density of the particles.
     """
     x = np.array(r)
-    x_end = np.zeros_like(x)
     x_end = np.pad(x, (0, max_radius_j), mode='edge')[max_radius_j:]
 
     if mass_kind == 'sum':
         y = np.pad(np.array(m), (0, max_radius_j), mode='edge').cumsum()
-        mass = np.zeros_like(x)
         mass = y[max_radius_j:] - y[:-max_radius_j]
     else:
         mass = np.array(m)
 
-    volume = np.zeros_like(x)
     if volume_kind == 'density':
         volume = 4 / 3 * np.pi * (x_end**3 - x**3)
     else:
