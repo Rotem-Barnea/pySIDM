@@ -996,7 +996,6 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        self.sort_particles()
         x = self.r
         time_units = self.fill_time_unit(time_units)
         local_density = self.local_density.to(density_units)
@@ -1045,7 +1044,6 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        self.sort_particles()
         time_units = self.fill_time_unit(time_units)
         xlabel = utils.add_label_unit(xlabel, density_units)
         if title is not None:
