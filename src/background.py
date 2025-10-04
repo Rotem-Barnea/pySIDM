@@ -17,6 +17,9 @@ class Mass_Distribution:
             lattice: The spatial lattice on which the mass distribution is defined.
             M: The array of enclosed masses (M(<=r)), of shape (n_snapshots,lattice_size). Every row is a snapshot (moment in time), and every column is the value at a lattice point.
             time: The times corresponding to each snapshot.
+
+        Returns:
+            The mass distribution object.
         """
         self.lattice = lattice
         self.M = M
@@ -39,7 +42,7 @@ class Mass_Distribution:
             files = nsphere.gather_files(**kwargs)
         data = np.vstack([nsphere.load_file(path, dtype)['R'] for path, dtype in tqdm(files[['path', 'record_dtype']].to_numpy(), desc='Load files')])
         lattice.update(data.ravel())
-        M = np.vstack([lattice.lattice_to_density_cumsum(lattice(d)) for d in data]) * Mtot / data.shape[1]
+        M = np.vstack([lattice.values_on_lattice_point_cumsum(lattice(d)) for d in data]) * Mtot / data.shape[1]
         time = Quantity(files.time.tolist())
         return cls(lattice, M, time)
 
