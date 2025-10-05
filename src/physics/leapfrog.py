@@ -29,7 +29,7 @@ default_params: Params = {
     'first_mini_round': 0,
     'richardson_extrapolation': True,
     'adaptive': True,
-    'grid_window_radius': 2,
+    'grid_window_radius': 0,
 }
 
 
@@ -71,7 +71,7 @@ def get_grid(
 
 
 @njit
-def adjust_M(r: float, m: float, r_grid: NDArray[np.float64], M_grid: NDArray[np.float64], backup_M: float) -> float:
+def adjust_M(r: float, m: float, r_grid: NDArray[np.float64], M_grid: NDArray[np.float64], backup_M: float, count_self: bool = False) -> float:
     """Calculate the mass cdf (M(<=r)) for the particle.
 
     If the input grid is empty (i.e. the subprocess is disabled by setting grid_window_radius=0), returns the backup mass cdf value.
@@ -84,13 +84,17 @@ def adjust_M(r: float, m: float, r_grid: NDArray[np.float64], M_grid: NDArray[np
         r_grid: Array of positions for the particles pre-step.
         M_grid: Array of mass cdf values for the particles pre-step.
         backup_M: The mass cdf value for the particle pre-step.
+        count_self: Whether to include the self mass in the enclosed mass.
 
     Returns:
         Mass cdf at the given position.
     """
     if len(r_grid) == 0:
         return backup_M
-    return M_grid[np.searchsorted(r_grid, r)] + m
+    M = M_grid[np.searchsorted(r_grid, r)]
+    if count_self:
+        M += m
+    return M
 
 
 @njit
@@ -188,6 +192,10 @@ def particle_adaptive_step(
         vx_result = 4 * vx_fine - 3 * vx_coarse
         vy_result = 4 * vy_fine - 3 * vy_coarse
         vr_result = 4 * vr_fine - 3 * vr_coarse
+
+        if r_result < 0:
+            r_result *= -1
+            vr_result *= -1
     else:
         r_result, vx_result, vy_result, vr_result = r_fine, vx_fine, vy_fine, vr_fine
     return r_result, vx_result, vy_result, vr_result

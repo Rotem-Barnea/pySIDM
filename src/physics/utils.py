@@ -10,7 +10,7 @@ from .. import run_units
 def M(
     r: Quantity['length'],
     m: Quantity['mass'] | None = None,
-    count_self: bool = True,
+    count_self: bool = False,
     M_below: Quantity['mass'] = Quantity(0, run_units.mass),
 ) -> Quantity['mass']:
     """Calculate the cumulative mass of a set of particles.
