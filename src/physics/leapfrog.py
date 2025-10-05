@@ -14,23 +14,21 @@ class Params(TypedDict, total=False):
     """Parameter dictionary for the leapfrog integrator."""
 
     max_minirounds: int
-    r_convergence_threshold: Quantity['length']
-    vr_convergence_threshold: Quantity['velocity']
+    r_convergence_threshold: float
+    vr_convergence_threshold: float
     first_mini_round: int
     richardson_extrapolation: bool
     adaptive: bool
-    adaptive_exponential: bool
     grid_window_radius: int
 
 
 default_params: Params = {
-    'max_minirounds': 30,
-    'r_convergence_threshold': Quantity(1e-3, 'pc').to(run_units.length),
-    'vr_convergence_threshold': Quantity(1e-3, 'km/second').to(run_units.velocity),
+    'max_minirounds': 10,
+    'r_convergence_threshold': 1e-7,
+    'vr_convergence_threshold': 1e-7,
     'first_mini_round': 0,
-    'richardson_extrapolation': False,
+    'richardson_extrapolation': True,
     'adaptive': True,
-    'adaptive_exponential': False,
     'grid_window_radius': 2,
 }
 
@@ -47,10 +45,6 @@ def normalize_params(params: Params, add_defaults: bool = False) -> Params:
     """
     if add_defaults:
         params = {**default_params, **params}
-    if 'r_convergence_threshold' in params:
-        params['r_convergence_threshold'] = params['r_convergence_threshold'].to(run_units.length)
-    if 'vr_convergence_threshold' in params:
-        params['vr_convergence_threshold'] = params['vr_convergence_threshold'].to(run_units.velocity)
     return params
 
 
@@ -117,7 +111,7 @@ def particle_step(
     r_grid: NDArray[np.float64],
     dt: float,
     N: int = 1,
-) -> tuple[float, NDArray[np.float64]]:
+) -> tuple[float, float, float, float]:
     """Perform a simple leapfrog step in the radius (1D).
 
     Splits the step into N mini-steps, each over a time interval of dt/N, and then integrates the velocity and position using a leapfrog algorithm:
@@ -134,38 +128,69 @@ def particle_step(
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
         dt: The time step.
-        N: The number of mini-steps to perform. Should be an odd number.
+        N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by dt -> dt/(N-1).
 
     Returns:
         The new position and velocity of the particle.
     """
     Lx, Ly = r * vx, r * vy
     L = np.sqrt(Lx**2 + Ly**2)
+
+    step_size = dt / N
+
     a = acceleration(r, L, adjust_M(r, m, r_grid, M_grid, M))
-    vr += a * dt / (2 * N)
+    vr += a * step_size / 2
     for ministep in range(N):
-        r += vr * dt / N
+        r += vr * step_size
         if r < 0:
             r *= -1
             vr *= -1
         a = acceleration(r, L, adjust_M(r, m, r_grid, M_grid, M))
         if ministep < N - 1:
-            vr += a * dt / N
+            vr += a * step_size
         else:
-            vr += a * dt / (2 * N)
-    return r, np.array([Lx / r, Ly / r, vr])
+            vr += a * step_size / 2
+    return r, Lx / r, Ly / r, vr
 
 
 @njit
-def mini_step_to_N(step: int, adaptive_exponential: bool = False, base: int = 2):
-    """Convert number of mini-steps to the actual step size (linear / exponential).
-
-    If the base is set to not be 2, ensure elsewhere that the number of steps is odd.
-    """
-    if adaptive_exponential:
-        return base**step + 1
+def particle_adaptive_step(
+    r: float,
+    vx: float,
+    vy: float,
+    vr: float,
+    m: float,
+    M: float,
+    M_grid: NDArray[np.float64],
+    r_grid: NDArray[np.float64],
+    dt: float,
+    max_minirounds: int = 100,
+    r_convergence_threshold: float = 1e-6,
+    vr_convergence_threshold: float = 1e-6,
+    first_mini_round: int = 0,
+    richardson_extrapolation: bool = True,
+) -> tuple[float, float, float, float]:
+    r_coarse, vx_coarse, vy_coarse, vr_coarse = r, vx, vy, vr
+    r_fine, vx_fine, vy_fine, vr_fine = r_coarse, vx_coarse, vy_coarse, vr_coarse
+    for mini_round in range(first_mini_round, first_mini_round + max_minirounds):
+        r_coarse, vx_coarse, vy_coarse, vr_coarse = particle_step(
+            r=r, vx=vx, vy=vy, vr=vr, m=m, M=M, M_grid=M_grid, r_grid=r_grid, dt=dt, N=2**mini_round
+        )
+        r_fine, vx_fine, vy_fine, vr_fine = particle_step(
+            r=r, vx=vx, vy=vy, vr=vr, m=m, M=M, M_grid=M_grid, r_grid=r_grid, dt=dt, N=2**mini_round * 2
+        )
+        r_relative_error = np.abs(r_coarse - r_fine) / r_fine
+        vr_relative_error = np.abs(vr_coarse - vr_fine) / vr_fine
+        if (r_relative_error < r_convergence_threshold) and (vr_relative_error < vr_convergence_threshold):
+            break
+    if richardson_extrapolation:
+        r_result = 4 * r_fine - 3 * r_coarse
+        vx_result = 4 * vx_fine - 3 * vx_coarse
+        vy_result = 4 * vy_fine - 3 * vy_coarse
+        vr_result = 4 * vr_fine - 3 * vr_coarse
     else:
-        return base * step + 1
+        r_result, vx_result, vy_result, vr_result = r_fine, vx_fine, vy_fine, vr_fine
+    return r_result, vx_result, vy_result, vr_result
 
 
 @njit(parallel=True)
@@ -178,12 +203,11 @@ def fast_step(
     M: NDArray[np.float64],
     dt: float,
     max_minirounds: int = 100,
-    r_convergence_threshold: float = 1e-3,
-    vr_convergence_threshold: float = 0.001,
+    r_convergence_threshold: float = 1e-6,
+    vr_convergence_threshold: float = 1e-6,
     first_mini_round: int = 0,
-    richardson_extrapolation: bool = False,
+    richardson_extrapolation: bool = True,
     adaptive: bool = True,
-    adaptive_exponential: bool = False,
     grid_window_radius: int = 2,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Perform an adaptive leapfrog step for a particle.
@@ -202,52 +226,48 @@ def fast_step(
         first_mini_round: The first mini-round to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
         richardson_extrapolation: Use Richardson extrapolation.
         adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If False - performs a single mini-round at first_mini_round.
-        adaptive_exponential: Use exponential mini-steps growth (sent to mini_step_to_N()).
         grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (M(<=r)) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (M(<=r)) during the step (use the value pre-step for all acceleration calculations).
 
     Returns:
         Updated position and velocity.
     """
     output_r, output_vx, output_vy, output_vr = np.empty_like(r), np.empty_like(vx), np.empty_like(vy), np.empty_like(vr)
-    for i in prange(len(r)):
-        M_grid, r_grid = get_grid(r=r, M=M, window_radius=grid_window_radius, particle_index=i)
-        r_coarse, v_coarse = particle_step(
-            r=r[i],
-            vx=vx[i],
-            vy=vy[i],
-            vr=vr[i],
-            m=m[i],
-            M=M[i],
-            M_grid=M_grid,
-            r_grid=r_grid,
-            dt=dt,
-            N=mini_step_to_N(first_mini_round, adaptive_exponential),
-        )
-        r_fine, v_fine = r_coarse, v_coarse
-        if adaptive:
-            for mini_round in range(first_mini_round, first_mini_round + max_minirounds):
-                r_fine, v_fine = particle_step(
-                    r=r[i],
-                    vx=vx[i],
-                    vy=vy[i],
-                    vr=vr[i],
-                    m=m[i],
-                    M=M[i],
-                    M_grid=M_grid,
-                    r_grid=r_grid,
-                    dt=dt,
-                    N=mini_step_to_N(mini_round + 1, adaptive_exponential),
-                )
-                if (np.abs(r_coarse - r_fine) < r_convergence_threshold) and (np.abs(v_coarse[2] - v_fine[2]) < vr_convergence_threshold):
-                    break
-                r_coarse = r_fine
-                v_coarse = v_fine
-        if richardson_extrapolation:
-            output_r[i] = 4 * r_fine - 3 * r_coarse
-            output_vx[i], output_vy[i], output_vr[i] = 4 * v_fine - 3 * v_coarse
+    for particle in prange(len(r)):
+        M_grid, r_grid = get_grid(r=r, M=M, window_radius=grid_window_radius, particle_index=particle)
+        if not adaptive:
+            r_result, vx_result, vy_result, vr_result = particle_step(
+                r=r[particle],
+                vx=vx[particle],
+                vy=vy[particle],
+                vr=vr[particle],
+                m=m[particle],
+                M=M[particle],
+                M_grid=M_grid,
+                r_grid=r_grid,
+                dt=dt,
+                N=2**first_mini_round,
+            )
         else:
-            output_r[i] = r_fine
-            output_vx[i], output_vy[i], output_vr[i] = v_fine
+            r_result, vx_result, vy_result, vr_result = particle_adaptive_step(
+                r=r[particle],
+                vx=vx[particle],
+                vy=vy[particle],
+                vr=vr[particle],
+                m=m[particle],
+                M=M[particle],
+                M_grid=M_grid,
+                r_grid=r_grid,
+                dt=dt,
+                max_minirounds=max_minirounds,
+                r_convergence_threshold=r_convergence_threshold,
+                vr_convergence_threshold=vr_convergence_threshold,
+                first_mini_round=first_mini_round,
+                richardson_extrapolation=richardson_extrapolation,
+            )
+        output_r[particle] = r_result
+        output_vx[particle] = vx_result
+        output_vy[particle] = vy_result
+        output_vr[particle] = vr_result
     return output_r, output_vx, output_vy, output_vr
 
 
@@ -260,12 +280,11 @@ def step(
     M: Quantity['mass'] | NDArray[np.float64] | pd.Series,
     dt: Quantity['time'] | float,
     max_minirounds: int = default_params['max_minirounds'],
-    r_convergence_threshold: Quantity['length'] = default_params['r_convergence_threshold'],
-    vr_convergence_threshold: Quantity['velocity'] = default_params['vr_convergence_threshold'],
+    r_convergence_threshold: float = default_params['r_convergence_threshold'],
+    vr_convergence_threshold: float = default_params['vr_convergence_threshold'],
     first_mini_round: int = default_params['first_mini_round'],
     richardson_extrapolation: bool = default_params['richardson_extrapolation'],
     adaptive: bool = default_params['adaptive'],
-    adaptive_exponential: bool = default_params['adaptive_exponential'],
     grid_window_radius: int = default_params['grid_window_radius'],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Perform an adaptive leapfrog step for a particle.
@@ -286,7 +305,6 @@ def step(
         first_mini_round: The first mini-round to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
         richardson_extrapolation: Use Richardson extrapolation.
         adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If False - performs a single mini-round at first_mini_round.
-        adaptive_exponential: Use exponential mini-steps growth (sent to mini_step_to_N()).
         grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (M(<=r)) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (M(<=r)) during the step (use the value pre-step for all acceleration calculations).
 
     Returns:
@@ -301,12 +319,11 @@ def step(
         M=np.array(M),
         dt=dt.value if isinstance(dt, Quantity) else dt,
         max_minirounds=max_minirounds,
-        r_convergence_threshold=r_convergence_threshold.value,
-        vr_convergence_threshold=vr_convergence_threshold.value,
+        r_convergence_threshold=r_convergence_threshold,
+        vr_convergence_threshold=vr_convergence_threshold,
         first_mini_round=first_mini_round,
         richardson_extrapolation=richardson_extrapolation,
         adaptive=adaptive,
-        adaptive_exponential=adaptive_exponential,
         grid_window_radius=grid_window_radius,
     )
     return _r, _vx, _vy, _vr

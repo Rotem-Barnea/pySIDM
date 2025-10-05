@@ -553,7 +553,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             data_tables += [self.particles]
         data = table.Qtable(table.vstack(data_tables))
 
-        indices = indices if indices is not None else np.unique(np.unique(data['time']))
+        indices = indices if indices is not None else list(range(len(np.unique(np.unique(data['time'])))))
 
         if color_palette is not None:
             colors = sns.color_palette(color_palette, len(indices))
