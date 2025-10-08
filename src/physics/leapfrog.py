@@ -23,7 +23,7 @@ class Params(TypedDict, total=False):
 
 
 default_params: Params = {
-    'max_minirounds': 10,
+    'max_minirounds': 50,
     'r_convergence_threshold': 1e-7,
     'vr_convergence_threshold': 1e-7,
     'first_mini_round': 0,
@@ -139,9 +139,7 @@ def particle_step(
     """
     Lx, Ly = r * vx, r * vy
     L = np.sqrt(Lx**2 + Ly**2)
-
     step_size = dt / N
-
     a = acceleration(r, L, adjust_M(r, m, r_grid, M_grid, M))
     vr += a * step_size / 2
     for ministep in range(N):
@@ -169,11 +167,32 @@ def particle_adaptive_step(
     r_grid: NDArray[np.float64],
     dt: float,
     max_minirounds: int = 100,
-    r_convergence_threshold: float = 1e-6,
-    vr_convergence_threshold: float = 1e-6,
+    r_convergence_threshold: float = 1e-7,
+    vr_convergence_threshold: float = 1e-7,
     first_mini_round: int = 0,
     richardson_extrapolation: bool = True,
 ) -> tuple[float, float, float, float]:
+    """Perform an adaptive leapfrog step for a particle.
+
+    Parameters:
+        r: Particle position.
+        vx: The first pernpendicular component (to the radial direction) of the velocity of the particle.
+        vy: The second pernpendicular component (to the radial direction) of the velocity of the particle.
+        vr: The radial velocity of the particle.
+        m: The mass of the particle.
+        M: The mass cdf (M(<=r)) of the particle at the start of the step. Used only if M_grid is empty.
+        M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
+        r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
+        dt: Time step.
+        max_minirounds: Maximum number of mini-rounds to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
+        r_convergence_threshold: Convergence threshold for position.
+        vr_convergence_threshold: Convergence threshold for radial velocity.
+        first_mini_round: The first mini-round to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
+        richardson_extrapolation: Use Richardson extrapolation.
+
+    Returns:
+        Updated position and velocity.
+    """
     r_coarse, vx_coarse, vy_coarse, vr_coarse = r, vx, vy, vr
     r_fine, vx_fine, vy_fine, vr_fine = r_coarse, vx_coarse, vy_coarse, vr_coarse
     for mini_round in range(first_mini_round, first_mini_round + max_minirounds):
@@ -183,10 +202,12 @@ def particle_adaptive_step(
         r_fine, vx_fine, vy_fine, vr_fine = particle_step(
             r=r, vx=vx, vy=vy, vr=vr, m=m, M=M, M_grid=M_grid, r_grid=r_grid, dt=dt, N=2**mini_round * 2
         )
-        r_relative_error = np.abs(r_coarse - r_fine) / r_fine
-        vr_relative_error = np.abs(vr_coarse - vr_fine) / vr_fine
+        r_relative_error = np.abs(r_fine - r_coarse) / r_fine
+        vr_relative_error = np.abs(vr_fine - vr_coarse) / vr_fine
         if (r_relative_error < r_convergence_threshold) and (vr_relative_error < vr_convergence_threshold):
             break
+        if mini_round == first_mini_round + max_minirounds - 1:
+            print('Maximum number of mini-rounds reached')
     if richardson_extrapolation:
         r_result = 4 * r_fine - 3 * r_coarse
         vx_result = 4 * vx_fine - 3 * vx_coarse
@@ -211,14 +232,14 @@ def fast_step(
     M: NDArray[np.float64],
     dt: float,
     max_minirounds: int = 100,
-    r_convergence_threshold: float = 1e-6,
-    vr_convergence_threshold: float = 1e-6,
+    r_convergence_threshold: float = 1e-7,
+    vr_convergence_threshold: float = 1e-7,
     first_mini_round: int = 0,
     richardson_extrapolation: bool = True,
     adaptive: bool = True,
     grid_window_radius: int = 2,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
-    """Perform an adaptive leapfrog step for a particle.
+    """Perform a leapfrog step (single or adaptive) for a particle.
 
     Parameters:
         r: Particle position.
@@ -228,7 +249,7 @@ def fast_step(
         m: The mass of the particle.
         M: The mass cdf (M(<=r)) of the particle at the start of the step. Used only if M_grid is empty.
         dt: Time step.
-        max_mini_rounds: Maximum number of mini-rounds to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
+        max_minirounds: Maximum number of mini-rounds to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
         first_mini_round: The first mini-round to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
@@ -307,7 +328,7 @@ def step(
         m: The mass of the particles.
         M: The mass cdf (M(<=r)) of the particles at the start of the step. Used only if M_grid is empty.
         dt: Time step.
-        max_mini_rounds: Maximum number of mini-rounds to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
+        max_minirounds: Maximum number of mini-rounds to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
         first_mini_round: The first mini-round to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
@@ -318,7 +339,7 @@ def step(
     Returns:
         Updated position and velocity.
     """
-    _r, _vx, _vy, _vr = fast_step(
+    return fast_step(
         r=np.array(r),
         vx=np.array(vx),
         vy=np.array(vy),
@@ -334,4 +355,3 @@ def step(
         adaptive=adaptive,
         grid_window_radius=grid_window_radius,
     )
-    return _r, _vx, _vy, _vr

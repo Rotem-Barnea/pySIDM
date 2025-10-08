@@ -3,14 +3,9 @@ import pandas as pd
 from numba import njit, prange
 from numpy.typing import NDArray
 from typing import Callable, Any, cast
-from matplotlib import pyplot as plt
-from matplotlib.figure import Figure
-from matplotlib.axes import Axes
-import matplotlib.ticker as mtick
 from astropy import table
 from astropy.units import Quantity, Unit
 from astropy.units.typing import UnitLike
-from . import run_units
 from .types import FloatOrArray
 
 
@@ -146,99 +141,6 @@ def linear_interpolation(xs: NDArray[np.float64], ys: NDArray[np.float64], x: fl
     return (1 - w) * ys[i] + w * ys[i + 1]
 
 
-def plot_2d(
-    grid: NDArray[Any],
-    extent: tuple[Quantity, Quantity, Quantity, Quantity] | None = None,
-    x_range: Quantity | None = None,
-    y_range: Quantity | None = None,
-    x_units: UnitLike = run_units.length,
-    y_units: UnitLike = run_units.velocity,
-    x_nbins: int | None = 6,
-    y_nbins: int | None = 6,
-    x_tick_format: str = '%.0f',
-    y_tick_format: str = '%.0f',
-    title: str | None = None,
-    xlabel: str | None = None,
-    ylabel: str | None = None,
-    cbar_label: str | None = None,
-    fig: Figure | None = None,
-    ax: Axes | None = None,
-    **kwargs: Any,
-) -> tuple[Figure, Axes]:
-    """Plot a 2d heatmap, such as a phase space distribution.
-
-    Parameters:
-        grid: 2d array of data to plot.
-        extent: Range of values to plot, used to define the x and y axes. If None, derive from x_range and y_range, otherwise takes priority.
-        x_range: Range of x values to plot, used to define the extent. Must be provided if extent is None, otherwise ignored.
-        y_range: Range of y values to plot, used to define the extent. Must be provided if extent is None, otherwise ignored.
-        x_units: Units to use for the x axis.
-        y_units: Units to use for the y axis.
-        x_nbins: Number of bins to use for the x axis.
-        y_nbins: Number of bins to use for the y axis.
-        x_tick_format: Format string for the x axis ticks.
-        y_tick_format: Format string for the y axis ticks.
-        title: Title of the plot.
-        xlabel: Label for the x axis.
-        ylabel: Label for the y axis.
-        cbar_label: Label for the colorbar.
-        fig: Figure to plot on.
-        ax: Axes to plot on.
-        kwargs: Additional keyword arguments to pass to imshow.
-
-    Returns:
-        fig, ax.
-    """
-    if extent is None:
-        assert x_range is not None and y_range is not None, 'x_range and y_range must be provided if extent is None'
-        extent = (x_range.to(x_units).min(), x_range.to(x_units).max(), y_range.to(y_units).min(), y_range.to(y_units).max())
-    extent_value = (
-        float(extent[0].to(x_units).value),
-        float(extent[1].to(x_units).value),
-        float(extent[2].to(y_units).value),
-        float(extent[3].to(y_units).value),
-    )
-
-    fig, ax = setup_plot(fig=fig, ax=ax, grid=False, title=title, xlabel=xlabel, ylabel=ylabel)
-    im = ax.imshow(grid, origin='lower', aspect='auto', extent=extent_value, **kwargs)
-    cbar = fig.colorbar(im, ax=ax)
-    if cbar_label:
-        cbar.set_label(cbar_label)
-
-    if x_nbins is not None:
-        ax.xaxis.set_major_locator(mtick.MaxNLocator(nbins=x_nbins))
-        ax.xaxis.set_major_formatter(mtick.FormatStrFormatter(x_tick_format))
-        ax.xaxis.tick_bottom()
-        for lab in ax.get_xticklabels():
-            lab.set_rotation(0)
-            lab.set_horizontalalignment('center')
-
-    if y_nbins is not None:
-        ax.yaxis.set_major_locator(mtick.MaxNLocator(nbins=y_nbins))
-        ax.yaxis.set_major_formatter(mtick.FormatStrFormatter(y_tick_format))
-    return fig, ax
-
-
-def plot_phase_space(
-    grid: NDArray[Any],
-    r_range: Quantity['length'] | None = Quantity([1e-2, 50], 'kpc'),
-    v_range: Quantity['velocity'] | None = Quantity([0, 100], 'km/second'),
-    length_units: UnitLike = run_units.length,
-    velocity_units: UnitLike = run_units.velocity,
-    **kwargs: Any,
-) -> tuple[Figure, Axes]:
-    """Plot the phase space distribution. Wrapper for plot_2d() to provide convenient defaults and variable names (i.e. r and v)."""
-    return plot_2d(
-        grid,
-        xlabel=add_label_unit('Radius', length_units),
-        ylabel=add_label_unit('Velocity', velocity_units),
-        x_units=length_units,
-        y_units=velocity_units,
-        **drop_None(x_range=r_range, y_range=v_range),
-        **kwargs,
-    )
-
-
 @njit(parallel=True)
 def fast_assign(indices: NDArray[np.int64], array: NDArray[np.float64]) -> NDArray[np.float64]:
     """Fast assignment of array elements using indices. njit accelerated."""
@@ -292,53 +194,6 @@ def fast_unique_mask(x: NDArray[np.int64]) -> NDArray[np.int64]:
     for i in prange(len(x)):
         output[x[i]] += 1
     return output
-
-
-def setup_plot(
-    fig: Figure | None = None,
-    ax: Axes | None = None,
-    grid: bool = True,
-    minorticks: bool = False,
-    figsize: tuple[int, int] | None = (6, 5),
-    ax_set: dict[str, str] | None = None,
-    title: str | None = None,
-    xlabel: str | None = None,
-    ylabel: str | None = None,
-    **kwargs: Any,
-) -> tuple[Figure, Axes]:
-    """Setup a plot with optional grid, minor ticks, and axis settings.
-
-    Parameters:
-        fig: Figure to plot on. If None, a new figure is created.
-        ax: Axes to plot on. If None, a new axes is created.
-        grid: Whether to add a grid to the plot (major ticks).
-        minorticks: Whether to add the grid for the minor ticks.
-        figsize: The figure size to create. Ignored if fig/ax is provided.
-        ax_set: Additional keyword arguments to pass to Axes.set(). e.g {'xscale': 'log'}.
-        title: The title of the plot.
-        xlabel: The label of the x axis.
-        ylabel: The label of the y axis.
-        kwargs: Additional keyword arguments to pass to plt.subplots().
-
-    Returns:
-        fig, ax.
-    """
-    if fig is None or ax is None:
-        fig, ax = plt.subplots(figsize=figsize, **kwargs)
-    assert fig is not None and ax is not None
-    fig.tight_layout()
-    ax.grid(grid)
-    if minorticks:
-        ax.minorticks_on()
-    if ax_set is not None:
-        ax.set(**ax_set)
-    if title is not None:
-        ax.set_title(title)
-    if xlabel is not None:
-        ax.set_xlabel(xlabel)
-    if ylabel is not None:
-        ax.set_ylabel(ylabel)
-    return fig, ax
 
 
 def aggregate_QTable(

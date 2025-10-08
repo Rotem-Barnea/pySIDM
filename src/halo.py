@@ -8,14 +8,14 @@ import scipy
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from numpy.typing import NDArray
-from typing import Any, Self, Callable, cast
+from typing import Any, Self, Callable, cast, Literal
 from astropy import table
 from astropy.units import Quantity, Unit, def_unit
 from astropy.units.typing import UnitLike
 from .spatial_approximation import Lattice
 from .density.density import Density
 from .background import Mass_Distribution
-from . import utils, run_units, physics
+from . import utils, run_units, physics, plot
 from .physics import sidm, leapfrog
 from .types import ParticleType
 
@@ -541,7 +541,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel: The label for the x-axis.
             indices: The snapshot indices to plot. If None plots everything.
             color_palette: The color palette to use for the halos. If None, uses the default color palette.
-            kwargs: Additional keyword arguments to pass to the plot function (utils.setup_plot).
+            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
 
         Returns:
             fig, ax.
@@ -551,9 +551,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data_tables += [self.snapshots]
         if include_now:
             data_tables += [self.particles]
-        data = table.Qtable(table.vstack(data_tables))
+        data = table.QTable(table.vstack(data_tables))
 
-        indices = indices if indices is not None else list(range(len(np.unique(np.unique(data['time'])))))
+        indices = indices if indices is not None else list(range(len(np.unique(np.array(data['time'])))))
 
         if color_palette is not None:
             colors = sns.color_palette(color_palette, len(indices))
@@ -561,7 +561,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             colors = None
 
         time_units = self.fill_time_unit(time_units)
-        fig, ax = utils.setup_plot(**utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_units)), **kwargs)
+        fig, ax = plot.setup_plot(**utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_units)), **kwargs)
         clip = tuple(x_range.to(x_units).value) if x_range is not None else None
         for i, group in enumerate(self.snapshots.group_by('time').groups):
             if i in indices:
@@ -588,6 +588,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         stat: str = 'density',
         x_units: UnitLike | None = None,
         ylabel: str | None = None,
+        label: str | None = None,
         fig: Figure | None = None,
         ax: Axes | None = None,
         **kwargs: Any,
@@ -606,9 +607,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             stat: The type of statistic to plot. Gets passed to sns.histplot.
             x_units: The x-axis units to use in the plot.
             ylabel: The label for the y-axis.
+            label: The label for the histogram (legend).
             fig: The figure to plot on.
             ax: The axes to plot on.
-            kwargs: Additional keyword arguments to pass to utils.setup_plot().
+            kwargs: Additional keyword arguments to pass to plot.setup_plot().
 
         Returns:
             fig, ax.
@@ -620,8 +622,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if absolute:
             x = np.abs(x)
         params = {**self.default_plot_text(key, x_units), **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel)}
-        fig, ax = utils.setup_plot(fig, ax, **params, **kwargs)
-        sns.histplot(x, cumulative=cumulative, ax=ax, stat=stat)
+        fig, ax = plot.setup_plot(fig, ax, **params, **kwargs)
+        sns.histplot(x, cumulative=cumulative, ax=ax, stat=stat, label=label)
         if x_plot_range is not None:
             ax.set_xlim(*x_plot_range.to(x_units).value)
         return fig, ax
@@ -633,6 +635,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         add_density: bool = True,
         x_units: UnitLike | None = None,
         x_range: Quantity | None = None,
+        hist_label: str | None = None,
+        density_label: str | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the radial distribution of the halo. Wraps plot_distribution() with additional options.
@@ -643,16 +647,18 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             add_density: Whether to add the density distribution from the first density in the densities list.
             x_units: The units to plot the x-axis in.
             x_range: The range of the x-axis.
-            kwargs: Additional keyword arguments to pass to utils.setup_plot().
+            hist_label: The label for the histogram (legend).
+            density_label: The label for the density distribution (legend).
+            kwargs: Additional keyword arguments to pass to plot.setup_plot().
 
         Returns:
             fig, ax.
         """
-        fig, ax = self.plot_distribution(key='r', data=data, cumulative=cumulative, x_units=x_units, x_range=x_range, **kwargs)
+        fig, ax = self.plot_distribution(key='r', data=data, cumulative=cumulative, x_units=x_units, x_range=x_range, label=hist_label, **kwargs)
         if add_density:
             params = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
             return self.densities[0].plot_radius_distribution(
-                cumulative=cumulative, length_units=self.plot_unit_type('r', x_units), fig=fig, ax=ax, **params
+                cumulative=cumulative, length_units=self.plot_unit_type('r', x_units), fig=fig, ax=ax, label=density_label, **params
             )
         return fig, ax
 
@@ -693,7 +699,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data_table = data_table.groupby(['r', 'v_norm']).agg('count').reset_index()
         grid[data_table['v_norm'].to_numpy(), data_table['r'].to_numpy()] = data_table['count']
 
-        return utils.plot_phase_space(grid, r_range, v_range, length_units, velocity_units, fig=fig, ax=ax)
+        return plot.plot_phase_space(grid, r_range, v_range, length_units, velocity_units, fig=fig, ax=ax)
 
     def plot_inner_core_density(
         self,
@@ -730,7 +736,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             title = f'#particles in inner core ({radius.to_string(format="latex", formatter=".2f")})'
 
         xlabel = f'{xlabel} [{time_units}]' if xlabel is not None else None
-        fig, ax = utils.setup_plot(fig, ax, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
+        fig, ax = plot.setup_plot(fig, ax, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
         sns.lineplot(agg_data.to_pandas(index='time'), ax=ax)
         return fig, ax
 
@@ -810,7 +816,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data['output'] = data['r']
         grid, extent = self.prep_2d_data(data, radius_range, time_range, length_units, time_units, agg_fn='count')
 
-        return utils.plot_2d(
+        return plot.plot_2d(
             grid=grid,
             extent=extent,
             x_units=length_units,
@@ -854,7 +860,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data['output'] = data['v_norm']
         grid, extent = self.prep_2d_data(data, radius_range, time_range, length_units, time_units, agg_fn='std')
 
-        return utils.plot_2d(
+        return plot.plot_2d(
             grid=grid,
             extent=extent,
             x_units=length_units,
@@ -909,7 +915,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_units = self.fill_time_unit(time_units)
         if title is not None:
             title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_interactions=self.n_interactions)
-        fig, ax = utils.setup_plot(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
+        fig, ax = plot.setup_plot(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
         sns.histplot(Quantity(np.hstack(self.interactions_track), run_units.length).to(length_units), ax=ax)
         return fig, ax
 
@@ -941,7 +947,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_format: Format string for time.
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
             smooth_interpolate_kind: Interpolation kind for the density plot. Applied after the gaussian smoothing to further smooth the plot data.
-            kwargs: Additional keyword arguments to pass to the plot function (utils.setup_plot).
+            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
 
         Returns:
             fig, ax.
@@ -962,7 +968,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_units = self.fill_time_unit(time_units)
         if title is not None:
             title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_interactions=self.n_interactions)
-        fig, ax = utils.setup_plot(**kwargs, ax_set={'yscale': 'log'}, **utils.drop_None(title=title, xlabel=xlabel))
+        fig, ax = plot.setup_plot(**kwargs, ax_set={'yscale': 'log'}, **utils.drop_None(title=title, xlabel=xlabel))
         sns.lineplot(x=r_bins, y=smoothed_density, ax=ax)
         return fig, ax
 
@@ -991,7 +997,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_units: Units to use for time.
             time_format: Format string for time.
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
-            kwargs: Additional keyword arguments to pass to the plot function (utils.setup_plot).
+            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
 
         Returns:
             fig, ax.
@@ -1010,7 +1016,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             )
         xlabel = utils.add_label_unit(xlabel, x_units)
         ylabel = utils.add_label_unit(ylabel, density_units)
-        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
+        fig, ax = plot.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
         sns.lineplot(x=x, y=smoothed_local_density, ax=ax)
         return fig, ax
 
@@ -1039,7 +1045,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             stat: The type of statistic to plot. Gets passed to sns.histplot.
             cumulative: Whether to plot the cumulative distribution.
             hist_kwargs: Additional keyword arguments to pass to sns.histogram().
-            kwargs: Additional keyword arguments to pass to the plot function (utils.setup_plot).
+            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
 
         Returns:
             fig, ax.
@@ -1051,6 +1057,57 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 nn=self.scatter_params.get('max_radius_j', None),
                 time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
             )
-        fig, ax = utils.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
+        fig, ax = plot.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
         sns.histplot(self.local_density.to(density_units), log_scale=log_scale, stat=stat, cumulative=cumulative, **hist_kwargs)
         return fig, ax
+
+    def plot_trace(
+        self,
+        particle_index: int,
+        key: str,
+        data: table.QTable | None = None,
+        relative: Literal['relative change', 'change', 'absolute'] = 'absolute',
+        xlabel: str | None = 'Time',
+        ylabel: str | None = None,
+        title: str | None = 'Trace of particle id={particle_index}, initial position={r}',
+        label: str | None = 'particle id={particle_index}, initial position={r}',
+        time_units: UnitLike = 'Tdyn',
+        y_units: UnitLike | None = None,
+        length_units: UnitLike = 'kpc',
+        length_format: str = '.1f',
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the trace of a particle's property over time.
+
+        Parameters:
+            key: The property to plot. Must be a valid column name in the data table.
+            data: The data table to plot (i.e. halo.snapshots, or an external table from an NSphere run). If None, use the halo's snapshots + initial and current states.
+            particle_index: The index of the particle to trace.
+            relative: If `absolute`, plot the property as is. If `relative`, plot the change in the property relative to the initial value. If `relative change`, plot the change in the property relative to the initial value divided by the initial value.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            title: Title for the plot.
+            time_units: Units for the x-axis.
+            y_units: Units for the y-axis.
+            length_units: Units for the length.
+            length_format: Format string for length.
+            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+
+        Returns:
+            fig, ax.
+        """
+        return plot.plot_trace(
+            key=key,
+            data=data if data is not None else table.QTable(table.vstack([self.initial_particles, self.snapshots, self.particles])).copy(),
+            particle_index=particle_index,
+            relative=relative,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            title=title,
+            label=label,
+            time_units=self.fill_time_unit(time_units),
+            y_units=y_units,
+            length_units=length_units,
+            length_format=length_format,
+            **kwargs,
+        )
