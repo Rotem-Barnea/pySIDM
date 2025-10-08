@@ -445,7 +445,7 @@ class Halo:
     @classmethod
     def load(cls, path: str | Path = Path('halo_state')) -> Self:
         """Load the simulation state from a directory."""
-        path = Path('halo_state')
+        path = Path(path)
         with open(path / 'halo_payload.pkl', 'rb') as f:
             payload = pickle.load(f)
         tables = {}
