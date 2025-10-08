@@ -123,7 +123,7 @@ class Halo:
 
         return cls(
             r=cast(Quantity['length'], np.hstack(r)),
-            v=cast(Quantity['length'], np.hstack(v)),
+            v=cast(Quantity['length'], np.vstack(v)),
             m=cast(Quantity['length'], np.hstack(m)),
             particle_type=np.hstack(particle_type),
             densities=densities,
@@ -468,27 +468,6 @@ class Halo:
     ##Plots
     #####################
 
-    def default_plot_text(self, key: str, x_units: UnitLike) -> dict[str, str | None]:
-        """Return default plot title/xlabel/ylabel for a given key and add the appropriate units."""
-        return {
-            'vr': {'title': 'Radial velocity distribution', 'xlabel': utils.add_label_unit('Radial velocity', x_units), 'ylabel': 'Density'},
-            'vx': {'title': 'Pendicular velocity distribution', 'xlabel': utils.add_label_unit('Pendicular velocity', x_units), 'ylabel': 'Density'},
-            'vy': {'title': 'Pendicular velocity distribution', 'xlabel': utils.add_label_unit('Pendicular velocity', x_units), 'ylabel': 'Density'},
-            'vp': {'title': 'Pendicular velocity distribution', 'xlabel': utils.add_label_unit('Pendicular velocity', x_units), 'ylabel': 'Density'},
-            'v_norm': {'title': 'Velocity distribution', 'xlabel': utils.add_label_unit('Velocity', x_units), 'ylabel': 'Density'},
-            'r': {'title': 'Radius distribution', 'xlabel': utils.add_label_unit('Radius', x_units), 'ylabel': 'Density'},
-        }.get(key, {})
-
-    def plot_unit_type(self, key: str, plot_unit: UnitLike | None = None) -> UnitLike:
-        """Return the appropriate unit type for a given key. If plot unit is provided, return it instead."""
-        if plot_unit is not None:
-            return plot_unit
-        if key == 'r':
-            return Unit('kpc')
-        elif key in ['vr', 'vx', 'vy', 'vp', 'v_norm']:
-            return Unit('km/second')
-        return ''
-
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
         """If the unit is `Tdyn` return self.Tdyn. If it's `time step` return self.time_step, otherwise return unit."""
         if unit == 'Tdyn':
@@ -497,10 +476,13 @@ class Halo:
             return self.time_step
         return unit
 
-    def print_energy_change_summary(self) -> str:
+    def print_energy_change_summary(self, filter_particle_type: ParticleType | None = None) -> str:
         """Print a summary of the energy change during the simulation."""
         initial = self.initial_particles.copy()
         final = self.particles.copy()
+        if filter_particle_type is not None:
+            initial = initial[initial['particle_type'] == filter_particle_type].copy()
+            final = final[final['particle_type'] == filter_particle_type].copy()
         return f"""After {self.current_step} steps with dt={self.dt:.4f} | {self.time:.1f}
 Total energy at the start:        {initial['E'].sum():.1f}
 Total energy at the end:          {final['E'].sum():.1f}
@@ -519,6 +501,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         self,
         include_start: bool = True,
         include_now: bool = True,
+        filter_particle_type: ParticleType | None = None,
         x_range: Quantity['length'] | None = None,
         x_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
@@ -534,6 +517,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Parameters:
             include_start: Whether to include the initial particle distribution in the plot.
             include_now: Whether to include the current particle distribution in the plot.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
             x_range: The radius range to clip the data to. If None, ignores.
             time_units: The time units to use in the plot.
             time_format: Format string for time.
@@ -552,6 +536,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if include_now:
             data_tables += [self.particles]
         data = table.QTable(table.vstack(data_tables))
+        if filter_particle_type is not None:
+            data = data[data['particle_type'] == filter_particle_type].copy()
 
         indices = indices if indices is not None else list(range(len(np.unique(np.array(data['time'])))))
 
@@ -579,6 +565,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         self,
         key: str,
         data: table.QTable,
+        filter_particle_type: ParticleType | None = None,
         cumulative: bool = False,
         absolute: bool = False,
         title: str | None = None,
@@ -586,44 +573,54 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         x_range: Quantity | None = None,
         x_plot_range: Quantity | None = None,
         stat: str = 'density',
+        plot_type: Literal['hist', 'kde'] = 'hist',
         x_units: UnitLike | None = None,
         ylabel: str | None = None,
         label: str | None = None,
         fig: Figure | None = None,
         ax: Axes | None = None,
+        plt_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the distribution of a given key in the data.
 
         Parameters:
-            data: The data to plot.
             key: The key to plot.
+            data: The data to plot.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
             cumulative: Whether to plot the cumulative distribution.
             absolute: Whether to plot the absolute values.
             title: The title of the plot.
             xlabel: The label for the x-axis.
             x_range: The radius range to clip the data to. If None, ignores.
             x_plot_range: The range to plot on the x-axis. If None, uses the data range.
-            stat: The type of statistic to plot. Gets passed to sns.histplot.
+            stat: The type of statistic to plot. Gets passed to sns.histplot. Only used if `plot_type` is 'hist'.
+            plot_type: The type of plot to create.
             x_units: The x-axis units to use in the plot.
             ylabel: The label for the y-axis.
             label: The label for the histogram (legend).
             fig: The figure to plot on.
             ax: The axes to plot on.
+            plt_kwargs: Additional keyword arguments to pass to the sns plotting function (sns.histplot or sns.kdeplot).
             kwargs: Additional keyword arguments to pass to plot.setup_plot().
 
         Returns:
             fig, ax.
         """
-        x_units = self.plot_unit_type(key, x_units)
+        x_units = plot.default_plot_unit_type(key, x_units)
+        if filter_particle_type is not None:
+            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
         x = data[key].to(x_units)
         if x_range is not None:
             x = x[(x > x_range[0]) * (x < x_range[1])]
         if absolute:
             x = np.abs(x)
-        params = {**self.default_plot_text(key, x_units), **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel)}
+        params = {**plot.default_plot_text(key, x_units=x_units), **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel)}
         fig, ax = plot.setup_plot(fig, ax, **params, **kwargs)
-        sns.histplot(x, cumulative=cumulative, ax=ax, stat=stat, label=label)
+        if plot_type == 'kde':
+            sns.kdeplot(x, cumulative=cumulative, ax=ax, label=label, **plt_kwargs)
+        else:
+            sns.histplot(x, cumulative=cumulative, ax=ax, stat=stat, label=label, **plt_kwargs)
         if x_plot_range is not None:
             ax.set_xlim(*x_plot_range.to(x_units).value)
         return fig, ax
@@ -633,7 +630,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data: table.QTable,
         cumulative: bool = False,
         add_density: bool = True,
-        x_units: UnitLike | None = None,
+        x_units: UnitLike = 'kpc',
         x_range: Quantity | None = None,
         hist_label: str | None = None,
         density_label: str | None = None,
@@ -658,13 +655,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if add_density:
             params = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
             return self.densities[0].plot_radius_distribution(
-                cumulative=cumulative, length_units=self.plot_unit_type('r', x_units), fig=fig, ax=ax, label=density_label, **params
+                cumulative=cumulative, length_units=x_units, fig=fig, ax=ax, label=density_label, **params
             )
         return fig, ax
 
     def plot_phase_space(
         self,
         data: table.QTable,
+        filter_particle_type: ParticleType | None = None,
         r_range: Quantity['length'] = Quantity(np.linspace(1e-2, 50, 200), 'kpc'),
         v_range: Quantity['velocity'] = Quantity(np.linspace(0, 100, 200), 'km/second'),
         length_units: UnitLike = 'kpc',
@@ -676,6 +674,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
         Parameters:
             data: The data to plot.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
             r_range: Range of radial distances to plot.
             v_range: Range of velocities to plot.
             length_units: Units to use for the length axis.
@@ -690,6 +689,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         v_lattice = Lattice(len(v_range), v_range.min().to(velocity_units).value, v_range.max().to(velocity_units).value, log=False)
         grid = np.zeros((len(v_range), len(r_range)))
 
+        if filter_particle_type is not None:
+            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
         r = data['r'].to(length_units).value
         v_norm = data['v_norm'].to(velocity_units).value
 
@@ -703,7 +704,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
     def plot_inner_core_density(
         self,
+        include_start: bool = True,
+        include_now: bool = True,
         radius: Quantity['length'] = Quantity(0.2, 'kpc'),
+        filter_particle_type: ParticleType | None = None,
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'time',
         ylabel: str | None = '#particles',
@@ -714,7 +718,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """Plot the number of particles in the inner core as a function of time.
 
         Parameters:
+            include_start: Whether to include the initial particle distribution in the plot.
+            include_now: Whether to include the current particle distribution in the plot.
             radius: Radius of the inner core.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
             time_units: The time units to use in the plot.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
@@ -725,7 +732,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        data = self.snapshots.copy()
+        data_tables = [] if not include_now else [self.initial_particles]
+        data_tables += [self.snapshots]
+        if include_now:
+            data_tables += [self.particles]
+        data = table.QTable(table.vstack(data_tables))
+        if filter_particle_type is not None:
+            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
         time_units = self.fill_time_unit(time_units)
         data['time'] = data['time'].to(time_units)
         data['in_radius'] = data['r'] <= radius
@@ -787,6 +800,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
     def plot_density_evolution(
         self,
+        include_start: bool = True,
+        include_now: bool = True,
+        filter_particle_type: ParticleType | None = None,
         radius_range: tuple[Quantity['length'], Quantity['length']] = (Quantity(0, 'kpc'), Quantity(40, 'kpc')),
         time_range: tuple[Quantity['time'], Quantity['time']] | None = None,
         length_units: UnitLike = 'kpc',
@@ -799,6 +815,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """Plot the density evolution of the halo. Wraps prep_2d_data().
 
         Parameters:
+            include_start: Whether to include the initial particle distribution in the plot.
+            include_now: Whether to include the current particle distribution in the plot.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
             radius_range: Range of radius to consider (filters the data).
             time_range: Range of times to consider (filters the data).
             length_units: Units to use for the radius axis.
@@ -812,8 +831,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig, ax.
         """
         time_units = self.fill_time_unit(time_units)
-        data = self.snapshots.copy()
+        data_tables = [] if not include_now else [self.initial_particles]
+        data_tables += [self.snapshots]
+        if include_now:
+            data_tables += [self.particles]
+        data = table.QTable(table.vstack(data_tables))
         data['output'] = data['r']
+        if filter_particle_type is not None:
+            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
         grid, extent = self.prep_2d_data(data, radius_range, time_range, length_units, time_units, agg_fn='count')
 
         return plot.plot_2d(
@@ -829,6 +854,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
     def plot_temperature(
         self,
+        include_start: bool = True,
+        include_now: bool = True,
+        filter_particle_type: ParticleType | None = None,
         radius_range: tuple[Quantity['length'], Quantity['length']] = (Quantity(0, 'kpc'), Quantity(40, 'kpc')),
         time_range: tuple[Quantity['time'], Quantity['time']] | None = None,
         velocity_units: UnitLike = 'km/second',
@@ -842,6 +870,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """Plot the temperature evolution of the halo. Wraps prep_2d_data().
 
         Parameters:
+            include_start: Whether to include the initial particle distribution in the plot.
+            include_now: Whether to include the current particle distribution in the plot.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
             radius_range: Range of radius to consider (filters the data).
             time_range: Range of times to consider (filters the data).
             velocity_units: Units to use for the velocity axis.
@@ -856,8 +887,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig, ax.
         """
         time_units = self.fill_time_unit(time_units)
-        data = self.snapshots.copy()
+        data_tables = [] if not include_now else [self.initial_particles]
+        data_tables += [self.snapshots]
+        if include_now:
+            data_tables += [self.particles]
+        data = table.QTable(table.vstack(data_tables))
         data['output'] = data['v_norm']
+        if filter_particle_type is not None:
+            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
         grid, extent = self.prep_2d_data(data, radius_range, time_range, length_units, time_units, agg_fn='std')
 
         return plot.plot_2d(
@@ -871,15 +908,50 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             **kwargs,
         )
 
-    def plot_before_after_histogram(self, time_units: UnitLike = 'Tdyn', time_format: str = '.1f', **kwargs: Any) -> tuple[Figure, Axes]:
-        """Plot the distribution histogram comparison between the current state and the initial state.
+    def plot_start_end_distribution(
+        self,
+        key: str = 'r',
+        time_units: UnitLike = 'Tdyn',
+        time_format: str = '.1f',
+        label_start: str = 'start',
+        label_end: str = 'after {t}',
+        fig: Figure | None = None,
+        ax: Axes | None = None,
+        start_kwargs: dict[str, Any] = {},
+        end_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the distribution comparison between the current state and the initial state.
 
-        the `key` keyword argument must be provided, and must match one of the keys in self.particles.
+        Parameters:
+            key: The key to plot.
+            time_units: The time units to use in the plot.
+            time_format: Format string for time.
+            label_start: Label for the start distribution.
+            label_end: Label for the end distribution.
+            fig: Figure to use for the plot.
+            ax: Axes to use for the plot.
+            start_kwargs: Additional keyword arguments to pass to the distribution plotting function (self.plot_distribution), for the start distribution only.
+            end_kwargs: Additional keyword arguments to pass to the distribution plotting function (self.plot_distribution), for the end distribution only.
+            **kwargs: Additional keyword arguments to pass to the distribution plotting function (self.plot_distribution), for *both* distributions. Overwritten by start_kwargs/end_kwargs as needed.
+
+        Returns:
+            fig, ax.
         """
         time_units = self.fill_time_unit(time_units)
-        fig, ax = self.plot_distribution(data=self.initial_particles, **kwargs)
-        fig, ax = self.plot_distribution(data=self.particles, fig=fig, ax=ax, **kwargs)
-        ax.legend(['start', f'after {self.time.to(time_units).to_string(format="latex", formatter=time_format)}'])
+        fig, ax = self.plot_distribution(key=key, data=self.initial_particles, fig=fig, ax=ax, label=label_start, **{**kwargs, **start_kwargs})
+        fig, ax = self.plot_distribution(
+            key=key,
+            data=self.particles,
+            fig=fig,
+            ax=ax,
+            label=label_end.format(t=self.time.to(time_units).to_string(format='latex', formatter=time_format)),
+            **{
+                **kwargs,
+                **end_kwargs,
+            },
+        )
+        ax.legend()
         return fig, ax
 
     def plot_scattering_location(

@@ -226,10 +226,12 @@ def aggregate_QTable(
     return table.QTable(table.Table.from_pandas(pd.DataFrame(data.to_pandas().groupby(groupby)[keys].agg(agg_fn)), index=True, units=final_units))
 
 
-def add_label_unit(label: str | None, plot_units: UnitLike) -> str | None:
+def add_label_unit(label: str | None, plot_units: UnitLike | None = None) -> str | None:
     """Add the units to the label in a latex formatted string and enclosed in brackets. Ignore if label is None."""
     if label is None:
         return None
+    if plot_units is None:
+        return label
     return f'{label} [{Unit(cast(str, plot_units)):latex}]'
 
 

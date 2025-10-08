@@ -1,4 +1,3 @@
-import numpy as np
 from numba import njit
 from typing import Any
 from ..types import FloatOrArray
@@ -23,6 +22,9 @@ class Hernquist(Density):
 
     def __repr__(self):
         return f"""Hernquist density
+  - Rs = {self.Rs:.4f}
+  - Rvir = {self.Rvir:.4f}
+  - Mp = {self.unit_mass:.3e}
   - Mtot = {self.Mtot:.3e}
   - rho_s = {self.rho_s:.4f}
   - Tdyn = {self.Tdyn:.4f}
@@ -34,4 +36,4 @@ class Hernquist(Density):
     @staticmethod
     @njit
     def calculate_rho(r: FloatOrArray, rho_s: float = 1, Rs: float = 1, Rvir: float = 1) -> FloatOrArray:
-        return rho_s / (2 * np.pi * (r / Rs) * (1 + (r / Rs) ** 3))
+        return rho_s / ((r / Rs) * (1 + (r / Rs) ** 3)) / (1 + (r / Rvir) ** 10)

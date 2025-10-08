@@ -61,6 +61,47 @@ def setup_plot(
     return fig, ax
 
 
+def default_plot_text(
+    key: str,
+    xlabel: str | None = None,
+    ylabel: str | None = None,
+    title: str | None = None,
+    x_units: UnitLike | None = None,
+    y_units: UnitLike | None = None,
+) -> dict[str, str | None]:
+    """Return default plot title/xlabel/ylabel for a given key and add the appropriate units.
+
+    If xlabel/ylabel/title are provided, they override the defaults.
+    """
+    if key == 'vr':
+        output = {'title': 'Radial velocity distribution', 'xlabel': 'Radial velocity', 'ylabel': 'Density'}
+    elif key in ['vx', 'vy', 'vp']:
+        output = {'title': 'Pendicular velocity distribution', 'xlabel': 'Pendicular velocity', 'ylabel': 'Density'}
+    elif key == 'v_norm':
+        output = {'title': 'Pendicular velocity distribution', 'xlabel': 'Pendicular velocity', 'ylabel': 'Density'}
+    elif key == 'r':
+        output = {'title': 'Radius distribution', 'xlabel': 'Radius', 'ylabel': 'Density'}
+    else:
+        output = {}
+    output = {**output, **utils.drop_None(xlabel=xlabel, ylabel=ylabel, title=title)}
+    return utils.drop_None(
+        title=output.get('title', None),
+        xlabel=utils.add_label_unit(output.get('xlabel', None), x_units),
+        ylabel=utils.add_label_unit(output.get('ylabel', None), y_units),
+    )
+
+
+def default_plot_unit_type(key: str, plot_unit: UnitLike | None = None) -> UnitLike:
+    """Return the appropriate unit type for a given key. If plot unit is provided, return it instead."""
+    if plot_unit is not None:
+        return plot_unit
+    if key == 'r':
+        return 'kpc'
+    elif key in ['vr', 'vx', 'vy', 'vp', 'v_norm']:
+        return 'km/second'
+    return ''
+
+
 def plot_trace(
     key: str,
     data: table.QTable,
@@ -84,7 +125,7 @@ def plot_trace(
         particle_index: The index of the particle to trace.
         relative: If `absolute`, plot the property as is. If `relative`, plot the change in the property relative to the initial value. If `relative change`, plot the change in the property relative to the initial value divided by the initial value.
         xlabel: Label for the x-axis.
-        ylabel: Label for the y-axis.
+        ylabel: Label for the y-axis. If not provided, the label will be automatically generated based on the key and units. To disable this, set to ''.
         title: Title for the plot.
         time_units: Units for the x-axis.
         y_units: Units for the y-axis.
@@ -101,11 +142,17 @@ def plot_trace(
     y = particle[key]
     if y_units is not None:
         y = y.to(y_units)
-        ylabel = utils.add_label_unit(ylabel, y_units)
     if relative == 'change':
         y = y - cast(Quantity, y[0])
+        if ylabel is None:
+            ylabel = rf'$\Delta {key}$'
     elif relative == 'relative change':
         y = (y - cast(Quantity, y[0])) / cast(Quantity, y[0])
+        if ylabel is None:
+            ylabel = rf'$\%\Delta {key}$'
+    elif ylabel is None:
+        ylabel = f'${key}$'
+    ylabel = utils.add_label_unit(ylabel, y_units)
     if title is not None:
         title = title.format(particle_index=particle_index, r=particle['r'][0].to(length_units).to_string(format='latex', formatter=length_format))
     if label is not None:
