@@ -1,4 +1,5 @@
 import numpy as np
+import scipy
 import seaborn as sns
 from astropy import table
 from astropy.units import Quantity
@@ -253,3 +254,66 @@ def plot_phase_space(
         **utils.drop_None(x_range=r_range, y_range=v_range),
         **kwargs,
     )
+
+
+def plot_density(
+    data: Quantity['length'],
+    bins: int | NDArray[np.float64] | str = 100,
+    unit_mass: Quantity['mass'] = Quantity(1, 'Msun'),
+    xlabel: str | None = 'Radius',
+    ylabel: str | None = r'$\rho$',
+    title: str | None = None,
+    length_units: UnitLike = 'kpc',
+    density_units: UnitLike = 'Msun/kpc^3',
+    label: str | None = None,
+    cleanup_nonpositive: bool = True,
+    smooth_sigma: float = 1,
+    fig: Figure | None = None,
+    ax: Axes | None = None,
+    **kwargs: Any,
+) -> tuple[Figure, Axes]:
+    """Plot the density distribution per unit volume.
+
+    Parameters:
+        data: Data to plot.
+        bins: Argument accepted by np.histogram.
+        unit_mass: Unit mass to convert the number density to mass density,
+        xlabel: Label for the x axis.
+        ylabel: Label for the y axis.
+        title: Title for the plot.
+        length_units: Units to use for the x axis.
+        density_units: Number of bins to use for the y axis.
+        label: label to add to the plot legend.
+        cleanup_nonpositive: drop non-positive values from the plot, to avoid "pits" in the log plot.
+        smooth_sigma: sigma for smoothing the density distribution.
+        fig: Figure to plot on.
+        ax: Axes to plot on.
+        kwargs: Additional keyword arguments to pass to setup_plot().
+
+
+    Returns:
+        fig, ax.
+    """
+    counts, bin_edges = np.histogram(data, bins=bins)
+    histogram_bins = Quantity(list(map(Quantity, zip(bin_edges, bin_edges[1:])))).to(length_units)
+    bin_centers = histogram_bins.mean(1)
+    volume = 4 / 3 * np.pi * (histogram_bins[:, 1] ** 3 - histogram_bins[:, 0] ** 3)
+    density = (counts / volume * unit_mass).to(density_units)
+    fig, ax = setup_plot(
+        fig=fig,
+        ax=ax,
+        ax_set={'xscale': 'log', 'yscale': 'log'},
+        minorticks=True,
+        **default_plot_text('r', xlabel=xlabel, ylabel=ylabel, title=title, x_units=length_units, y_units=density_units),
+        **kwargs,
+    )
+    x = np.array(bin_centers)
+    if cleanup_nonpositive:
+        x = x[density > 0]
+        density = density[density > 0]
+    if smooth_sigma > 0:
+        density = scipy.ndimage.gaussian_filter1d(density, sigma=smooth_sigma)
+    sns.lineplot(x=x, y=density, ax=ax, label=label)
+    if label is not None:
+        ax.legend()
+    return fig, ax

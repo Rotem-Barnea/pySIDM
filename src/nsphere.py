@@ -76,7 +76,7 @@ def load_file(path: str | Path, dtype: np.dtype[Any]) -> NDArray[Any]:
     return np.fromfile(path, dtype=dtype)
 
 
-def load_all_files(files: pd.DataFrame | None = None, **kwargs: Unpack[File_params]):
+def load_all_files(files: pd.DataFrame | None = None, **kwargs: Unpack[File_params]) -> pd.DataFrame:
     """Load all data from all files.
 
     Parameters:
@@ -97,7 +97,7 @@ def load_all_files(files: pd.DataFrame | None = None, **kwargs: Unpack[File_para
     return pd.concat(data, ignore_index=True)
 
 
-def to_snapshot_like(data: pd.DataFrame):
+def to_snapshot_like(data: pd.DataFrame) -> table.QTable:
     """Convert the data to a format compatible with the halo snapshots.
 
     This is intended to allow the data to be plugged into the halo snapshots for convenient plotting.
@@ -122,3 +122,15 @@ def to_snapshot_like(data: pd.DataFrame):
             'E': 'kpc^2/Myr^2',
         },
     )
+
+
+def prepare_for_plotting(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, Quantity]:
+    """Prepare the data for plotting."""
+    data['vp'] = data['L'] / data['R']
+    data['v_norm'] = np.sqrt(data['vp'] ** 2 + data['Vrad'] ** 2)
+    data['T'] = 1 / 2 * data['v_norm'] ** 2
+    data['particle_index'] = np.hstack([np.arange(100000)] * 501)
+    data = data.rename(columns={'R': 'r', 'Vrad': 'vr'})
+    initial_data = data[data['time'] == data['time'].min()].copy().sort_values('r')
+    unit_mass = Quantity(initial_data['mass'].diff(1).iloc[-1], 'Msun')
+    return data, initial_data, unit_mass
