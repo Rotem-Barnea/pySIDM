@@ -45,7 +45,7 @@ class Halo:
         scatter_params: sidm.Params = {},
         snapshots: table.QTable = table.QTable(),
         scatter_every_n_steps: int = 1,
-        hard_save: str | None = 'halo state',
+        hard_save: str | None = None,
     ) -> None:
         """Initialize a Halo object.
 
