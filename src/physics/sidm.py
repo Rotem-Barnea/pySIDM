@@ -99,6 +99,12 @@ def scatter_pair_kinematics(v0: NDArray[np.float64], v1: NDArray[np.float64]) ->
     return v0_new, v1_new
 
 
+@njit
+def particle_v_rel(v: NDArray[np.float64], particle: int, max_radius_j: int) -> NDArray[np.float64]:
+    """TODO"""
+    return np.sqrt(((v[particle + 1 : particle + 1 + max_radius_j] - v[particle]) ** 2).sum(1))
+
+
 @njit(parallel=True)
 def v_rel(v: NDArray[np.float64], max_radius_j: int, whitelist_mask: NDArray[np.bool_]):
     """Calculate the relative velocity between all neighboring particles.
@@ -115,14 +121,19 @@ def v_rel(v: NDArray[np.float64], max_radius_j: int, whitelist_mask: NDArray[np.
     whitelist = np.arange(len(v))[whitelist_mask]
     for i in prange(len(whitelist)):
         particle = whitelist[i]
-        output[particle] = np.sqrt(((v[particle + 1 : particle + 1 + max_radius_j] - v[particle]) ** 2).sum(1))
+        output[particle] = particle_v_rel(v, particle, max_radius_j)
     return output
+
+
+@njit
+def particle_scatter_chance(v_rel: NDArray[np.float64], dt: float, sigma: float, density_term: float) -> float:
+    """TODO"""
+    return 1 / 2 * dt * density_term * v_rel.sum() * sigma
 
 
 @njit(parallel=True)
 def scatter_chance(
     v_rel: NDArray[np.float64],
-    max_radius_j: int,
     whitelist_mask: NDArray[np.bool_],
     dt: NDArray[np.float64],
     sigma: float,
@@ -132,7 +143,6 @@ def scatter_chance(
 
     Parameters:
         v_rel: relative velocities of neighboring particles. An array of shape (n_particles, max_radius_j), where each row holds the norm of the relative velocity (the 3-vector difference). For particles too close to the edge (less than max_radius_j places from the end), the overflow cells hold 0.
-        max_radius_j: Maximum index radius for partners for scattering.
         whitelist_mask: Mask for particles to consider in this round. Used to maintain constant input shape to utilize the njit cache.
         dt: Time step for each particle, adjusted by 1/number_of_rounds to allow parallelized calculation for particles with a different number of rounds.
         sigma: Scattering cross-section.
@@ -144,8 +154,8 @@ def scatter_chance(
     output = np.empty(len(v_rel), np.float64)
     whitelist = np.arange(len(v_rel))[whitelist_mask]
     for i in prange(len(whitelist)):
-        particle = whitelist[i]
-        output[particle] = 1 / 2 * dt[particle] * density_term[particle] * v_rel[particle].sum() * sigma
+        particle = int(whitelist[i])
+        output[particle] = particle_scatter_chance(v_rel[particle], dt[particle], sigma, density_term[particle])
     return output
 
 
@@ -264,7 +274,6 @@ def scatter(
     v_rel_array = v_rel(v=_v, max_radius_j=max_radius_j, whitelist_mask=np.full(len(_v), True))
     scatter_base_chance = scatter_chance(
         v_rel=v_rel_array,
-        max_radius_j=max_radius_j,
         whitelist_mask=np.full(len(_v), True),
         dt=np.full(len(_v), dt.value),
         sigma=_sigma,
@@ -280,7 +289,6 @@ def scatter(
         v_rel_array[mask] = v_rel(v=v_output, max_radius_j=max_radius_j, whitelist_mask=mask)[mask]
         scatter_base_chance[mask] = scatter_chance(
             v_rel=v_rel_array,
-            max_radius_j=max_radius_j,
             whitelist_mask=mask,
             dt=round_dt,
             sigma=_sigma,

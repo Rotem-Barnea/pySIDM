@@ -122,7 +122,7 @@ class Halo:
             r += [r_sub]
             v += [v_sub]
             particle_type += [[p_type] * int(n)]
-            m += [[1] * int(n) * density.unit_mass]
+            m += [np.ones(int(n)) * density.Mtot / n]
 
         return cls(
             r=cast(Quantity['length'], np.hstack(r)),

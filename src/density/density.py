@@ -23,9 +23,9 @@ class Density:
         Rs: Quantity['length'] = Quantity(1, 'kpc'),
         Rvir: Quantity['length'] = Quantity(1, 'kpc'),
         Mtot: Quantity['mass'] = Quantity(1, 'Msun'),
-        unit_mass: Quantity['mass'] = Quantity(1, 'Msun'),
         space_steps: float | int = 1e3,
         h: Quantity['length'] = Quantity(1e-5, 'kpc'),
+        initialize_grids: list[str] = [],
     ) -> None:
         """General mass distribution profile.
 
@@ -35,9 +35,9 @@ class Density:
             Rs: Scale radius of the distribution profile.
             Rvir: Virial radius of the distribution profile.
             Mtot: Total mass of the distribution profile.
-            unit_mass: Unit mass of the distribution profile particles.
             space_steps: Number of space steps for the internal logarithmic grid.
             h: Radius step size for numerical differentiation.
+            initialize_grid: Grids to initialize at startup, otherwise they will only be calculated at runtime as needed.
 
         Returns:
             General mass distribution object.
@@ -45,7 +45,6 @@ class Density:
         self.space_steps: int = int(space_steps)
         self.Mtot: Quantity['mass'] = Mtot.to(run_units.mass)
         self.title = 'Density'
-        self.unit_mass: Quantity['mass'] = unit_mass.to(run_units.mass)
         self.h: Quantity['length'] = h.to(run_units.length)
         self.Rs: Quantity['length'] = Rs.to(run_units.length)
         self.Rvir: Quantity['length'] = Rvir.to(run_units.length)
@@ -53,14 +52,15 @@ class Density:
         self.Rmax: Quantity['length'] = (Rmax or 85 * self.Rs).to(run_units.length)
         self.rho_s: Quantity['mass density'] = self.calculate_rho_scale()
         self.memoization = {}
+        for grid in initialize_grids:
+            getattr(self, grid)
 
     def __repr__(self):
         return f"""General mass density function
   - Rmin = {self.Rmin:.4f}
   - Rmax = {self.Rmax:.4f}
   - space_steps = {self.space_steps:.0e}
-  - Mtot = {self.Mtot:.3e}
-  - particle mass = {self.unit_mass:.3e}"""
+  - Mtot = {self.Mtot:.3e}"""
 
     def __call__(self, r: Quantity['length']) -> Quantity['mass density']:
         """Calculate rho(r)"""
@@ -334,7 +334,7 @@ class Density:
         """Calculate the distribution function (f) for the given energy."""
         t = Quantity(np.linspace(0, np.sqrt(E), num))[:-1]
         integral = 2 * np.trapezoid(self.d2rho_dPsi2(cast(Quantity, E - t**2)), t, axis=0)
-        return 1 / (self.unit_mass.unit * np.sqrt(8) * np.pi**2) * (1 / np.sqrt(E) * self.drho_dPsi_grid[-1] + integral)
+        return 1 / (self.Mtot.unit * np.sqrt(8) * np.pi**2) * (1 / np.sqrt(E) * self.drho_dPsi_grid[-1] + integral)
 
     @property
     def E_grid(self) -> Quantity['specific energy']:
@@ -361,6 +361,13 @@ class Density:
         if 'Psi_interpolate' not in self.memoization:
             self.memoization['Psi_interpolate'] = scipy.interpolate.interp1d(self.geomspace_grid, self.Psi_grid, bounds_error=False, fill_value=0)
         return Quantity(self.memoization['Psi_interpolate'](r.to(self.geomspace_grid.unit)), self.Psi_grid.unit)
+
+    def recalculate(self, key: str, inplace: bool = False) -> Any:
+        if key in self.memoization:
+            self.memoization.pop(key)
+        new_value = getattr(self, key)
+        if not inplace:
+            return new_value
 
     ## Roll initial setup
 
