@@ -174,9 +174,7 @@ def particle_adaptive_step(
     vr_convergence_threshold: float = 1e-7,
     first_mini_round: int = 0,
     richardson_extrapolation: bool = True,
-    raise_warning: bool = True,
-    particle_index: int = -1,
-) -> tuple[float, float, float, float]:
+) -> tuple[float, float, float, float, bool]:
     """Perform an adaptive leapfrog step for a particle.
 
     Parameters:
@@ -194,12 +192,11 @@ def particle_adaptive_step(
         vr_convergence_threshold: Convergence threshold for radial velocity.
         first_mini_round: The first mini-round to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
         richardson_extrapolation: Use Richardson extrapolation.
-        raise_warning: Raise a warning if the particle fails to converge.
-        particle_index: The ID of the particle being integrated (used for warning).
 
     Returns:
         Updated position and velocity.
     """
+    converged = False
     r_coarse, vx_coarse, vy_coarse, vr_coarse = r, vx, vy, vr
     r_fine, vx_fine, vy_fine, vr_fine = r_coarse, vx_coarse, vy_coarse, vr_coarse
     for mini_round in range(first_mini_round, first_mini_round + max_minirounds):
@@ -212,11 +209,8 @@ def particle_adaptive_step(
         r_relative_error = np.abs(r_fine - r_coarse) / r_fine
         vr_relative_error = np.abs(vr_fine - vr_coarse) / vr_fine
         if (r_relative_error < r_convergence_threshold) and (vr_relative_error < vr_convergence_threshold):
+            converged = True
             break
-        if raise_warning and mini_round == first_mini_round + max_minirounds - 1:
-            warnings.warn(
-                f'Maximum number of mini-rounds reached for particle {particle_index}, starting with r={r}, vx={vx}, vy={vy}, vr={vr}, M={M}'
-            )
     if richardson_extrapolation:
         r_result = 4 * r_fine - 3 * r_coarse
         vx_result = 4 * vx_fine - 3 * vx_coarse
@@ -228,7 +222,7 @@ def particle_adaptive_step(
             vr_result *= -1
     else:
         r_result, vx_result, vy_result, vr_result = r_fine, vx_fine, vy_fine, vr_fine
-    return r_result, vx_result, vy_result, vr_result
+    return r_result, vx_result, vy_result, vr_result, converged
 
 
 @njit(parallel=True)
@@ -247,8 +241,7 @@ def fast_step(
     richardson_extrapolation: bool = True,
     adaptive: bool = True,
     grid_window_radius: int = 2,
-    raise_warning: bool = True,
-) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.bool_]]:
     """Perform a leapfrog step (single or adaptive) for a particle.
 
     Parameters:
@@ -266,12 +259,12 @@ def fast_step(
         richardson_extrapolation: Use Richardson extrapolation.
         adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If False - performs a single mini-round at first_mini_round.
         grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (M(<=r)) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (M(<=r)) during the step (use the value pre-step for all acceleration calculations).
-        raise_warning: Raise a warning if the particle fails to converge.
 
     Returns:
         Updated position and velocity.
     """
     output_r, output_vx, output_vy, output_vr = np.empty_like(r), np.empty_like(vx), np.empty_like(vy), np.empty_like(vr)
+    output_converged = np.full(len(r), True)
     for particle in prange(len(r)):
         M_grid, r_grid = get_grid(r=r, M=M, window_radius=grid_window_radius, particle_index=particle)
         if not adaptive:
@@ -288,7 +281,7 @@ def fast_step(
                 N=2**first_mini_round,
             )
         else:
-            r_result, vx_result, vy_result, vr_result = particle_adaptive_step(
+            r_result, vx_result, vy_result, vr_result, output_converged[particle] = particle_adaptive_step(
                 r=r[particle],
                 vx=vx[particle],
                 vy=vy[particle],
@@ -303,14 +296,12 @@ def fast_step(
                 vr_convergence_threshold=vr_convergence_threshold,
                 first_mini_round=first_mini_round,
                 richardson_extrapolation=richardson_extrapolation,
-                raise_warning=raise_warning,
-                particle_index=particle,
             )
         output_r[particle] = r_result
         output_vx[particle] = vx_result
         output_vy[particle] = vy_result
         output_vr[particle] = vr_result
-    return output_r, output_vx, output_vy, output_vr
+    return output_r, output_vx, output_vy, output_vr, output_converged
 
 
 def step(
@@ -354,7 +345,7 @@ def step(
     Returns:
         Updated position and velocity.
     """
-    return fast_step(
+    _r, _vx, _vy, _vr, convergred = fast_step(
         r=np.array(r),
         vx=np.array(vx),
         vy=np.array(vy),
@@ -369,5 +360,10 @@ def step(
         richardson_extrapolation=richardson_extrapolation,
         adaptive=adaptive,
         grid_window_radius=grid_window_radius,
-        raise_warning=raise_warning,
     )
+    if raise_warning and not convergred.all():
+        for index in np.where(~convergred)[0]:
+            warnings.warn(
+                f'Maximum number of mini-rounds reached for particle {index}, starting with r={r[index]}, vx={vx[index]}, vy={vy[index]}, vr={vr[index]}, M={M[index]}'
+            )
+    return _r, _vx, _vy, _vr
