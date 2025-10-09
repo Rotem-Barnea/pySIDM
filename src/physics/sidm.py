@@ -270,7 +270,7 @@ def scatter(
         sigma=_sigma,
         density_term=local_density,
     )
-    scatter_rounds = np.ceil(scatter_base_chance / kappa).clip(min=1, max=max_allowed_rounds).astype(np.int64)
+    scatter_rounds = np.nan_to_num(np.ceil(scatter_base_chance / kappa)).clip(min=1, max=max_allowed_rounds).astype(np.int64)
     round_dt = dt.value / scatter_rounds
     interacted_particles = np.empty(0, dtype=np.int64)
     for round in range(1, scatter_rounds.max() + 1):
