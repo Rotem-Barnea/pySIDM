@@ -45,6 +45,7 @@ class Halo:
         scatter_params: sidm.Params = {},
         snapshots: table.QTable = table.QTable(),
         scatter_every_n_steps: int = 1,
+        hard_save: str | None = 'halo state',
     ) -> None:
         """Initialize a Halo object.
 
@@ -68,6 +69,7 @@ class Halo:
             scatter_params: Scatter parameters of the halo, used in the SIDM calculation.
             snapshots: Snapshots of the halo.
             scatter_every_n_steps: How often should a scattering event be conducted, in time-step units (integer).
+            hard_save: Whether to save the halo to db at every snapshot save, or just keep in RAM.
 
         Returns:
             Halo object.
@@ -98,6 +100,7 @@ class Halo:
         self.last_saved_time = last_saved_time
         self.scatter_rounds = scatter_rounds
         self.scatter_every_n_steps: int = scatter_every_n_steps
+        self.hard_save: str | None = hard_save
 
     @classmethod
     def setup(cls, densities: list[Density], particle_types: list[ParticleType], n_particles: list[int | float], **kwargs: Any) -> Self:
@@ -336,6 +339,8 @@ class Halo:
         data['step'] = self.current_step
         self.snapshots = table.vstack([self.snapshots, data])
         self.last_saved_time = self.time.copy()
+        if self.hard_save is not None:
+            self.save(self.hard_save)
 
     def is_save_round(self) -> bool:
         """Check if it's time to save the simulation state."""
@@ -423,6 +428,7 @@ class Halo:
             'last_saved_time': self.last_saved_time,
             'scatter_rounds': self.scatter_rounds,
             'scatter_every_n_steps': self.scatter_every_n_steps,
+            'hard_save': self.hard_save,
         }
         tables = {
             'particles': self.particles,

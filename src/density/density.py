@@ -330,7 +330,7 @@ class Density:
             self.memoization['d2rho_dPsi2'] = scipy.interpolate.interp1d(self.Psi_grid, self.d2rho_dPsi2_grid, bounds_error=False, fill_value=0)
         return Quantity(self.memoization['d2rho_dPsi2'](Psi.to(self.Psi_grid.unit)), self.d2rho_dPsi2_grid.unit)
 
-    def new_calculate_f(self, E: Quantity, num: int = 10000) -> Quantity:
+    def calculate_f(self, E: Quantity, num: int = 10000) -> Quantity:
         """Calculate the distribution function (f) for the given energy."""
         t = Quantity(np.linspace(0, np.sqrt(E), num))[:-1]
         integral = 2 * np.trapezoid(self.d2rho_dPsi2(cast(Quantity, E - t**2)), t, axis=0)
@@ -347,7 +347,7 @@ class Density:
     def f_grid(self) -> Quantity['specific energy']:
         """Calculate the distribution function (f) on the internal energy grid (memoized)."""
         if 'f_grid' not in self.memoization:
-            self.memoization['f_grid'] = self.new_calculate_f(self.E_grid, 10000).to(run_units.f_units)
+            self.memoization['f_grid'] = self.calculate_f(self.E_grid, 10000).to(run_units.f_units)
         return self.memoization['f_grid']
 
     def f(self, E: Quantity) -> Quantity:
