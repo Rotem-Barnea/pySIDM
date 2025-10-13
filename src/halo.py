@@ -8,7 +8,7 @@ import scipy
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 from numpy.typing import NDArray
-from typing import Any, Self, Callable, cast, Literal
+from typing import Any, Self, cast, Literal
 from astropy import table
 from astropy.units import Quantity, Unit, def_unit
 from astropy.units.typing import UnitLike
@@ -203,6 +203,17 @@ class Halo:
             }
         )
         return data
+
+    def get_particle_states(self, now: bool = True, snapshots: bool = True, initial: bool = True):
+        assert now or snapshots or initial, 'At least one of now, snapshots, or initial must be True'
+        data_tables = []
+        if now:
+            data_tables += [self.particles]
+        if snapshots:
+            data_tables += [self.snapshots]
+        if initial:
+            data_tables += [self.initial_particles]
+        return table.QTable(table.vstack(data_tables))
 
     @property
     def dynamics_params(self) -> leapfrog.Params:
@@ -710,7 +721,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data_table = data_table.groupby(['r', 'v_norm']).agg('count').reset_index()
         grid[data_table['v_norm'].to_numpy(), data_table['r'].to_numpy()] = data_table['count']
 
-        return plot.plot_phase_space(grid, r_range, v_range, length_units, velocity_units, fig=fig, ax=ax)
+        return plot.plot_phase_space(Quantity(grid), r_range, v_range, length_units, velocity_units, fig=fig, ax=ax)
 
     def plot_inner_core_density(
         self,
@@ -763,58 +774,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         sns.lineplot(agg_data.to_pandas(index='time'), ax=ax)
         return fig, ax
 
-    @staticmethod
-    def prep_2d_data(
-        data: table.QTable,
-        radius_range: tuple[Quantity['length'], Quantity['length']],
-        time_range: tuple[Quantity['time'], Quantity['time']] | None = None,
-        length_units: UnitLike = 'kpc',
-        time_units: UnitLike = 'Myr',
-        agg_fn: str | Callable[[Any], Any] = 'count',
-        n_posts: int = 100,
-    ) -> tuple[NDArray[Any], tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']]]:
-        """Prepare data for 2D plotting.
-
-        Parameters:
-            data: Data to prepare.
-            radius_range: Range of radius to consider (filters the data).
-            time_range: Range of times to consider (filters the data).
-            length_units: Units to use for the radius axis.
-            time_units: Units to use for the time axis.
-            agg_fn: Function to aggregate data.
-            n_posts: Number of posts to use in the discretization lattice (affects resolution).
-
-        Returns:
-            data, extent
-        """
-        data = data.copy()
-        data['r'] = data['r'].to(length_units)
-        data['time'] = data['time'].to(time_units)
-        radius_mask = (data['r'] >= radius_range[0]) * (data['r'] <= radius_range[1])
-        time_mask = (data['time'] >= time_range[0]) * (data['time'] <= time_range[1]) if time_range is not None else np.full_like(radius_mask, True)
-        data = cast(table.QTable, data[radius_mask * time_mask])
-        lattice = Lattice(n_posts=n_posts, start=data['r'].min().value, end=data['r'].max().value * 1.1, log=False)
-        data['bin'] = lattice.posts[lattice(data['r'].value)]
-        agg_data = pd.DataFrame(data.to_pandas().groupby(['time', 'bin'])['output'].agg(agg_fn)).reset_index()
-        r, time = np.meshgrid(lattice.posts, np.unique(data['time'].value))
-        pad = pd.DataFrame({'time': time.ravel(), 'bin': r.ravel()})
-        pad['output'] = np.nan
-        agg_data = pd.concat([agg_data, pad]).drop_duplicates(['time', 'bin']).sort_values(['time', 'bin'])
-        extent = (
-            Quantity(r.min(), length_units),
-            Quantity(r.max(), length_units),
-            Quantity(time.min(), time_units),
-            Quantity(time.max(), time_units),
-        )
-        return agg_data.output.to_numpy().reshape(r.shape), extent
-
-    def plot_density_evolution(
+    def plot_particle_evolution(
         self,
         include_start: bool = True,
         include_now: bool = True,
         filter_particle_type: ParticleType | None = None,
-        radius_range: tuple[Quantity['length'], Quantity['length']] = (Quantity(0, 'kpc'), Quantity(40, 'kpc')),
-        time_range: tuple[Quantity['time'], Quantity['time']] | None = None,
+        radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
+        time_range: Quantity = Quantity([2, 17], 'Gyr'),
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
@@ -822,13 +788,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         cbar_label: str | None = '#Particles',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        """Plot the density evolution of the halo. Wraps prep_2d_data().
+        """Plot the evolution of the particle position in the halo.
 
         Parameters:
             include_start: Whether to include the initial particle distribution in the plot.
             include_now: Whether to include the current particle distribution in the plot.
             filter_particle_type: Whether to filter to only plot the specified particle type.
-            radius_range: Range of radius to consider (filters the data).
+            radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
             time_range: Range of times to consider (filters the data).
             length_units: Units to use for the radius axis.
             time_units: Units to use for the time axis.
@@ -840,16 +806,12 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
+
         time_units = self.fill_time_unit(time_units)
-        data_tables = [] if not include_now else [self.initial_particles]
-        data_tables += [self.snapshots]
-        if include_now:
-            data_tables += [self.particles]
-        data = table.QTable(table.vstack(data_tables))
-        data['output'] = data['r']
+        data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
-        grid, extent = self.prep_2d_data(data, radius_range, time_range, length_units, time_units, agg_fn='count')
+        grid, extent = plot.aggregate_2d_data(data=data, radius_bins=radius_bins, time_range=time_range, output_type='counts')
 
         return plot.plot_2d(
             grid=grid,
@@ -862,13 +824,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             **kwargs,
         )
 
-    def plot_temperature(
+    def plot_temperature_evolution(
         self,
         include_start: bool = True,
         include_now: bool = True,
         filter_particle_type: ParticleType | None = None,
-        radius_range: tuple[Quantity['length'], Quantity['length']] = (Quantity(0, 'kpc'), Quantity(40, 'kpc')),
-        time_range: tuple[Quantity['time'], Quantity['time']] | None = None,
+        radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
+        time_range: Quantity = Quantity([2, 17], 'Gyr'),
         velocity_units: UnitLike = 'km/second',
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
@@ -883,9 +845,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             include_start: Whether to include the initial particle distribution in the plot.
             include_now: Whether to include the current particle distribution in the plot.
             filter_particle_type: Whether to filter to only plot the specified particle type.
-            radius_range: Range of radius to consider (filters the data).
+            radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
             time_range: Range of times to consider (filters the data).
-            velocity_units: Units to use for the velocity axis.
+            velocity_units: Units to use for the velocity.
             length_units: Units to use for the radius axis.
             time_units: Units to use for the time axis.
             xlabel: Label for the radius axis.
@@ -897,15 +859,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig, ax.
         """
         time_units = self.fill_time_unit(time_units)
-        data_tables = [] if not include_now else [self.initial_particles]
-        data_tables += [self.snapshots]
-        if include_now:
-            data_tables += [self.particles]
-        data = table.QTable(table.vstack(data_tables))
-        data['output'] = data['v_norm']
+        data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
-        grid, extent = self.prep_2d_data(data, radius_range, time_range, length_units, time_units, agg_fn='std')
+        grid, extent = plot.aggregate_2d_data(data=data, radius_bins=radius_bins, time_range=time_range, output_type='temperature')
 
         return plot.plot_2d(
             grid=grid,
@@ -915,6 +872,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel=utils.add_label_unit(xlabel, velocity_units),
             ylabel=utils.add_label_unit(ylabel, time_units),
             cbar_label=utils.add_label_unit(cbar_label, velocity_units),
+            cbar_units=velocity_units,
             **kwargs,
         )
 
@@ -1193,3 +1151,61 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             length_format=length_format,
             **kwargs,
         )
+
+    def plot_cumulative_scattering_amount_over_time(
+        self,
+        time_unit: UnitLike = 'Gyr',
+        xlabel: str | None = 'Time',
+        ylabel: str | None = 'Cumulative number of scattering events',
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the cumulative number of scattering events over time.
+
+        Parameters:
+            time_unit: Units for the x-axis.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+
+        Returns:
+            fig, ax.
+        """
+        scatters = np.array([len(x) for x in self.interactions_track])
+        x = (np.arange(len(scatters)) * self.dt).to(time_unit)
+        fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, **kwargs)
+        sns.lineplot(x=x, y=scatters.cumsum(), ax=ax)
+        return fig, ax
+
+    def plot_binned_scattering_amount_over_time(
+        self,
+        time_binning: Quantity = Quantity(100, 'Myr'),
+        time_unit: UnitLike = 'Gyr',
+        xlabel: str | None = 'Time',
+        ylabel: str | None = 'Number of scattering events',
+        title: str | None = 'Number of scattering events over time per {time}',
+        time_format: str | None = None,
+        title_time_unit: str | None = 'Myr',
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the number of scattering events over time, binned.
+
+        Parameters:
+            time_unit: Units for the x-axis.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+
+        Returns:
+            fig, ax.
+        """
+        n = int(time_binning / self.dt)
+        scatters = np.array([len(x) for x in self.interactions_track])
+        x = (np.arange(len(scatters)) * self.dt).to(time_unit)[::n]
+        scatters = np.add.reduceat(scatters, np.arange(0, len(scatters), n))
+
+        if title is not None:
+            title = title.format(time=time_binning.to(title_time_unit).to_string(format='latex', formatter=time_format))
+
+        fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
+        sns.lineplot(x=x, y=scatters, ax=ax)
+        return fig, ax

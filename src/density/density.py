@@ -457,7 +457,7 @@ class Density:
         r, v = cast(tuple[Quantity['length'], Quantity['velocity']], np.meshgrid(r_range, v_range))
         f = self.f(self.E(r, v))
         grid = np.asarray((16 * np.pi * r**2 * v**2 * f).value)
-        fig, ax = plot.plot_phase_space(grid, r_range, v_range, velocity_units=velocity_units, **kwargs)
+        fig, ax = plot.plot_phase_space(Quantity(grid), r_range, v_range, velocity_units=velocity_units, **kwargs)
         return fig, ax
 
     def add_plot_R_markers(self, ax: Axes, ymax: float, x_units: UnitLike = 'kpc') -> Axes:

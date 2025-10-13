@@ -344,19 +344,20 @@ def plot_density(
 
 def aggregate_2d_data(
     data: table.QTable | pd.DataFrame,
-    r_bins: Quantity['length'] = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
+    radius_bins: Quantity['length'] = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
     time_range: Quantity['time'] | None = None,
     unit_mass: Quantity['mass'] = Quantity(1, 'Msun'),
-    output_type: Literal['density', 'counts'] = 'counts',
+    output_type: Literal['density', 'counts', 'temperature'] = 'counts',
     density_units: UnitLike = run_units.density,
     data_time_units: UnitLike = 'Gyr',
     data_length_units: UnitLike = 'kpc',
+    data_velocity_units: UnitLike = 'kpc/Myr',
 ) -> tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']]]:
     """Prepares data to be plotted in a 2d heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to plot_2d().
 
     Parameters:
-        data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns 'r' and 'time'.
-        r_bins: The bins for the radius axis. Also used to define the radius range to consider.
+        data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns 'r' and 'time'. If `output_type='temperature'`, must also contain the column 'v_norm'.
+        radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
         time_range: The range of time to consider.
         unit_mass: The unit of mass. Used for density calculations, only relevant if `output_type='density'`.
         output_type: The type of calculation to fill each bin.
@@ -368,26 +369,41 @@ def aggregate_2d_data(
         data, extent.
     """
     keep_columns = ['r', 'time']
+    if output_type == 'temperature':
+        keep_columns += ['v_norm']
     if isinstance(data, pd.DataFrame):
         sub = data[keep_columns]
     else:
         sub = data[keep_columns].to_pandas()
         data_time_units = data['time'].unit
         data_length_units = data['r'].unit
+        if output_type == 'temperature':
+            data_velocity_units = data['v_norm'].unit
 
     if time_range is not None:
         sub = data[data['time'].between(*time_range.to(data_time_units).value)]
 
-    r_bins = r_bins.to(data_length_units)
-    r_bin_volume = 4 / 3 * np.pi * (r_bins[1:] ** 3 - r_bins[:-1] ** 3)
-    grid = np.empty((len(np.unique(np.array(sub['time']))), len(r_bins) - 1), dtype=np.float64)
+    radius_bins = radius_bins.to(data_length_units)
+    r_bin_volume = 4 / 3 * np.pi * (radius_bins[1:] ** 3 - radius_bins[:-1] ** 3)
+    grid = np.empty((len(np.unique(np.array(sub['time']))), len(radius_bins) - 1), dtype=np.float64)
 
     for i, (_, group) in enumerate(sub.groupby('time')):
-        counts, _ = np.histogram(Quantity(group['r'], data_length_units), bins=r_bins)
-        if output_type == 'density':
-            grid[i] = counts / r_bin_volume * unit_mass
+        if output_type == 'temperature':
+            group_bins = pd.cut(Quantity(group['r'], data_length_units).to(radius_bins.units).value, bins=radius_bins.value)
+            grid[i] = np.array(group.groupby(group_bins, observed=False)['v_norm'].std())
         else:
-            grid[i] = counts
+            counts, _ = np.histogram(Quantity(group['r'], data_length_units), bins=radius_bins)
+            if output_type == 'density':
+                grid[i] = counts / r_bin_volume * unit_mass
+            else:
+                grid[i] = counts
 
-    extent = (r_bins.min(), r_bins.max(), sub['time'].min(), sub['time'].max())
-    return Quantity(grid), extent
+    if output_type == 'density':
+        grid_units = unit_mass.unit / r_bin_volume.unit
+    elif output_type == 'temperature':
+        grid_units = data_velocity_units
+    else:
+        grid_units = ''
+
+    extent = (radius_bins.min(), radius_bins.max(), sub['time'].min(), sub['time'].max())
+    return Quantity(grid, grid_units), extent
