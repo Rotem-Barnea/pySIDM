@@ -226,12 +226,11 @@ def scatter(
     dt: Quantity['time'],
     m: Quantity['mass'] | NDArray[np.float64] | pd.Series,
     sigma: Quantity[run_units.cross_section],
-    blacklist: NDArray[np.int64] = np.array([], dtype=np.int64),
     max_radius_j: int = default_params['max_radius_j'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
     max_interactions_per_mini_timestep: int = default_params['max_interactions_per_mini_timestep'],
-) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], int, NDArray[np.int64], int]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64], int]:
     """Perform SIDM scatter events.
 
     Every time step the particle density is calculated, the overall scattering rate is estimated, and each particle is given N scattering rounds where in each round the scatter probability is at most kappa. Specifically:
@@ -253,21 +252,19 @@ def scatter(
         dt: Time step.
         m: The mass of the particles.
         sigma: Cross-section for scattering. At the moment, it is assumed to be constant (TODO to make it velocity dependent).
-        blacklist: Indices of particles to exclude from scattering. Used to allow multiple particle types in the simulation where only some perform the scattering (i.e. the rest are baryonic, other dm particles, etc.).
         max_radius_j: Maximum index radius for partners for scattering.
         kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform N scattering rounds over a time step dt/N to lower the rate in each round to match kappa.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
         max_interactions_per_mini_timestep: Internal memory buffer size parameter. No need to change it. Sets the maximum allowed number of interactions per round.
 
     Returns:
-        post scattering vx, vy, vz, n_interactions, indices of the particles that interacted, The maximum number of rounds performed.
+        post scattering vx, vy, vz, indices of the particles that interacted, The maximum number of rounds performed.
     """
     _r, _vx, _vy, _vr, _m = np.array(r), np.array(vx), np.array(vy), np.array(vr), np.array(m)
     if sigma == 0:
-        return _vx, _vy, _vr, 0, np.array([], dtype=np.int64), 0
+        return _vx, _vy, _vr, np.array([], dtype=np.int64), 0
     _v = np.vstack([_vx, _vy, _vr]).T
     v_output = _v.copy()
-    n_interactions = 0
     interacted: NDArray[np.int64] = np.empty(0, dtype=np.int64)
     _sigma = sigma.value
     local_density = cast(NDArray[np.float64], physics.utils.local_density(_r, _m, max_radius_j))
@@ -297,9 +294,8 @@ def scatter(
         rolls = np.random.random(len(_v))
         events = roll_particle_scattering(probability_array=scatter_base_chance, rolls=rolls)
         pairs = pick_scatter_partner(v_rel=v_rel_array, scatter_mask=events, rolls=rolls)[events]
-        pairs = utils.clean_pairs(pairs, blacklist)
+        pairs = utils.clean_pairs(pairs)
         interacted_particles = pairs.ravel()
         v_output = scatter_found_pairs(v=v_output, found_pairs=pairs, memory_allocated=max_interactions_per_mini_timestep)
-        n_interactions += len(pairs)
         interacted = np.hstack([interacted, interacted_particles])
-    return *v_output.T, n_interactions, interacted, scatter_rounds.max()
+    return *v_output.T, interacted, scatter_rounds.max()

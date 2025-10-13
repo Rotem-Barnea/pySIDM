@@ -33,7 +33,7 @@ class Halo:
         Tdyn: Quantity['time'] | None = None,
         Phi0: Quantity['energy'] | None = None,
         densities: list[Density] = [],
-        n_interactions: int = 0,
+        n_interactions: int = 0,  # TODO: deprecate
         scatter_rounds: list[int] = [],
         interactions_track: list[NDArray[np.float64]] = [],
         time: Quantity['time'] = 0 * run_units.time,
@@ -88,7 +88,6 @@ class Halo:
             self.Tdyn = Quantity(1, run_units.time)
         self.background: Mass_Distribution | None = background
         self.Phi0: Quantity['energy'] = Phi0 if Phi0 is not None else physics.utils.Phi(self.r, self.M, self.m)[-1]
-        self.n_interactions = n_interactions
         self.snapshots: table.QTable = snapshots
         self.save_every_n_steps = save_every_n_steps
         self.save_every_time: Quantity['time'] | None = save_every_time if save_every_time is None else save_every_time.to(run_units.time)
@@ -164,7 +163,6 @@ class Halo:
     def reset(self) -> None:
         """Resets the halo to its initial state (no interactions, time=0, cleared snapshots, particles at initial positions)."""
         self.time = 0 * run_units.time
-        self.n_interactions = 0
         self._particles = self._initial_particles.copy()
         self.interactions_track = []
         self.snapshots = table.QTable()
@@ -331,6 +329,11 @@ class Halo:
         """The time step for scattering."""
         return self.scatter_every_n_steps * self.dt
 
+    @property
+    def n_interactions(self) -> int:
+        """The number of interactions."""
+        return np.array([len(x) for x in self.interactions_track]).sum()
+
     #####################
     ##Dynamic evolution
     #####################
@@ -382,7 +385,6 @@ class Halo:
                 self._particles.loc[mask, 'vx'],
                 self._particles.loc[mask, 'vy'],
                 self._particles.loc[mask, 'vr'],
-                n_interactions,
                 indices,
                 scatter_rounds,
             ) = sidm.scatter(
@@ -394,7 +396,6 @@ class Halo:
                 m=self._particles.loc[mask, 'm'],
                 **self.scatter_params,
             )
-            self.n_interactions += n_interactions
             self.interactions_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
         self._particles['r'], self._particles['vx'], self._particles['vy'], self._particles['vr'] = leapfrog.step(
@@ -429,7 +430,6 @@ class Halo:
             'time': self.time,
             'dt': self.dt,
             'densities': self.densities,
-            'n_interactions': self.n_interactions,
             'save_every_n_steps': self.save_every_n_steps,
             'save_every_time': self.save_every_time,
             'dynamics_params': self.dynamics_params,
