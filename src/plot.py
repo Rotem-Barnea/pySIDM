@@ -1,10 +1,12 @@
 import numpy as np
+import pandas as pd
 import scipy
 import seaborn as sns
 from astropy import table
 from astropy.units import Quantity
 from astropy.units.typing import UnitLike
 from matplotlib import pyplot as plt
+from matplotlib.colors import LogNorm
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 import matplotlib.ticker as mtick
@@ -164,12 +166,13 @@ def plot_trace(
 
 
 def plot_2d(
-    grid: NDArray[Any],
+    grid: Quantity,
     extent: tuple[Quantity, Quantity, Quantity, Quantity] | None = None,
     x_range: Quantity | None = None,
     y_range: Quantity | None = None,
     x_units: UnitLike = run_units.length,
     y_units: UnitLike = run_units.velocity,
+    cbar_units: UnitLike = '',
     x_nbins: int | None = 6,
     y_nbins: int | None = 6,
     x_tick_format: str = '%.0f',
@@ -178,6 +181,9 @@ def plot_2d(
     xlabel: str | None = None,
     ylabel: str | None = None,
     cbar_label: str | None = None,
+    log_scale: bool = False,
+    hlines: list[dict[str, Any]] = [],
+    vlines: list[dict[str, Any]] = [],
     fig: Figure | None = None,
     ax: Axes | None = None,
     **kwargs: Any,
@@ -191,6 +197,7 @@ def plot_2d(
         y_range: Range of y values to plot, used to define the extent. Must be provided if extent is None, otherwise ignored.
         x_units: Units to use for the x axis.
         y_units: Units to use for the y axis.
+        cbar_units: Units to use for the value of each grid cell.
         x_nbins: Number of bins to use for the x axis.
         y_nbins: Number of bins to use for the y axis.
         x_tick_format: Format string for the x axis ticks.
@@ -199,6 +206,9 @@ def plot_2d(
         xlabel: Label for the x axis.
         ylabel: Label for the y axis.
         cbar_label: Label for the colorbar.
+        log_scale: Whether to use a log scale for the colorbar. If True, overwrites the "norm" argument if provided (in kwargs), and sets the norm to LogNorm().
+        hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to ax.axhline().
+        vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to ax.axvline().
         fig: Figure to plot on.
         ax: Axes to plot on.
         kwargs: Additional keyword arguments to pass to imshow.
@@ -216,7 +226,14 @@ def plot_2d(
         float(extent[3].to(y_units).value),
     )
 
+    # extent_value = tuple(np.hstack([*extent[:2].to(x_units).value, *extent[2:].to(y_units).value]))
+
+    if log_scale:
+        kwargs.update(norm=LogNorm())
+
     fig, ax = setup_plot(fig=fig, ax=ax, grid=False, title=title, xlabel=xlabel, ylabel=ylabel)
+    if cbar_units != '':
+        grid = grid.to(cbar_units)
     im = ax.imshow(grid, origin='lower', aspect='auto', extent=extent_value, **kwargs)
     cbar = fig.colorbar(im, ax=ax)
     if cbar_label:
@@ -233,11 +250,17 @@ def plot_2d(
     if y_nbins is not None:
         ax.yaxis.set_major_locator(mtick.MaxNLocator(nbins=y_nbins))
         ax.yaxis.set_major_formatter(mtick.FormatStrFormatter(y_tick_format))
+
+    for line in hlines:
+        ax.axhline(**line)
+    for line in vlines:
+        ax.axvline(**line)
+
     return fig, ax
 
 
 def plot_phase_space(
-    grid: NDArray[Any],
+    grid: Quantity,
     r_range: Quantity['length'] | None = Quantity([1e-2, 50], 'kpc'),
     v_range: Quantity['velocity'] | None = Quantity([0, 100], 'km/second'),
     length_units: UnitLike = run_units.length,
@@ -317,3 +340,54 @@ def plot_density(
     if label is not None:
         ax.legend()
     return fig, ax
+
+
+def aggregate_2d_data(
+    data: table.QTable | pd.DataFrame,
+    r_bins: Quantity['length'] = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
+    time_range: Quantity['time'] | None = None,
+    unit_mass: Quantity['mass'] = Quantity(1, 'Msun'),
+    output_type: Literal['density', 'counts'] = 'counts',
+    density_units: UnitLike = run_units.density,
+    data_time_units: UnitLike = 'Gyr',
+    data_length_units: UnitLike = 'kpc',
+) -> tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']]]:
+    """Prepares data to be plotted in a 2d heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to plot_2d().
+
+    Parameters:
+        data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns 'r' and 'time'.
+        r_bins: The bins for the radius axis. Also used to define the radius range to consider.
+        time_range: The range of time to consider.
+        unit_mass: The unit of mass. Used for density calculations, only relevant if `output_type='density'`.
+        output_type: The type of calculation to fill each bin.
+        density_units: The units for the density.
+        data_time_units: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a pd.DataFrame input).
+        data_length_units: The units for the radius in the data. Only used if `data` doesn't have defined units (i.e. a pd.DataFrame input).
+
+    Returns:
+        data, extent.
+    """
+    keep_columns = ['r', 'time']
+    if isinstance(data, pd.DataFrame):
+        sub = data[keep_columns]
+    else:
+        sub = data[keep_columns].to_pandas()
+        data_time_units = data['time'].unit
+        data_length_units = data['r'].unit
+
+    if time_range is not None:
+        sub = data[data['time'].between(*time_range.to(data_time_units).value)]
+
+    r_bins = r_bins.to(data_length_units)
+    r_bin_volume = 4 / 3 * np.pi * (r_bins[1:] ** 3 - r_bins[:-1] ** 3)
+    grid = np.empty((len(np.unique(np.array(sub['time']))), len(r_bins) - 1), dtype=np.float64)
+
+    for i, (_, group) in enumerate(sub.groupby('time')):
+        counts, _ = np.histogram(Quantity(group['r'], data_length_units), bins=r_bins)
+        if output_type == 'density':
+            grid[i] = counts / r_bin_volume * unit_mass
+        else:
+            grid[i] = counts
+
+    extent = (r_bins.min(), r_bins.max(), sub['time'].min(), sub['time'].max())
+    return Quantity(grid), extent

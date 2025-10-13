@@ -456,7 +456,11 @@ class Halo:
             payload = pickle.load(f)
         tables = {}
         for name in ['particles', 'initial_particles', 'snapshots']:
-            tables[name] = table.hstack([table.QTable.read(path / f'{name}.fits'), table.QTable.read(path / f'{name}_strings.csv')])
+            fits_table = table.QTable.read(path / f'{name}.fits')
+            csv_table = table.QTable.read(path / f'{name}_strings.csv')
+            for col in fits_table.colnames:
+                fits_table[col] = fits_table[col].astype(fits_table[col].dtype.newbyteorder('='), copy=False)
+            tables[name] = table.hstack([fits_table, csv_table])
         particles = tables['particles']
         particles.sort('particle_index')
         output = cls(
