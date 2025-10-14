@@ -3,10 +3,10 @@ import pandas as pd
 import scipy
 import seaborn as sns
 from astropy import table
-from astropy.units import Quantity
+from astropy.units import Quantity, Unit
 from astropy.units.typing import UnitLike
 from matplotlib import pyplot as plt
-from matplotlib.colors import LogNorm
+from matplotlib.colors import LogNorm, Normalize
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 import matplotlib.ticker as mtick
@@ -181,7 +181,10 @@ def plot_2d(
     xlabel: str | None = None,
     ylabel: str | None = None,
     cbar_label: str | None = None,
+    cbar_label_autosuffix: bool = True,
+    grid_row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
     log_scale: bool = False,
+    percentile_clip_scale: tuple[float, float] | None = None,
     hlines: list[dict[str, Any]] = [],
     vlines: list[dict[str, Any]] = [],
     fig: Figure | None = None,
@@ -206,6 +209,8 @@ def plot_2d(
         xlabel: Label for the x axis.
         ylabel: Label for the y axis.
         cbar_label: Label for the colorbar.
+        cbar_label_autosuffix: Add a prefix and suffix based on the `row_normalization` selected.
+        grid_row_normalization: Normalization applied to the grid row values, used for the cbar label prefix and suffix.
         log_scale: Whether to use a log scale for the colorbar. If True, overwrites the "norm" argument if provided (in kwargs), and sets the norm to LogNorm().
         hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to ax.axhline().
         vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to ax.axvline().
@@ -228,14 +233,39 @@ def plot_2d(
 
     # extent_value = tuple(np.hstack([*extent[:2].to(x_units).value, *extent[2:].to(y_units).value]))
 
-    if log_scale:
-        kwargs.update(norm=LogNorm())
-
-    fig, ax = setup_plot(fig=fig, ax=ax, grid=False, title=title, xlabel=xlabel, ylabel=ylabel)
+    fig, ax = setup_plot(
+        fig=fig,
+        ax=ax,
+        grid=False,
+        title=title,
+        xlabel=utils.add_label_unit(xlabel, x_units),
+        ylabel=utils.add_label_unit(ylabel, y_units),
+    )
     if cbar_units != '':
         grid = grid.to(cbar_units)
-    im = ax.imshow(grid, origin='lower', aspect='auto', extent=extent_value, **kwargs)
+    cbar_units = Unit(str(grid.unit))
+
+    if log_scale:
+        kwargs.update(norm=LogNorm())
+    elif percentile_clip_scale is not None:
+        kwargs.update(norm=Normalize(*np.nanpercentile(grid.value, percentile_clip_scale)))
+
+    im = ax.imshow(grid.value, origin='lower', aspect='auto', extent=extent_value, **kwargs)
     cbar = fig.colorbar(im, ax=ax)
+
+    if cbar_label_autosuffix and cbar_label is not None:
+        if grid_row_normalization is None:
+            cbar_label = f'#{cbar_label}'
+        elif grid_row_normalization == 'max':
+            cbar_label = f'{cbar_label} fraction from max bin in row'
+        elif type(grid_row_normalization) is float:
+            cbar_label = f'{cbar_label} fraction from the {grid_row_normalization:.0%}-th quantile bin in row'
+        elif grid_row_normalization == 'sum':
+            cbar_label = f'%{cbar_label} per bin in row'
+        elif grid_row_normalization == 'integral':
+            cbar_label = f'{cbar_label} density per unit length'
+
+    cbar_label = utils.add_label_unit(cbar_label, cbar_units)
     if cbar_label:
         cbar.set_label(cbar_label)
 
@@ -348,10 +378,12 @@ def aggregate_2d_data(
     time_range: Quantity['time'] | None = None,
     unit_mass: Quantity['mass'] = Quantity(1, 'Msun'),
     output_type: Literal['density', 'counts', 'temperature'] = 'counts',
+    row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
     density_units: UnitLike = run_units.density,
     data_time_units: UnitLike = 'Gyr',
     data_length_units: UnitLike = 'kpc',
     data_velocity_units: UnitLike = 'kpc/Myr',
+    output_grid_units: UnitLike | None = None,
 ) -> tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']]]:
     """Prepares data to be plotted in a 2d heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to plot_2d().
 
@@ -361,6 +393,7 @@ def aggregate_2d_data(
         time_range: The range of time to consider.
         unit_mass: The unit of mass. Used for density calculations, only relevant if `output_type='density'`.
         output_type: The type of calculation to fill each bin.
+        row_normalization: The normalization to apply to each row. If None, no normalization is applied. If float, it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
         density_units: The units for the density.
         data_time_units: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a pd.DataFrame input).
         data_length_units: The units for the radius in the data. Only used if `data` doesn't have defined units (i.e. a pd.DataFrame input).
@@ -381,7 +414,7 @@ def aggregate_2d_data(
             data_velocity_units = data['v_norm'].unit
 
     if time_range is not None:
-        sub = data[data['time'].between(*time_range.to(data_time_units).value)]
+        sub = sub[sub['time'].between(*time_range.to(data_time_units).value)]
 
     radius_bins = radius_bins.to(data_length_units)
     r_bin_volume = 4 / 3 * np.pi * (radius_bins[1:] ** 3 - radius_bins[:-1] ** 3)
@@ -389,8 +422,8 @@ def aggregate_2d_data(
 
     for i, (_, group) in enumerate(sub.groupby('time')):
         if output_type == 'temperature':
-            group_bins = pd.cut(Quantity(group['r'], data_length_units).to(radius_bins.units).value, bins=radius_bins.value)
-            grid[i] = np.array(group.groupby(group_bins, observed=False)['v_norm'].std())
+            group_bins = pd.cut(Quantity(group['r'], data_length_units).to(radius_bins.unit).value, bins=radius_bins.value)
+            grid[i] = np.array(group.groupby(group_bins, observed=True)['v_norm'].std())
         else:
             counts, _ = np.histogram(Quantity(group['r'], data_length_units), bins=radius_bins)
             if output_type == 'density':
@@ -405,5 +438,18 @@ def aggregate_2d_data(
     else:
         grid_units = ''
 
-    extent = (radius_bins.min(), radius_bins.max(), sub['time'].min(), sub['time'].max())
-    return Quantity(grid, grid_units), extent
+    grid_quantity = Quantity(grid, grid_units)
+    if output_grid_units is not None:
+        grid_quantity = grid_quantity.to(output_grid_units)
+
+    if row_normalization == 'max':
+        grid_quantity /= grid_quantity.max(1, keepdims=True)
+    elif type(row_normalization) is float:
+        grid_quantity /= np.quantile(grid_quantity, row_normalization, axis=1, keepdims=True)
+    elif row_normalization == 'sum':
+        grid_quantity /= grid_quantity.sum(1, keepdims=True)
+    elif row_normalization == 'integral':
+        grid_quantity /= np.expand_dims(np.trapezoid(y=grid, x=np.matlib.repmat(radius_bins[:-1], len(grid), 1), axis=1), 1)
+
+    extent = (radius_bins.min(), radius_bins.max(), Quantity(sub['time'].min(), data_time_units), Quantity(sub['time'].max(), data_time_units))
+    return cast(Quantity, grid_quantity), extent

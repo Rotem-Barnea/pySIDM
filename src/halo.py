@@ -731,10 +731,15 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         filter_particle_type: ParticleType | None = None,
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'time',
-        ylabel: str | None = '#particles',
-        title: str | None = '',
+        ylabel: str | None = 'particles',
+        title: str | None = 'particles in inner core ({radius})',
+        aggregation_type: Literal['amount', 'percent'] = 'amount',
+        title_radius_format: str = '.1f',
+        label: str | None = None,
         fig: Figure | None = None,
         ax: Axes | None = None,
+        line_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the number of particles in the inner core as a function of time.
 
@@ -747,31 +752,53 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: Title for the plot.
+            aggregation_type: Type of aggregation to use for the plot.
+            title_radius_format: Format string for the title radius.
+            label: Label for the plot (legend).
             fig: Figure to use for the plot.
             ax: Axes to use for the plot.
+            line_kwargs: Additional keyword arguments to pass to the lineplot function (sns.lineplot).
+            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
 
         Returns:
             fig, ax.
         """
-        data_tables = [] if not include_now else [self.initial_particles]
-        data_tables += [self.snapshots]
-        if include_now:
-            data_tables += [self.particles]
-        data = table.QTable(table.vstack(data_tables))
+        base_data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
+        data_time_units = base_data['time'].unit
+        data_length_units = base_data['r'].unit
+        data = base_data[['r', 'time', 'particle_type']].to_pandas()
+
         if filter_particle_type is not None:
-            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
+            data = data[data['particle_type'] == filter_particle_type].copy()
         time_units = self.fill_time_unit(time_units)
-        data['time'] = data['time'].to(time_units)
-        data['in_radius'] = data['r'] <= radius
+        data['in_radius'] = data['r'] <= radius.to(data_length_units)
 
-        agg_data = utils.aggregate_QTable(data, groupby='time', keys=['in_radius'], agg_fn='sum', final_units={'time': time_units})
+        if aggregation_type == 'amount':
+            agg_func = 'sum'
+            prefix = '#'
+        else:
+            agg_func = 'mean'
+            prefix = '%'
 
-        if title == '':
-            title = f'#particles in inner core ({radius.to_string(format="latex", formatter=".2f")})'
+        agg_data = data.groupby('time')['in_radius'].agg(agg_func).reset_index()
+        if prefix == '%':
+            agg_data['in_radius'] *= 100
 
-        xlabel = f'{xlabel} [{time_units}]' if xlabel is not None else None
-        fig, ax = plot.setup_plot(fig, ax, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
-        sns.lineplot(agg_data.to_pandas(index='time'), ax=ax)
+        if title is not None:
+            title = title.format(radius=radius.to_string(format='latex', formatter=title_radius_format))
+            title = f'{prefix}{title}'
+
+        if ylabel is not None:
+            ylabel = f'{prefix}{ylabel}'
+
+        fig, ax = plot.setup_plot(fig, ax, **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, time_units), ylabel=ylabel), **kwargs)
+        sns.lineplot(
+            x=np.array(Quantity(agg_data['time'], data_time_units).to(time_units)),
+            y=agg_data['in_radius'],
+            ax=ax,
+            label=label,
+            **line_kwargs,
+        )
         return fig, ax
 
     def plot_particle_evolution(
@@ -785,7 +812,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
-        cbar_label: str | None = '#Particles',
+        cbar_label: str | None = 'Particles',
+        row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the evolution of the particle position in the halo.
@@ -801,6 +829,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel: Label for the radius axis.
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
+            row_normalization: The normalization to apply to each row. If None, no normalization is applied. If float, it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
             kwargs: Additional keyword arguments to pass to the plot function (utils.plot_2d()).
 
         Returns:
@@ -811,16 +840,23 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
-        grid, extent = plot.aggregate_2d_data(data=data, radius_bins=radius_bins, time_range=time_range, output_type='counts')
+        grid, extent = plot.aggregate_2d_data(
+            data=data,
+            radius_bins=radius_bins,
+            time_range=time_range,
+            output_type='counts',
+            row_normalization=row_normalization,
+        )
 
         return plot.plot_2d(
             grid=grid,
             extent=extent,
             x_units=length_units,
             y_units=time_units,
-            xlabel=utils.add_label_unit(xlabel, length_units),
-            ylabel=utils.add_label_unit(ylabel, time_units),
+            xlabel=xlabel,
+            ylabel=ylabel,
             cbar_label=cbar_label,
+            grid_row_normalization=row_normalization,
             **kwargs,
         )
 
@@ -836,7 +872,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
-        cbar_label: str | None = 'Temperature (velocity std)',
+        cbar_label: str | None = r'$\propto$Temperature (velocity std)',
+        row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the temperature evolution of the halo. Wraps prep_2d_data().
@@ -853,6 +890,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel: Label for the radius axis.
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
+            row_normalization: The normalization to apply to each row. If None, no normalization is applied. If float, it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
             kwargs: Additional keyword arguments to pass to the plot function (utils.plot_2d()).
 
         Returns:
@@ -862,17 +900,25 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
-        grid, extent = plot.aggregate_2d_data(data=data, radius_bins=radius_bins, time_range=time_range, output_type='temperature')
+        grid, extent = plot.aggregate_2d_data(
+            data=data,
+            radius_bins=radius_bins,
+            time_range=time_range,
+            output_type='temperature',
+            row_normalization=row_normalization,
+            output_grid_units=velocity_units,
+        )
 
         return plot.plot_2d(
             grid=grid,
             extent=extent,
             x_units=length_units,
             y_units=time_units,
-            xlabel=utils.add_label_unit(xlabel, velocity_units),
-            ylabel=utils.add_label_unit(ylabel, time_units),
-            cbar_label=utils.add_label_unit(cbar_label, velocity_units),
-            cbar_units=velocity_units,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            cbar_label=cbar_label,
+            grid_row_normalization=row_normalization,
+            cbar_label_autosuffix=True if row_normalization is not None else False,
             **kwargs,
         )
 
