@@ -101,7 +101,18 @@ def scatter_pair_kinematics(v0: NDArray[np.float64], v1: NDArray[np.float64]) ->
 
 @njit
 def particle_v_rel(v: NDArray[np.float64], particle: int, max_radius_j: int) -> NDArray[np.float64]:
-    """TODO"""
+    """Calculates the relative velocity of a particle with its neighbors.
+
+    The result is an array of relative velocity norms sqrt(sum((v[partner]-v[particle])^2)), and the partners are taken from: [particle + 1 : particle + 1 + max_radius_j]
+
+    Parameters:
+        v: Array of particle velocities, shape (n_particles, 3), with components (vx,vy,vr).
+        particle: Index of the particle for which to calculate the relative velocity.
+        max_radius_j: Maximum index radius for partners.
+
+    Returns:
+        Array of relative velocity norms between the particle and its neighbors, shape (max_radius_j,). Edge particles have a smaller array length.
+    """
     return np.sqrt(((v[particle + 1 : particle + 1 + max_radius_j] - v[particle]) ** 2).sum(1))
 
 
@@ -127,7 +138,17 @@ def v_rel(v: NDArray[np.float64], max_radius_j: int, whitelist_mask: NDArray[np.
 
 @njit
 def particle_scatter_chance(v_rel: NDArray[np.float64], dt: float, sigma: float, density_term: float) -> float:
-    """TODO"""
+    """Calculate the scattering chance for a particle.
+
+    Parameters:
+        v_rel: Array of relative velocity norms between the particle and its neighbors, shape (max_radius_j,).
+        dt: Scattering time step.
+        sigma: Scattering cross-section. At the moment, it is assumed to be constant (TODO to make it velocity dependent).
+        density_term: Density term for the scattering chance calculation.
+
+    Returns:
+        Scattering chance for the particle.
+    """
     return 1 / 2 * dt * density_term * v_rel.sum() * sigma
 
 
