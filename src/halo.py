@@ -33,9 +33,8 @@ class Halo:
         Tdyn: Quantity['time'] | None = None,
         Phi0: Quantity['energy'] | None = None,
         densities: list[Density] = [],
-        n_interactions: int = 0,  # TODO: deprecate
         scatter_rounds: list[int] = [],
-        interactions_track: list[NDArray[np.float64]] = [],
+        scatter_track: list[NDArray[np.float64]] = [],
         time: Quantity['time'] = 0 * run_units.time,
         background: Mass_Distribution | None = None,
         last_saved_time: Quantity['time'] = 0 * run_units.time,
@@ -59,7 +58,7 @@ class Halo:
             densities: List of densities of the halo.
             n_interactions: Number of interactions the halo had.
             scatter_rounds: Number of scatter rounds the halo had every time step.
-            interactions_track: The interacting particles (particle index) at every time step.
+            scatter_track: The interacting particles (particle index) at every time step.
             time: Time of the halo.
             background: Background mass distribution of the halo.
             last_saved_time: Last time a snapshot was saved.
@@ -93,7 +92,7 @@ class Halo:
         self.save_every_time: Quantity['time'] | None = save_every_time if save_every_time is None else save_every_time.to(run_units.time)
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
         self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
-        self.interactions_track = interactions_track
+        self.scatter_track = scatter_track
         self._initial_particles = self._particles.copy()
         self.initial_particles = self.particles.copy()
         self.last_saved_time = last_saved_time
@@ -164,7 +163,7 @@ class Halo:
         """Resets the halo to its initial state (no interactions, time=0, cleared snapshots, particles at initial positions)."""
         self.time = 0 * run_units.time
         self._particles = self._initial_particles.copy()
-        self.interactions_track = []
+        self.scatter_track = []
         self.snapshots = table.QTable()
 
     @property
@@ -330,9 +329,9 @@ class Halo:
         return self.scatter_every_n_steps * self.dt
 
     @property
-    def n_interactions(self) -> int:
-        """The number of interactions."""
-        return np.array([len(x) for x in self.interactions_track]).sum()
+    def n_scatters(self) -> NDArray[np.int64]:
+        """The number of scatters every scattering round."""
+        return np.array([len(x) for x in self.interactions_track])
 
     #####################
     ##Dynamic evolution
@@ -396,7 +395,7 @@ class Halo:
                 m=self._particles.loc[mask, 'm'],
                 **self.scatter_params,
             )
-            self.interactions_track += [self.r[indices]]
+            self.scatter_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
         self._particles['r'], self._particles['vx'], self._particles['vy'], self._particles['vr'] = leapfrog.step(
             r=self._particles['r'],
@@ -434,7 +433,7 @@ class Halo:
             'save_every_time': self.save_every_time,
             'dynamics_params': self.dynamics_params,
             'scatter_params': self.scatter_params,
-            'interactions_track': self.interactions_track,
+            'scatter_track': self.scatter_track,
             'background': self.background,
             'last_saved_time': self.last_saved_time,
             'scatter_rounds': self.scatter_rounds,
@@ -465,6 +464,9 @@ class Halo:
         path = Path(path)
         with open(path / 'halo_payload.pkl', 'rb') as f:
             payload = pickle.load(f)
+        for dep_key in ['interactions_track', 'n_interactions']:  # TODO: remove once fully deprecated
+            if dep_key in payload:
+                payload.pop(dep_key)
         tables = {}
         for name in ['particles', 'initial_particles', 'snapshots']:
             fits_table = table.QTable.read(path / f'{name}.fits')
@@ -970,7 +972,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
     def plot_scattering_location(
         self,
-        title: str | None = 'Scattering location distribution within the first {time}, total of {n_interactions} events',
+        title: str | None = 'Scattering location distribution within the first {time}, total of {n_scatters} events',
         xlabel: str | None = 'Radius',
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Gyr',
@@ -1000,7 +1002,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         xlabel = utils.add_label_unit(xlabel, length_units)
         time_units = self.fill_time_unit(time_units)
         if title is not None:
-            title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_interactions=self.n_interactions)
+            title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_scatters=self.n_scatters.sum())
         fig, ax = plot.setup_plot(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
         sns.histplot(Quantity(np.hstack(self.interactions_track), run_units.length).to(length_units), ax=ax)
         return fig, ax
@@ -1010,7 +1012,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         num: int = 500,
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Density',
-        title: str | None = 'Scattering density within the first {time}, total of {n_interactions} events',
+        title: str | None = 'Scattering density within the first {time}, total of {n_scatters} events',
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Gyr',
         time_format: str = '.1f',
@@ -1053,7 +1055,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         ylabel = utils.add_label_unit(ylabel, density_units)
         time_units = self.fill_time_unit(time_units)
         if title is not None:
-            title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_interactions=self.n_interactions)
+            title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_scatters=self.n_scatters.sum())
         fig, ax = plot.setup_plot(**kwargs, ax_set={'yscale': 'log'}, **utils.drop_None(title=title, xlabel=xlabel))
         sns.lineplot(x=r_bins, y=smoothed_density, ax=ax)
         return fig, ax
