@@ -49,7 +49,7 @@ def scatter_pair_kinematics(v0: NDArray[np.float64], v1: NDArray[np.float64]) ->
 
     Calculates a random isotropic scattering direction from a uniform cosine distribution off of v_rel.
 
-    Args:
+    Parameters:
         v0: Velocity of the first particle. Array of shape (3,) representing the velocity in 3D space as (vx,vy,vr).
         v1: Velocity of the second particle. Array of shape (3,) representing the velocity in 3D space as (vx,vy,vr).
 
