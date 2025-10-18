@@ -19,7 +19,7 @@ def M(
 
     Parameters
         r: The positions of the particles.
-        m: The masses of the particles. If None, all particles are assumed to have a mass of 1 Msun (run_units.mass).
+        m: The masses of the particles. If `None` all particles are assumed to have a mass of 1 `Msun` (`run_units.mass`).
         count_self: Whether to include the mass of the particle at the current position in the cumulative mass.
         M_below: Additional mass below the current position from an external source.
 
@@ -44,14 +44,14 @@ def local_density(
     """Calculate the local density of a set of particles.
 
     Supports generally 2 modes:
-        3d mass density (sum(m)/(4/3*pi*(rmax^3-rmin^3))) = volume_kind='density' and mass_kind='sum'
-        scattering density term (m/(4*pi*rmin^2*(rmax-rmin))) = volume_kind='shell' and mass_kind='single'
+        3d mass density (`sum(m)/(4/3*pi*(rmax^3-rmin^3))`) = `volume_kind`='density' and `mass_kind`='sum'
+        scattering density term (`m/(4*pi*rmin^2*(rmax-rmin))`) = `volume_kind`='shell' and `mass_kind`='single'
 
     Assumes the array is sorted.
 
     Parameters
         r: The positions of the particles.
-        m: The masses of the particles. If None, all particles are assumed to have a mass of 1 Msun (run_units.mass).
+        m: The masses of the particles. If `None` all particles are assumed to have a mass of 1 `Msun` (`run_units.mass`).
         max_radius_j: Maximum index radius for partners for scattering.
         volume_kind: The kind of volume to calculate (thick shell or approximation using thin-shell).
         mass_kind: Either calculate the total mass enclosed, or count just a single mass (used for the scattering term).
@@ -82,11 +82,11 @@ def local_density(
 def Phi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityOrArray:
     """Calculate the gravitational potential at a given radius.
 
-    Performed using integration of the gravitational force G*M(<=r)*m/r^2.
+    Performed using integration of the gravitational force `G*M(<=r)*m/r^2`.
 
     Parameters
         r: The position of the particles.
-        M: The total enclosed mass (M(<=r)) at any particle position.
+        M: The total enclosed mass (`M(<=r)`) at any particle position.
         m: The mass of each particle.
 
     Returns
@@ -101,9 +101,9 @@ def Phi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityO
 def Psi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityOrArray:
     """Calculate the relative gravitational potential at a given radius.
 
-    Recalculates Phi0 (the value at infinity) based on the maximal value for the given particle array.
+    Recalculates `Phi0` (the value at infinity) based on the maximal value for the given particle array.
 
-    See Psi() for details.
+    See `Phi()` for details.
     """
     integral = scipy.integrate.cumulative_trapezoid(y=constants.G.to(run_units.G_units).value * M * m / r**2, x=r, initial=0)
     integral = integral[-1] - integral

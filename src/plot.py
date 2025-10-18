@@ -31,16 +31,16 @@ def setup_plot(
     """Setup a plot with optional grid, minor ticks, and axis settings.
 
     Parameters:
-        fig: Figure to plot on. If None, a new figure is created.
-        ax: Axes to plot on. If None, a new axes is created.
+        fig: Figure to plot on. If `None` a new figure is created.
+        ax: Axes to plot on. If `None` a new axes is created.
         grid: Whether to add a grid to the plot (major ticks).
         minorticks: Whether to add the grid for the minor ticks.
-        figsize: The figure size to create. Ignored if fig/ax is provided.
-        ax_set: Additional keyword arguments to pass to Axes.set(). e.g {'xscale': 'log'}.
+        figsize: The figure size to create. Ignored if `fig` / `ax` is provided.
+        ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
         title: The title of the plot.
-        xlabel: The label of the x axis.
-        ylabel: The label of the y axis.
-        kwargs: Additional keyword arguments to pass to plt.subplots().
+        xlabel: The label of the x-axis.
+        ylabel: The label of the y-axis.
+        kwargs: Additional keyword arguments to pass to `plt.subplots()`.
 
     Returns:
         fig, ax.
@@ -72,9 +72,9 @@ def default_plot_text(
     x_units: UnitLike | None = None,
     y_units: UnitLike | None = None,
 ) -> dict[str, str | None]:
-    """Return default plot title/xlabel/ylabel for a given key and add the appropriate units.
+    """Return default plot `title`/`xlabel`/`ylabel` for a given key and add the appropriate units.
 
-    If xlabel/ylabel/title are provided, they override the defaults.
+    If `xlabel`/`ylabel`/`title` are provided, they override the defaults.
     """
     if key == 'vr':
         output = {'title': 'Radial velocity distribution', 'xlabel': 'Radial velocity', 'ylabel': 'Density'}
@@ -95,7 +95,7 @@ def default_plot_text(
 
 
 def default_plot_unit_type(key: str, plot_unit: UnitLike | None = None) -> UnitLike:
-    """Return the appropriate unit type for a given key. If plot unit is provided, return it instead."""
+    """Return the appropriate unit type for a given `key`. If `plot_unit` is provided, return it instead."""
     if plot_unit is not None:
         return plot_unit
     if key == 'r':
@@ -124,17 +124,17 @@ def plot_trace(
 
     Parameters:
         key: The property to plot. Must be a valid column name in the data table.
-        data: The data table to plot (i.e. halo.snapshots, or an external table from an NSphere run).
+        data: The data table to plot (i.e. `halo.snapshots`, or an external table from an `NSphere` run).
         particle_index: The index of the particle to trace.
-        relative: If `absolute`, plot the property as is. If `relative`, plot the change in the property relative to the initial value. If `relative change`, plot the change in the property relative to the initial value divided by the initial value.
+        relative: If `absolute` plot the property as is. If `relative` plot the change in the property relative to the initial value. If `relative change` plot the change in the property relative to the initial value divided by the initial value.
         xlabel: Label for the x-axis.
-        ylabel: Label for the y-axis. If not provided, the label will be automatically generated based on the key and units. To disable this, set to ''.
+        ylabel: Label for the y-axis. If not provided, the label will be automatically generated based on the key and units. To disable this set to `''`.
         title: Title for the plot.
         time_units: Units for the x-axis.
         y_units: Units for the y-axis.
         length_units: Units for the length.
         length_format: Format string for length.
-        kwargs: Additional keyword arguments to pass to the plot function (setup_plot).
+        kwargs: Additional keyword arguments to pass to the plot function (`setup_plot()`).
 
     Returns:
         fig, ax.
@@ -195,28 +195,28 @@ def plot_2d(
 
     Parameters:
         grid: 2d array of data to plot.
-        extent: Range of values to plot, used to define the x and y axes. If None, derive from x_range and y_range, otherwise takes priority.
-        x_range: Range of x values to plot, used to define the extent. Must be provided if extent is None, otherwise ignored.
-        y_range: Range of y values to plot, used to define the extent. Must be provided if extent is None, otherwise ignored.
-        x_units: Units to use for the x axis.
-        y_units: Units to use for the y axis.
+        extent: Range of values to plot, used to define the x and y axes. If `None` derive from `x_range` and `y_range`, otherwise takes priority.
+        x_range: Range of x values to plot, used to define the extent. Must be provided if `extent` is `None`, otherwise ignored.
+        y_range: Range of y values to plot, used to define the extent. Must be provided if `extent` is `None`, otherwise ignored.
+        x_units: Units to use for the x-axis.
+        y_units: Units to use for the y-axis.
         cbar_units: Units to use for the value of each grid cell.
-        x_nbins: Number of bins to use for the x axis.
-        y_nbins: Number of bins to use for the y axis.
-        x_tick_format: Format string for the x axis ticks.
-        y_tick_format: Format string for the y axis ticks.
+        x_nbins: Number of bins to use for the x-axis.
+        y_nbins: Number of bins to use for the y-axis.
+        x_tick_format: Format string for the x-axis ticks.
+        y_tick_format: Format string for the y-axis ticks.
         title: Title of the plot.
-        xlabel: Label for the x axis.
-        ylabel: Label for the y axis.
+        xlabel: Label for the x-axis.
+        ylabel: Label for the y-axis.
         cbar_label: Label for the colorbar.
         cbar_label_autosuffix: Add a prefix and suffix based on the `row_normalization` selected.
         grid_row_normalization: Normalization applied to the grid row values, used for the cbar label prefix and suffix.
-        log_scale: Whether to use a log scale for the colorbar. If True, overwrites the "norm" argument if provided (in kwargs), and sets the norm to LogNorm().
-        hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to ax.axhline().
-        vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to ax.axvline().
+        log_scale: Whether to use a log scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `LogNorm()`.
+        hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`.
+        vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`.
         fig: Figure to plot on.
         ax: Axes to plot on.
-        kwargs: Additional keyword arguments to pass to imshow.
+        kwargs: Additional keyword arguments to pass to `plt.imshow()`.
 
     Returns:
         fig, ax.
@@ -297,7 +297,7 @@ def plot_phase_space(
     velocity_units: UnitLike = run_units.velocity,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
-    """Plot the phase space distribution. Wrapper for plot_2d() to provide convenient defaults and variable names (i.e. r and v)."""
+    """Plot the phase space distribution. Wrapper for `plot_2d()` to provide convenient defaults and variable names (i.e. `r` and `v`)."""
     return plot_2d(
         grid,
         xlabel=utils.add_label_unit('Radius', length_units),
@@ -329,19 +329,19 @@ def plot_density(
 
     Parameters:
         data: Data to plot.
-        bins: Argument accepted by np.histogram.
+        bins: Argument accepted by `np.histogram()`.
         unit_mass: Unit mass to convert the number density to mass density,
-        xlabel: Label for the x axis.
-        ylabel: Label for the y axis.
+        xlabel: Label for the x-axis.
+        ylabel: Label for the y-axis.
         title: Title for the plot.
-        length_units: Units to use for the x axis.
-        density_units: Number of bins to use for the y axis.
+        length_units: Units to use for the x-axis.
+        density_units: Number of bins to use for the y-axis.
         label: label to add to the plot legend.
         cleanup_nonpositive: drop non-positive values from the plot, to avoid "pits" in the log plot.
         smooth_sigma: sigma for smoothing the density distribution.
         fig: Figure to plot on.
         ax: Axes to plot on.
-        kwargs: Additional keyword arguments to pass to setup_plot().
+        kwargs: Additional keyword arguments to pass to `setup_plot()`.
 
 
     Returns:
@@ -388,15 +388,15 @@ def aggregate_2d_data(
     """Prepares data to be plotted in a 2d heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to plot_2d().
 
     Parameters:
-        data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns 'r' and 'time'. If `output_type='temperature'`, must also contain the column 'v_norm'.
+        data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns 'r' and 'time'. If `output_type='temperature'` must also contain the column 'v_norm'.
         radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
         time_range: The range of time to consider.
         unit_mass: The unit of mass. Used for density calculations, only relevant if `output_type='density'`.
         output_type: The type of calculation to fill each bin.
-        row_normalization: The normalization to apply to each row. If None, no normalization is applied. If float, it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
+        row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
         density_units: The units for the density.
-        data_time_units: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a pd.DataFrame input).
-        data_length_units: The units for the radius in the data. Only used if `data` doesn't have defined units (i.e. a pd.DataFrame input).
+        data_time_units: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_length_units: The units for the radius in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
 
     Returns:
         data, extent.

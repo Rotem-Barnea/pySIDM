@@ -49,7 +49,7 @@ class Lattice:
 
     @property
     def posts(self) -> NDArray[np.float64]:
-        """Calculate the posts of the lattice (i.e. np.linspace or np.geomspace)."""
+        """Calculate the posts of the lattice (i.e. `np.linspace` or `np.geomspace`)."""
         if self.log:
             return np.geomspace(self.start, self.end, self.n_posts)
         return np.linspace(self.start, self.end, self.n_posts)
@@ -108,14 +108,14 @@ class Lattice:
         return output
 
     def augment_to_lattice(self, x: FloatOrArray, clip: bool = True) -> FloatOrArray:
-        """Transform the given array from spatial coordinates to lattice coordinates. Wraps the njit-accelerated fast_augment_to_lattice()."""
+        """Transform the given array from spatial coordinates to lattice coordinates. Wraps the njit-accelerated `fast_augment_to_lattice()`."""
         output = self.fast_augment_to_lattice(np.atleast_1d(x), self.start_lattice, self.log, clip, 0, len(self))
         if np.isscalar(x):
             output = output[0]
         return cast(FloatOrArray, output)
 
     def augment_from_lattice(self, x: FloatOrArray) -> FloatOrArray:
-        """Transform the given array from lattice coordinates to spatial coordinates. Wraps the njit-accelerated fast_augment_from_lattice()."""
+        """Transform the given array from lattice coordinates to spatial coordinates. Wraps the njit-accelerated `fast_augment_from_lattice()`."""
         output = self.fast_augment_from_lattice(np.atleast_1d(x), self.start_lattice, self.log)
         if np.isscalar(x):
             output = output[0]
@@ -126,7 +126,7 @@ class Lattice:
         return cast(FloatOrArray, (x >= self.start) * (x <= self.end))
 
     def to_lattice_coordinates(self, x: FloatOrArray, clip: bool = True) -> FloatOrArray:
-        """Transform the given array from spatial coordinates to lattice points (i.e. integer values). Wraps augment_to_lattice()."""
+        """Transform the given array from spatial coordinates to lattice points (i.e. integer values). Wraps `augment_to_lattice()`."""
         x_lattice = self.augment_to_lattice(x, clip) / self.lattice_spacing
         if np.isscalar(x):
             if x_lattice == 0:
@@ -139,7 +139,7 @@ class Lattice:
         return cast(FloatOrArray, x_lattice)
 
     def to_space_coordinates(self, x: FloatOrArray) -> FloatOrArray:
-        """Transform the given array from lattice points (i.e. integer values) to spatial coordinates. Wraps augment_from_lattice()."""
+        """Transform the given array from lattice points (i.e. integer values) to spatial coordinates. Wraps `augment_from_lattice()`."""
         return self.augment_from_lattice(x * self.lattice_spacing)
 
     def values_on_lattice_point(self, x: NDArray[np.float64]) -> NDArray[np.int64]:
@@ -149,25 +149,25 @@ class Lattice:
             x: Array of lattice points. must be integer values.
 
         Returns:
-            Array of shape (len(density),) where every cell is the number of points in x that match the corresponding lattice cell.
+            Array of shape `(len(density),)` where every cell is the number of points in `x` that match the corresponding lattice cell.
         """
         return np.bincount(x.clip(min=0), minlength=len(self))
 
     def values_on_lattice_point_cumsum(self, x: NDArray[np.float64]) -> NDArray[np.int64]:
-        """Calculate cumulative sum of number of values in each point in the lattice. See values_on_lattice_point()."""
+        """Calculate cumulative sum of number of values in each point in the lattice. See `values_on_lattice_point()`."""
         density = self.values_on_lattice_point(x)
         return np.cumsum(density)
 
     def assign_from_values_cumsum(self, r: FloatOrArray) -> FloatOrArray:
         """Calculate the cumulative sum for each element in `r`.
 
-        Every element in r is converted to the corresponding lattice point, and then assigned the number of values that fall within or below that point.
+        Every element in `r` is converted to the corresponding lattice point, and then assigned the number of values that fall within or below that point.
 
         Parameters:
             r: Array of spatial points.
 
         Returns:
-            Array of shape (len(r),) where every cell is the number of in or below the corresponding lattice cell.
+            Array of shape `(len(r),)` where every cell is the number of in or below the corresponding lattice cell.
         """
         x = np.atleast_1d(self(r))
         value_cumsum = self.values_on_lattice_point_cumsum(x).astype(np.float64)
@@ -179,14 +179,14 @@ class Lattice:
     def assign_spatial_density(self, r: FloatOrArray, unit_mass: float) -> FloatOrArray:
         """Calculate the density for each element in `r`.
 
-        Every element in r is converted to the corresponding lattice point, and then assigned the number of values that fall within that point divided by the volume of that cell.
+        Every element in `r` is converted to the corresponding lattice point, and then assigned the number of values that fall within that point divided by the volume of that cell.
 
         Parameters:
             r: Array of spatial points.
             unit_mass: The mass of each element in the lattice (assumes a single equal mass for all elements).
 
         Returns:
-            Array of shape (len(r),) where every cell is the mass density in the corresponding lattice cell for that element value of `r`.
+            Array of shape `(len(r),)` where every cell is the mass density in the corresponding lattice cell for that element value of `r`.
         """
         x = np.atleast_1d(self(r))
         density = unit_mass * self.values_on_lattice_point(x) / self.post_volume

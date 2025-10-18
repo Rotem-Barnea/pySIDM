@@ -41,7 +41,7 @@ def normalize_params(params: Params, add_defaults: bool = False) -> Params:
 
     Parameters:
         params: Dictionary of parameters.
-        add_defaults: Whether to add default parameters (under the input params).
+        add_defaults: Whether to add default parameters (under the input `params`).
 
     Returns:
         Normalized parameters.
@@ -60,7 +60,7 @@ def get_grid(
     Parameters:
         r: Array of particle positions.
         M: Array of particle masses.
-        window_radius: Radius (in indexes) of the grid window, i.e. the window will span from window_radius in each direction (slice [particle_index - window_radius : particle_index + window_radius + 1]).
+        window_radius: Radius (in indexes) of the grid window, i.e. the window will span from window_radius in each direction (slice `[particle_index - window_radius : particle_index + window_radius + 1]`).
         particle_index: Index of the particle for which the grid is being generated.
 
     Returns:
@@ -75,11 +75,12 @@ def get_grid(
 
 @njit
 def adjust_M(r: float, m: float, r_grid: NDArray[np.float64], M_grid: NDArray[np.float64], backup_M: float, count_self: bool = False) -> float:
-    """Calculate the mass cdf (M(<=r)) for the particle.
+    """Calculate the mass cdf (`M(<=r)`) for the particle.
 
-    If the input grid is empty (i.e. the subprocess is disabled by setting grid_window_radius=0), returns the backup mass cdf value.
-    Otherwise, calculate the position (index) the particle should be inserted into the grid in, and return the mass cdf of the particle before + the self mass (m).
-    Assumes r_grid is sorted!
+    If the input grid is empty (i.e. the subprocess is disabled by setting `grid_window_radius`=0), returns the backup mass cdf value.
+    Otherwise, calculate the position (`index`) the particle should be inserted into the grid in, and return the mass cdf of the particle before + the self mass (`m`).
+
+    **Assumes r_grid is sorted!**
 
     Parameters:
         r: Position of the particle.
@@ -121,8 +122,8 @@ def particle_step(
 ) -> tuple[float, float, float, float]:
     """Perform a simple leapfrog step in the radius (1D).
 
-    Splits the step into N mini-steps, each over a time interval of dt/N, and then integrates the velocity and position using a leapfrog algorithm:
-        velocity half step -> [position step -> velocity step -> ...] -> velocity half step
+    Splits the step into `N` mini-steps, each over a time interval of `dt/N`, and then integrates the velocity and position using a leapfrog algorithm:
+        `velocity half step` -> [`position step` -> `velocity step` -> ...] -> `velocity half step`
     The acceleration is re-calculated every time the position changes. Angular momentum is explicitly conserved by recalculating the velocity in the non-radial directions at the end to conform the same angular momentum with the new position.
 
     Parameters:
@@ -130,12 +131,12 @@ def particle_step(
         vx: The first pernpendicular component (to the radial direction) of the velocity of the particle.
         vy: The second pernpendicular component (to the radial direction) of the velocity of the particle.
         vr: The radial velocity of the particle.
-        M: The mass cdf (M(<=r)) of the particle at the start of the step. Used only if M_grid is empty.
+        M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
         m: The mass of the particle.
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
         dt: The time step.
-        N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by dt -> dt/(N-1).
+        N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
 
     Returns:
         The new position and velocity of the particle.
@@ -183,14 +184,14 @@ def particle_adaptive_step(
         vy: The second pernpendicular component (to the radial direction) of the velocity of the particle.
         vr: The radial velocity of the particle.
         m: The mass of the particle.
-        M: The mass cdf (M(<=r)) of the particle at the start of the step. Used only if M_grid is empty.
+        M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
         dt: Time step.
-        max_minirounds: Maximum number of mini-rounds to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
+        max_minirounds: Maximum number of mini-rounds to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
-        first_mini_round: The first mini-round to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
+        first_mini_round: The first mini-round to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
         richardson_extrapolation: Use Richardson extrapolation.
 
     Returns:
@@ -250,15 +251,15 @@ def fast_step(
         vy: The second pernpendicular component (to the radial direction) of the velocity of the particle.
         vr: The radial velocity of the particle.
         m: The mass of the particle.
-        M: The mass cdf (M(<=r)) of the particle at the start of the step. Used only if M_grid is empty.
+        M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
         dt: Time step.
-        max_minirounds: Maximum number of mini-rounds to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
+        max_minirounds: Maximum number of mini-rounds to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
-        first_mini_round: The first mini-round to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
+        first_mini_round: The first mini-round to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
         richardson_extrapolation: Use Richardson extrapolation.
-        adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If False - performs a single mini-round at first_mini_round.
-        grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (M(<=r)) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (M(<=r)) during the step (use the value pre-step for all acceleration calculations).
+        adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If `False` performs a single mini-round at `first_mini_round`.
+        grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (`M(<=r)`) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (`M(<=r)`) during the step (use the value pre-step for all acceleration calculations).
 
     Returns:
         Updated position and velocity.
@@ -323,7 +324,7 @@ def step(
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Perform an adaptive leapfrog step for a particle.
 
-    Wrapper for the njit fast_step() function.
+    Wrapper for the njit `fast_step()` function.
 
     Parameters:
         r: Particles position.
@@ -331,15 +332,15 @@ def step(
         vy: The second pernpendicular component (to the radial direction) of the velocity of the particles.
         vr: The radial velocity of the particles.
         m: The mass of the particles.
-        M: The mass cdf (M(<=r)) of the particles at the start of the step. Used only if M_grid is empty.
+        M: The mass cdf (`M(<=r)`) of the particles at the start of the step. Used only if `M_grid` is empty.
         dt: Time step.
-        max_minirounds: Maximum number of mini-rounds to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
+        max_minirounds: Maximum number of mini-rounds to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
-        first_mini_round: The first mini-round to perform (will be sent to mini_step_to_N() to evaluate the actual number of mini-steps).
+        first_mini_round: The first mini-round to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
         richardson_extrapolation: Use Richardson extrapolation.
-        adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If False - performs a single mini-round at first_mini_round.
-        grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (M(<=r)) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (M(<=r)) during the step (use the value pre-step for all acceleration calculations).
+        adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If `False` performs a single mini-round at `first_mini_round`.
+        grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (`M(<=r)`) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (`M(<=r)`) during the step (use the value pre-step for all acceleration calculations).
         raise_warning: Raise a warning if a particle fails to converge.
 
     Returns:

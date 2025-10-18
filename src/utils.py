@@ -14,7 +14,7 @@ def random_angle(like: NDArray[np.float64], acos: bool) -> NDArray[np.float64]:
 
     Parameters:
         like: Array who's shape to mimic.
-        acos: If False, generate a uniform random angle. If True, generate a uniform random cos(angle), and then applies arccos to retrieve the angle.
+        acos: If `False` generate a uniform random angle. If `True` generate a uniform random `cos(angle)`, and then applies arccos to retrieve the angle.
 
     Returns:
         Array of random angles.
@@ -31,10 +31,10 @@ def from_radial(r: NDArray[np.float64], theta: NDArray[np.float64], quick_sin: b
     Parameters:
         r: Radius.
         theta: Angle.
-        quick_sin: If True, use a faster sin calculation. Otherwise calculate sin(theta) explicitly.
+        quick_sin: If `True` use a faster `sin` calculation. Otherwise calculate `sin(theta)` explicitly.
 
     Returns:
-        x,y: coordinates.
+        x,y coordinates.
     """
     cos: NDArray[np.float64] = np.cos(theta)
     sin: NDArray[np.float64] = np.sqrt(1 - cos**2) * np.sign(np.pi - theta) if quick_sin else np.sin(theta)
@@ -42,12 +42,12 @@ def from_radial(r: NDArray[np.float64], theta: NDArray[np.float64], quick_sin: b
 
 
 def split_2d(r: NDArray[np.float64], acos: bool) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Split an array of radiuses to x,y coordinates using a random angle. See random_angle() for details on the angle calculation."""
+    """Split an array of radiuses to x,y coordinates using a random angle. See `random_angle()` for details on the angle calculation."""
     return from_radial(r, theta=random_angle(r, acos))
 
 
 def split_3d(r: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
-    """Split an array of radiuses to x,y,z coordinates using a random acos angle for the z coordinate (i.e. radial in the halo), and a random uniform angle for the x-y plane (i.e. tangential plane in the halo)."""
+    """Split an array of radiuses to `x`,`y`,`z` coordinates using a `random acos angle` for the `z` coordinate (i.e. radial in the halo), and a `random uniform angle` for the `x-y` plane (i.e. tangential plane in the halo)."""
     radial, perp = from_radial(r, theta=random_angle(r, acos=True))
     x, y = from_radial(perp, theta=random_angle(perp, acos=False))
     return x, y, radial
@@ -64,7 +64,7 @@ def clean_pairs(pairs: NDArray[np.int64], blacklist: list[int] | NDArray[np.int6
     """Clean a list of pairs by removing duplicates.
 
     Ensures no particle is considered multiple times.
-    If a blacklist is provided, also exclude pairs involving blacklisted particles.
+    If a `blacklist` is provided, also exclude pairs involving blacklisted particles.
     """
     cleaned_pairs = pd.DataFrame(pairs).drop_duplicates(0).drop_duplicates(1).to_numpy()  # Ensures there are no particles considered multiple times
     if len(blacklist) > 0:
@@ -73,7 +73,7 @@ def clean_pairs(pairs: NDArray[np.int64], blacklist: list[int] | NDArray[np.int6
 
 
 def drop_None(**kwargs: Any) -> dict[Any, Any]:
-    """Remove key-value pairs where the value is None."""
+    """Remove key-value pairs where the value is `None`."""
     return {key: value for key, value in kwargs.items() if value is not None}
 
 
@@ -85,7 +85,7 @@ def rank_array(r: NDArray[Any]) -> NDArray[np.int64]:
 def derivate(x: FloatOrArray, y_fn: Callable[[FloatOrArray], FloatOrArray], h: float = 1e-4) -> FloatOrArray:
     """Calculate the derivative of a function at a point.
 
-    Calculates a forward numerical derivative: (y_fn(x + h) - y_fn(x)) / h
+    Calculates a forward numerical derivative: `(y_fn(x + h) - y_fn(x)) / h`
 
     Parameters:
         x: The point/points at which to calculate the derivative.
@@ -101,7 +101,7 @@ def derivate(x: FloatOrArray, y_fn: Callable[[FloatOrArray], FloatOrArray], h: f
 def derivate2(x: FloatOrArray, y_fn: Callable[[FloatOrArray], FloatOrArray], h: float = 1e-4) -> FloatOrArray:
     """Calculate the second order derivative of a function at a point.
 
-    Calculates a forward numerical derivative: (y_fn(x + 2 * h) - 2 * y_fn(x + h) + y_fn(x)) / h**2
+    Calculates a forward numerical derivative: `(y_fn(x + 2 * h) - 2 * y_fn(x + h) + y_fn(x)) / h**2`
 
     Parameters:
         x: The point/points at which to calculate the derivative.
@@ -115,22 +115,22 @@ def derivate2(x: FloatOrArray, y_fn: Callable[[FloatOrArray], FloatOrArray], h: 
 
 
 def quantity_derivate(x: Quantity, y_fn: Callable[[Quantity], Quantity], h: float = 1e-4) -> Quantity:
-    """Calculate the derivative of a function at a point. Wrapper for derivate() to handle and output Quantity objects."""
+    """Calculate the derivative of a function at a point. Wrapper for `derivate()` to handle and output `Quantity` objects."""
     t = Quantity(h, x.unit)
     return cast(Quantity, (y_fn(cast(Quantity, x + t)) - y_fn(x)) / t)
 
 
 def quantity_derivate2(x: Quantity, y_fn: Callable[[Quantity], Quantity], h: float = 1e-4) -> Quantity:
-    """Calculate the second order derivative of a function at a point. Wrapper for derivate2() to handle and output Quantity objects."""
+    """Calculate the second order derivative of a function at a point. Wrapper for `derivate2()` to handle and output `Quantity` objects."""
     t = Quantity(h, x.unit)
     return cast(Quantity, (y_fn(cast(Quantity, x + 2 * t)) - 2 * y_fn(cast(Quantity, x + t)) + y_fn(x)) / t**2)
 
 
 @njit
 def linear_interpolation(xs: NDArray[np.float64], ys: NDArray[np.float64], x: float) -> NDArray[np.float64]:
-    """Calculate the linear interpolation from a grid (xs,ys) at a point x. njit compliant.
+    """Calculate the linear interpolation from a grid (`xs`, `ys`) at a point `x`. njit compliant.
 
-    xs must be sorted in ascending order (relies on np.searchsorted()).
+    `xs` must be sorted in ascending order (relies on `np.searchsorted()`).
     """
     i = np.searchsorted(xs, x) - 1
     if i < 0:
@@ -143,7 +143,7 @@ def linear_interpolation(xs: NDArray[np.float64], ys: NDArray[np.float64], x: fl
 
 @njit(parallel=True)
 def fast_assign(indices: NDArray[np.int64], array: NDArray[np.float64]) -> NDArray[np.float64]:
-    """Fast assignment of array elements using indices. njit accelerated."""
+    """Fast assignment of `array` elements using `indices`. njit accelerated."""
     output = np.empty_like(indices, dtype=np.float64)
     for i in prange(len(indices)):
         output[i] = array[indices[i]]
@@ -160,7 +160,7 @@ def fast_spherical_rho_integrate(
     start: float = 0,
     num_steps: int = 10000,
 ) -> NDArray[np.float64]:
-    """Integrate the density function (rho) assuming spherical symmetry. njit accelerated.
+    """Integrate the density function (`rho`) assuming spherical symmetry. njit accelerated.
 
     Parameters:
         r: The radius points at which to calculate the density.
@@ -169,7 +169,7 @@ def fast_spherical_rho_integrate(
         Rs: The scale radius.
         Rvir: The virial radius.
         start: The starting radius for the integration.
-        num_steps: The number of radius steps for the integration (from start to r).
+        num_steps: The number of radius steps for the integration (from start to `r`).
 
     Returns:
         The enclosed mass at the given radius (integral of the density).
@@ -189,7 +189,7 @@ def fast_spherical_rho_integrate(
 def fast_unique_mask(x: NDArray[np.int64]) -> NDArray[np.int64]:
     """Calculate the number of occurrences of each element in the array. njit accelerated.
 
-    Use with np.where(fast_unique_mask(x) > 1)[0] to get all unique elements."""
+    Use with `np.where(fast_unique_mask(x) > 1)[0]` to get all unique elements."""
     output = np.zeros_like(x, dtype=np.int64)
     for i in prange(len(x)):
         output[x[i]] += 1
@@ -217,7 +217,7 @@ def aggregate_QTable(
         data: The QTable to aggregate.
         groupby: The column(s) to group by.
         keys: The column(s) to aggregate.
-        agg_fn: The aggregation function. Anything acceptable by pandas.DataFrame.agg().
+        agg_fn: The aggregation function. Anything acceptable by `pandas.DataFrame.agg()`.
         final_units: The units to set for the aggregated columns (otherwise will be left unitless).
 
     Returns:
@@ -227,7 +227,7 @@ def aggregate_QTable(
 
 
 def add_label_unit(label: str | None, plot_units: UnitLike | None = None) -> str | None:
-    """Add the units to the label in a latex formatted string and enclosed in brackets. Ignore if label is None."""
+    """Add the units to the `label` in a latex formatted string and enclosed in brackets. Ignore if label is `None`."""
     if label is None:
         return None
     if plot_units is None or plot_units == '':
@@ -237,7 +237,7 @@ def add_label_unit(label: str | None, plot_units: UnitLike | None = None) -> str
 
 @njit(parallel=True)
 def fast_norm(x: NDArray[np.float64], square: bool = False) -> NDArray[np.float64]:
-    """Compute the norm of each row in the array x. If square is True, return the square of the norm. njit accelerated."""
+    """Compute the norm of each row in the array `x`. If `square` is `True`, return the square of the norm. njit accelerated."""
     output = np.empty(len(x), dtype=np.float64)
     for i in prange(len(x)):
         s = (x[i] ** 2).sum()
@@ -249,14 +249,14 @@ def fast_norm(x: NDArray[np.float64], square: bool = False) -> NDArray[np.float6
 
 
 def fast_quantity_norm(x: Quantity, square: bool = False) -> Quantity:
-    """Compute the norm of each row in the array x. Wrapper around fast_norm()."""
+    """Compute the norm of each row in the array `x`. Wrapper around `fast_norm()`."""
     out_units = cast(Unit, x.unit) ** 2 if square else x.unit
     return Quantity(fast_norm(x.value, square=square), unit=out_units)
 
 
 @njit(parallel=True)
 def indices_to_mask(indices: NDArray[np.int64], length: int) -> NDArray[np.bool_]:
-    """Create a mask of length `length` with True at the indices specified in `indices`. njit accelerated."""
+    """Create a mask of length `length` with `True` at the indices specified in `indices`. njit accelerated."""
     mask = np.full(length, False, dtype=np.bool_)
     for i in prange(len(indices)):
         mask[indices[i]] = True
@@ -266,6 +266,6 @@ def indices_to_mask(indices: NDArray[np.int64], length: int) -> NDArray[np.bool_
 def expand_mask_back(mask: NDArray[np.bool_], n: int) -> NDArray[np.bool_]:
     """Expand a mask by `n` elements to the left.
 
-    I.e. the `n` places to the right of every True element are also filled with True.
+    I.e. the `n` places to the right of every `True` element are also filled with `True`.
     """
     return np.convolve(mask.astype(int), np.hstack([np.ones(n + 1), np.zeros(n)]), mode='same') > 0

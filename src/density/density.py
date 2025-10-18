@@ -30,12 +30,12 @@ class Density:
         """General mass distribution profile.
 
         Parameters:
-            Rmin: Minimum radius of the density profile, used for calculating the internal logarithmic grid and set internal cutoffs.
-            Rmax: Maximum radius of the density profile, used for calculating the internal logarithmic grid and set internal cutoffs.
+            Rmin: Minimum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
+            Rmax: Maximum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
             Rs: Scale radius of the distribution profile.
             Rvir: Virial radius of the distribution profile.
             Mtot: Total mass of the distribution profile.
-            space_steps: Number of space steps for the internal logarithmic grid.
+            space_steps: Number of space steps for the `internal logarithmic grid`.
             h: Radius step size for numerical differentiation.
             initialize_grid: Grids to initialize at startup, otherwise they will only be calculated at runtime as needed.
 
@@ -63,16 +63,16 @@ class Density:
   - Mtot = {self.Mtot:.3e}"""
 
     def __call__(self, r: Quantity['length']) -> Quantity['mass density']:
-        """Calculate rho(r)"""
+        """Calculate `rho(r)`"""
         return self.rho(r)
 
     def to_scale(self, x: Quantity['length']) -> Quantity['dimensionless']:
-        """Scale the distance, i.e. x/Rs"""
+        """Scale the distance, i.e. `x/Rs`"""
         return x.to(self.Rs.unit) / self.Rs
 
     @property
     def Tdyn(self) -> Unit:
-        """Calculate the dynamic time of the profile, returning it as a Unit object (memoized)."""
+        """Calculate the dynamic time of the profile, returning it as a `Unit` object (memoized)."""
         if 'Tdyn' not in self.memoization:
             self.memoization['Tdyn'] = def_unit(
                 'Tdyn', np.sqrt(self.Rs**3 / (constants.G * self.Mtot)).to(run_units.time), doc=f'{self.title} dynamic time'
@@ -85,14 +85,14 @@ class Density:
 
     @property
     def geomspace_grid(self) -> Quantity['length']:
-        """Calculate the internal logarithmic grid (memoized)."""
+        """Calculate the `internal logarithmic grid` (memoized)."""
         if 'geomspace_grid' not in self.memoization:
             self.memoization['geomspace_grid'] = cast(Quantity['length'], np.geomspace(self.Rmin, self.Rmax, self.space_steps))
         return self.memoization['geomspace_grid']
 
     @property
     def linspace_grid(self) -> Quantity['length']:
-        """Calculate the internal linear grid (memoized)."""
+        """Calculate the  `internal linear grid` (memoized)."""
         if 'linspace_grid' not in self.memoization:
             self.memoization['linspace_grid'] = cast(Quantity['length'], np.linspace(start=self.Rmin, stop=self.Rmax, num=self.space_steps))
         return self.memoization['linspace_grid']
@@ -100,7 +100,7 @@ class Density:
     @staticmethod
     @njit
     def calculate_rho(r: FloatOrArray, rho_s: float = 1, Rs: float = 1, Rvir: float = 1) -> FloatOrArray:
-        """Calculate the density (rho) at a given radius.
+        """Calculate the density (`rho`) at a given radius.
 
         This method is meant to be overwritten by subclasses. The function gets called by njit parallelized functions and must be njit compatible.
 
@@ -116,57 +116,57 @@ class Density:
         return r
 
     def rho(self, r: Quantity['length']) -> Quantity['mass density']:
-        """Calculate the density (rho) at a given radius."""
+        """Calculate the density (`rho`) at a given radius."""
         return Quantity(self.calculate_rho(r.to(run_units.length).value, self.rho_s.value, self.Rs.value, self.Rvir.value), run_units.density)
 
     @property
     def rho_grid(self) -> Quantity['mass density']:
-        """Calculate the density (rho) at the internal logarithmic grid (memoized)."""
+        """Calculate the density (`rho`) at the  `internal logarithmic grid` (memoized)."""
         if 'rho_grid' not in self.memoization:
             self.memoization['rho_grid'] = self.rho(self.geomspace_grid)
         return self.memoization['rho_grid']
 
     @property
     def rho_grid_h(self) -> Quantity['mass density']:
-        """Calculate the density (rho) at the internal logarithmic grid with a shift step h (memoized). Used for derivative calculations."""
+        """Calculate the density (`rho`) at the  `internal logarithmic grid` with a shift step `h` (memoized). Used for derivative calculations."""
         if 'rho_grid_h' not in self.memoization:
             self.memoization['rho_grid_h'] = self.rho(cast(Quantity, self.geomspace_grid + self.h))
         return self.memoization['rho_grid_h']
 
     @property
     def rho_grid_2h(self) -> Quantity['mass density']:
-        """Calculate the density (rho) at the internal logarithmic grid with two shift steps 2h (memoized). Used for derivative calculations."""
+        """Calculate the density (`rho`) at the  `internal logarithmic grid` with two shift steps `2h` (memoized). Used for derivative calculations."""
         if 'rho_grid_2h' not in self.memoization:
             self.memoization['rho_grid_2h'] = self.rho(cast(Quantity, self.geomspace_grid + 2 * self.h))
         return self.memoization['rho_grid_2h']
 
     @property
     def drho_dr_grid(self) -> Quantity:
-        """Calculate the derivative of the density (rho) at the internal logarithmic grid (memoized)."""
+        """Calculate the derivative of the density (`rho`) at the  `internal logarithmic grid` (memoized)."""
         if 'drho_dr_grid' not in self.memoization:
             self.memoization['drho_dr_grid'] = Quantity((self.rho_grid_h - self.rho_grid) / self.h)
         return self.memoization['drho_dr_grid']
 
     @property
     def d2rho_dr2_grid(self) -> Quantity:
-        """Calculate the second order derivative of the density (rho) at the internal logarithmic grid (memoized)."""
+        """Calculate the second order derivative of the density (`rho`) at the  `internal logarithmic grid` (memoized)."""
         if 'd2rho_dr2_grid' not in self.memoization:
             self.memoization['d2rho_dr2_grid'] = Quantity((self.rho_grid_2h - 2 * self.rho_grid_h + self.rho_grid) / self.h**2)
         return self.memoization['d2rho_dr2_grid']
 
     def rho_r2(self, r: Quantity['length']) -> Quantity['linear density']:
-        """Calculate the density (rho) times the jacobian (r^2) at a given radius."""
+        """Calculate the density (`rho`) times the jacobian (`r^2`) at a given radius."""
         return self.rho(r) * r.to(run_units.length) ** 2
 
     @property
     def rho_r2_grid(self) -> Quantity['linear density']:
-        """Calculate the density (rho) times the jacobian (r^2) at the internal logarithmic grid (memoized)."""
+        """Calculate the density (`rho`) times the jacobian (`r^2`) at the  `internal logarithmic grid` (memoized)."""
         if 'rho_r2_grid' not in self.memoization:
             self.memoization['rho_r2_grid'] = self.rho_r2(self.geomspace_grid)
         return self.memoization['rho_r2_grid']
 
     def spherical_rho_integrate(self, r: Quantity['length'], use_rho_s: bool = True) -> Quantity['mass']:
-        """Calculate the density (rho) integral in [0,r] assuming spherical symmetry. use_rho_s is used internally to calculate the density scale and shouldn't be used."""
+        """Calculate the density (`rho`) integral in `[0,r]` assuming spherical symmetry. `use_rho_s` is used internally to calculate the density scale and shouldn't be used."""
         rho_s = self.rho_s.value if use_rho_s else 1
         integral = utils.fast_spherical_rho_integrate(
             np.atleast_1d(r.to(run_units.length).value), self.calculate_rho, rho_s, self.Rs.value, self.Rvir.value
@@ -174,7 +174,7 @@ class Density:
         return Quantity(integral, run_units.mass)
 
     def M(self, r: Quantity['length']) -> Quantity['mass']:
-        """Calculate the enclosed mass (M(<=r)) at a given radius. Integrates the density function (rho)."""
+        """Calculate the enclosed mass (`M(<=r)`) at a given radius. Integrates the density function (`rho`)."""
         scalar_input = np.isscalar(r)
         if len(r.shape) == 2:
             M = Quantity([self.spherical_rho_integrate(r_) for r_ in r])
@@ -186,23 +186,23 @@ class Density:
 
     @property
     def M_grid(self) -> Quantity['mass']:
-        """Calculate the enclosed mass (M(<=r)) at the internal logarithmic grid (memoized)."""
+        """Calculate the enclosed mass (`M(<=r)`) at the  `internal logarithmic grid` (memoized)."""
         if 'M_grid' not in self.memoization:
             self.memoization['M_grid'] = self.M(self.geomspace_grid)
         return self.memoization['M_grid']
 
     def calculate_rho_scale(self) -> Quantity['mass density']:
-        """Calculate the density scale to set the integral over [0, Rmax] to equal Mtot."""
+        """Calculate the density scale to set the integral over `[0, Rmax]` to equal `Mtot`."""
         return self.Mtot / self.spherical_rho_integrate(self.Rmax, False)[0] * run_units.density
 
     def mass_pdf(self, r: Quantity['length']) -> FloatOrArray:
-        """Mass probability density function (pdf) at radius r. Normalized rho*r^2."""
+        """Mass probability density function (pdf) at radius `r`. Normalized `rho*r^2`."""
         mass_pdf = self.rho_r2(r).value
         mass_pdf /= np.trapezoid(mass_pdf, r.value)
         return mass_pdf
 
     def mass_cdf(self, r: Quantity['length']) -> FloatOrArray:
-        """Mass cumulative probability density function (cdf) at radius r. Normalized enclosed mass."""
+        """Mass cumulative probability density function (cdf) at radius `r`. Normalized enclosed mass."""
         return (self.M(r) / self.Mtot).value
 
     def pdf(self, r: Quantity['length']) -> FloatOrArray:
@@ -214,7 +214,7 @@ class Density:
         return self.memoization['pdf'](r.to(run_units.length).value)
 
     def cdf(self, r: Quantity['length']) -> FloatOrArray:
-        """Mass cumulative probability density function (cdf) interpolated at a given radius (memoized)."""
+        """Mass cumulative probability density function (cdf) interpolated at a given radius `r` (memoized)."""
         if 'cdf' not in self.memoization:
             self.memoization['cdf'] = scipy.interpolate.interp1d(
                 self.geomspace_grid.value, self.mass_cdf(self.geomspace_grid), kind='cubic', bounds_error=False, fill_value=(0, 1)
@@ -222,7 +222,7 @@ class Density:
         return self.memoization['cdf'](r.to(run_units.length).value)
 
     def quantile_function(self, p: FloatOrArray) -> Quantity['length']:
-        """Mass quantile function (inversed cdf) interpolated at a given radius (memoized)."""
+        """Mass quantile function (inversed cdf) interpolated at a given radius `r` (memoized)."""
         if 'quantile_function' not in self.memoization:
             rs, cdf = utils.joint_clean([self.geomspace_grid.value, self.mass_cdf(self.geomspace_grid)], ['rs', 'cdf'], 'cdf')
             self.memoization['quantile_function'] = scipy.interpolate.interp1d(
@@ -231,59 +231,59 @@ class Density:
         return Quantity(self.memoization['quantile_function'](p), run_units.length)
 
     def Phi(self, r: Quantity['length']) -> Quantity['specific energy']:
-        """Calculate the gravitational potential energy (Phi), at a given radius r."""
+        """Calculate the gravitational potential energy (`Phi`), at a given radius `r`."""
         xs = Quantity(np.geomspace(self.Rmin, r, 1000), 'kpc').T
         return np.trapezoid(y=constants.G * self.M(xs) / xs**2, x=xs).to(run_units.specific_energy)
 
     @property
     def Phi0(self) -> Quantity['specific energy']:
-        """Calculate the relative value for the gravitational potential energy (Phi0), i.e. at infinity (memoized)."""
+        """Calculate the relative value for the gravitational potential energy (`Phi0`), i.e. at `infinity` (memoized)."""
         if 'Phi0' not in self.memoization:
             self.memoization['Phi0'] = self.Phi(self.Rmax * 100)
         return self.memoization['Phi0']
 
     def Psi(self, r: Quantity['length']) -> Quantity['specific energy']:
-        """Calculate the relative gravitational potential energy (Psi) at a given radius r."""
+        """Calculate the relative gravitational potential energy (`Psi`) at a given radius `r`."""
         return cast(Quantity, self.Phi0 - self.Phi(r))
 
     @property
     def Psi_grid(self) -> Quantity['specific energy']:
-        """Calculate the relative gravitational potential (Psi) at the internal logarithmic grid (memoized)."""
+        """Calculate the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized)."""
         if 'Psi_grid' not in self.memoization:
             self.memoization['Psi_grid'] = self.Psi(self.geomspace_grid)
         return self.memoization['Psi_grid']
 
     @property
     def Psi_grid_h(self) -> Quantity['specific energy']:
-        """Calculate the relative gravitational potential (Psi) at the internal logarithmic grid with a shift step h (memoized). Used for derivative calculations."""
+        """Calculate the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` with a shift step `h` (memoized). Used for derivative calculations."""
         if 'Psi_grid_h' not in self.memoization:
             self.memoization['Psi_grid_h'] = self.Psi(cast(Quantity, self.geomspace_grid + self.h))
         return self.memoization['Psi_grid_h']
 
     @property
     def Psi_grid_2h(self) -> Quantity['specific energy']:
-        """Calculate the relative gravitational potential (Psi) at the internal logarithmic grid with two shift steps 2h (memoized). Used for derivative calculations."""
+        """Calculate the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` with two shift steps `2h` (memoized). Used for derivative calculations."""
         if 'Psi_grid_2h' not in self.memoization:
             self.memoization['Psi_grid_2h'] = self.Psi(cast(Quantity, self.geomspace_grid + 2 * self.h))
         return self.memoization['Psi_grid_2h']
 
     @property
     def dPsi_dr_grid(self) -> Quantity:
-        """Calculate the derivative of the relative gravitational potential (Psi) at the internal logarithmic grid (memoized)."""
+        """Calculate the derivative of the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized)."""
         if 'dPsi_dr_grid' not in self.memoization:
             self.memoization['dPsi_dr_grid'] = Quantity((self.Psi_grid_h - self.Psi_grid) / self.h)
         return self.memoization['dPsi_dr_grid']
 
     @property
     def d2Psi_dr2_grid(self) -> Quantity:
-        """Calculate the second order derivative of the relative gravitational potential (Psi) at the internal logarithmic grid (memoized)."""
+        """Calculate the second order derivative of the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized)."""
         if 'd2Psi_dr2_grid' not in self.memoization:
             self.memoization['d2Psi_dr2_grid'] = Quantity((self.Psi_grid_2h - 2 * self.Psi_grid_h + self.Psi_grid) / self.h**2)
         return self.memoization['d2Psi_dr2_grid']
 
     @property
     def drho_dPsi_grid(self) -> Quantity:
-        r"""Calculate the derivative of the density with respect to the relative gravitational potential (Psi) at the internal logarithmic grid (memoized).
+        r"""Calculate the derivative of the density with respect to the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized).
 
         Simplified using the chain rule to allow calculating based on the spatial derivatives at a consistent grid:
             $\frac{\mathrm{d}\rho}{\mathrm{d}\Psi} =
@@ -297,7 +297,7 @@ class Density:
 
     @property
     def d2rho_dPsi2_grid(self) -> Quantity:
-        r"""Calculate the second order derivative of the density with respect to the relative gravitational potential (Psi) at the internal logarithmic grid (memoized).
+        r"""Calculate the second order derivative of the density with respect to the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized).
 
         Simplified using the chain rule (Faà di Bruno's formula) to allow calculating based on the spatial derivatives at a consistent grid:
             $\frac{\mathrm{d}^2\rho}{\mathrm{d}\Psi^2} =
@@ -325,39 +325,39 @@ class Density:
         return self.memoization['d2rho_dPsi2_grid']
 
     def d2rho_dPsi2(self, Psi: Quantity['specific energy']) -> Quantity:
-        """Interpolate the second order derivative of the density with respect to the relative gravitational potential (Psi) based on the internal logarithmic grid (memoized)."""
+        """Interpolate the second order derivative of the density with respect to the relative gravitational potential (`Psi`) based on the  `internal logarithmic grid` (memoized)."""
         if 'd2rho_dPsi2' not in self.memoization:
             self.memoization['d2rho_dPsi2'] = scipy.interpolate.interp1d(self.Psi_grid, self.d2rho_dPsi2_grid, bounds_error=False, fill_value=0)
         return Quantity(self.memoization['d2rho_dPsi2'](Psi.to(self.Psi_grid.unit)), self.d2rho_dPsi2_grid.unit)
 
     def calculate_f(self, E: Quantity, num: int = 10000) -> Quantity:
-        """Calculate the distribution function (f) for the given energy."""
+        """Calculate the distribution function (`f`) for the given energy."""
         t = Quantity(np.linspace(0, np.sqrt(E), num))[:-1]
         integral = 2 * np.trapezoid(self.d2rho_dPsi2(cast(Quantity, E - t**2)), t, axis=0)
         return 1 / (self.Mtot.unit * np.sqrt(8) * np.pi**2) * (1 / np.sqrt(E) * self.drho_dPsi_grid[-1] + integral)
 
     @property
     def E_grid(self) -> Quantity['specific energy']:
-        """Set the internal energy grid to a logarithmic scale with 1,000 steps from the minimum Psi_grid value to the maximum one (memoized)."""
+        """Set the `internal energy grid` to a logarithmic scale with `1,000` steps from the minimum `Psi_grid` value to the maximum one (memoized)."""
         if 'E_grid' not in self.memoization:
             self.memoization['E_grid'] = np.geomspace(self.Psi_grid.min(), self.Psi_grid.max(), 1000)
         return self.memoization['E_grid']
 
     @property
     def f_grid(self) -> Quantity['specific energy']:
-        """Calculate the distribution function (f) on the internal energy grid (memoized)."""
+        """Calculate the distribution function (`f`) on the `internal energy grid` (memoized)."""
         if 'f_grid' not in self.memoization:
             self.memoization['f_grid'] = self.calculate_f(self.E_grid, 10000).to(run_units.f_units)
         return self.memoization['f_grid']
 
     def f(self, E: Quantity) -> Quantity:
-        """Interpolate the distribution function (f) based on the internal energy grid (memoized)."""
+        """Interpolate the distribution function (`f`) based on the `internal energy grid` (memoized)."""
         if 'f' not in self.memoization:
             self.memoization['f'] = scipy.interpolate.interp1d(self.E_grid, self.f_grid, bounds_error=False, fill_value=0)
         return Quantity(self.memoization['f'](E.to(self.E_grid.unit)), self.f_grid.unit)
 
     def Psi_interpolate(self, r: Quantity) -> Quantity:
-        """Interpolate the relative gravitational potential (Psi) based on the internal logarithmic grid (memoized)."""
+        """Interpolate the relative gravitational potential (`Psi`) based on the  `internal logarithmic grid` (memoized)."""
         if 'Psi_interpolate' not in self.memoization:
             self.memoization['Psi_interpolate'] = scipy.interpolate.interp1d(self.geomspace_grid, self.Psi_grid, bounds_error=False, fill_value=0)
         return Quantity(self.memoization['Psi_interpolate'](r.to(self.geomspace_grid.unit)), self.Psi_grid.unit)
@@ -379,7 +379,7 @@ class Density:
     @staticmethod
     @njit(parallel=True)
     def roll_v_fast(Psi: NDArray[np.float64], E_grid: NDArray[np.float64], f_grid: NDArray[np.float64], num: int = 100000) -> NDArray[np.float64]:
-        """Sample particle velocity from the distribution function. Internal njit accelerated function. Prioritize using roll_v()."""
+        """Sample particle velocity from the distribution function. Internal njit accelerated function. Prioritize using `roll_v()`."""
         output = np.empty_like(Psi)
         for particle in prange(len(Psi)):
             vs_grid = np.linspace(0, np.sqrt(2 * Psi[particle]), num=num)
@@ -402,14 +402,14 @@ class Density:
     def roll_v(self, r: Quantity['length'], num: int = 1000) -> Quantity['velocity']:
         """Sample particle velocity (norm) from the distribution function.
 
-        For full 3d velocity vectors, use roll_v_3d().
+        For full 3d velocity vectors, use `roll_v_3d()`.
 
         Parameters:
-            r: Radius of the particles (required to sample the velocity, should have been sampled using roll_v() prior).
+            r: Radius of the particles (required to sample the velocity, should have been sampled using `roll_v()` prior).
             num: Resolution parameters, defines the number of steps to use in the df integral.
 
         Returns:
-            Sampled velocity norm of the particle, shaped (num_particles,).
+            Sampled velocity norm of the particle, shaped `(num_particles,)`.
         """
         return Quantity(
             self.roll_v_fast(
@@ -422,10 +422,10 @@ class Density:
         )
 
     def roll_v_3d(self, r: Quantity['length'], num: int = 1000) -> Quantity['velocity']:
-        """Sample particle velocity (3d vectors) from the distribution function. Shape (num_particles, 3) with (vx,vy,vr).
+        """Sample particle velocity (3d vectors) from the distribution function. Shape `(num_particles, 3)` with `(vx,vy,vr)`.
 
         The velocity is split into radial and perpendicular components by a uniform cosine distributed angle, and then the perpendicular component is split into x and y components by a uniform angle.
-        See roll_v() for parameter details.
+        See `roll_v()` for parameter details.
         """
         return cast(Quantity['velocity'], np.vstack(utils.split_3d(self.roll_v(r))).T)
 
@@ -448,8 +448,8 @@ class Density:
         Parameters:
             r_range: Range of radial distances to plot.
             v_range: Range of velocities to plot.
-            velocity_units: Units to use for the velocity axis. Set to default to 'km/second' and not 'kpc/Myr' and thus explicitly mentioned (the length unit use the default of the plotting function, and can be passed on as optional keyword arguments)
-            kwargs: Additional keyword arguments to pass to plot.plot_phase_space().
+            velocity_units: Units to use for the velocity axis.
+            kwargs: Additional keyword arguments to pass to `plot.plot_phase_space()`.
 
         Returns:
             fig, ax.
@@ -476,15 +476,15 @@ class Density:
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
-        """Plot the density distribution (rho) of the density profile.
+        """Plot the density distribution (`rho`) of the density profile.
 
         Parameters:
-            r_start: The starting radius for the plot. If None, uses Rmin.
-            r_end: The ending radius for the plot. If None, uses Rmax.
+            r_start: The starting radius for the plot. If `None`, uses `Rmin`.
+            r_end: The ending radius for the plot. If `None` uses `Rmax`.
             density_units: The units for the density axis.
             length_units: The units for the radius axis.
-            fig: The figure to plot on. Creates a new one if fig/ax are not given.
-            ax: The axes to plot on.  Creates a new one if fig/ax are not given.
+            fig: The figure to plot on.
+            ax: The axes to plot on.
 
         Returns:
             fig, ax.
@@ -520,16 +520,16 @@ class Density:
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
-        """Plot the radius distribution (pdf/cdf) of the density profile.
+        """Plot the radius distribution (`pdf`/`cdf`) of the density profile.
 
         Parameters:
-            r_start: The starting radius for the plot. If None, uses Rmin.
-            r_end: The ending radius for the plot. If None, uses Rmax.
-            cumulative: Plot the cdf, if False plot the pdf instead.
+            r_start: The starting radius for the plot. If `None` uses `Rmin`.
+            r_end: The ending radius for the plot. If `None` uses `Rmax`.
+            cumulative: Plot the `cdf`, if `False` plot the `pdf` instead.
             length_units: The units for the radius axis.
             label: The label for the plot (legend).
-            fig: The figure to plot on. Creates a new one if fig/ax are not given.
-            ax: The axes to plot on.  Creates a new one if fig/ax are not given.
+            fig: The figure to plot on.
+            ax: The axes to plot on.
 
         Returns:
             fig, ax.
@@ -558,15 +558,15 @@ class Density:
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
-        """Plot the density derivative with respect to the relative potential energy drho/dPsi
+        """Plot the density derivative with respect to the relative potential energy `drho/dPsi`.
 
         Parameters:
-            xlabel: Label for the x-axis
-            ylabel: Label for the y-axis
-            energy_units: Units for the energy axis
-            y_units: Units for the y-axis
-            fig: Figure to plot on
-            ax: Axes to plot on
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            energy_units: Units for the energy axis.
+            y_units: Units for the y-axis.
+            fig: Figure to plot on.
+            ax: Axes to plot on.
 
         Returns:
             fig, ax
@@ -589,16 +589,16 @@ class Density:
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
-        """Plot the distribution function f(E)
+        """Plot the distribution function `f(E)`.
 
         Parameters:
-            E: Energy values to plot
-            xlabel: Label for the x-axis
-            ylabel: Label for the y-axis
-            energy_units: Units for the energy axis
-            f_units: Units for the density function axis
-            fig: Figure to plot on
-            ax: Axes to plot on
+            E: Energy values to plot.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            energy_units: Units for the energy axis.
+            f_units: Units for the density function axis.
+            fig: Figure to plot on.
+            ax: Axes to plot on.
 
         Returns:
             fig, ax

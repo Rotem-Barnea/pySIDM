@@ -50,11 +50,11 @@ class Halo:
 
         Parameters:
             r: Radius of the halo particles.
-            v: Velocity of the halo particles, of shape (n_particles, 3), (vx,vy,vr) with vx,vy the two perpendicular components of the off-radial plane.
+            v: Velocity of the halo particles, of shape `(n_particles, 3)`, `(vx,vy,vr)` with `vx`,`vy` the two perpendicular components of the off-radial plane.
             m: Mass of the halo particles.
-            particle_type: Type of the halo particles. Should comply with ParticleType (i.e. 'dm'/'baryon').
-            Tdyn: Dynamical time of the halo. If None, calculates from the first density.
-            Phi0: Potential at infinity of the halo. If None, calculates from the first density.
+            particle_type: Type of the halo particles. Should comply with ParticleType (i.e. `dm` or `baryon`).
+            Tdyn: Dynamical time of the halo. If `None` calculates from the first density.
+            Phi0: Potential at infinity of the halo. If `None` calculates from the first density.
             densities: List of densities of the halo.
             n_interactions: Number of interactions the halo had.
             scatter_rounds: Number of scatter rounds the halo had every time step.
@@ -139,7 +139,7 @@ class Halo:
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         particle_index: NDArray[np.int_] | None = None,
     ) -> pd.DataFrame:
-        """Convert particle data to a DataFrame."""
+        """Convert particle data to a `DataFrame`."""
         vx, vy, vr = v.to(run_units.velocity).T
         data = pd.DataFrame(
             {
@@ -160,7 +160,7 @@ class Halo:
         self.background = background
 
     def reset(self) -> None:
-        """Resets the halo to its initial state (no interactions, time=0, cleared snapshots, particles at initial positions)."""
+        """Resets the halo to its initial state (no interactions, `time`=0, cleared snapshots, particles at initial positions)."""
         self.time = 0 * run_units.time
         self._particles = self._initial_particles.copy()
         self.scatter_track = []
@@ -175,11 +175,11 @@ class Halo:
             vx: The first pernpendicular component (to the radial direction) of the velocity.
             vy: The second pernpendicular component (to the radial direction) of the velocity.
             vr: The radial velocity.
-            vp: Tangential velocity (np.sqrt(vx**2 + vy**2)).
+            vp: Tangential velocity (`np.sqrt(vx**2 + vy**2)`).
             m: Mass.
-            v_norm: Velocity norm (np.sqrt(vx**2 + vy**2 + vr**2)).
+            v_norm: Velocity norm (`np.sqrt(vx**2 + vy**2 + vr**2)`).
             time: Current simulation time.
-            E: Relative energy (Psi-1/2*m*v_norm**2).
+            E: Relative energy (`Psi-1/2*m*v_norm**2`).
             particle_type: Type of particle.
             particle_index: Index of particle.
         """
@@ -202,6 +202,7 @@ class Halo:
         return data
 
     def get_particle_states(self, now: bool = True, snapshots: bool = True, initial: bool = True):
+        """Return a table of particle snapshots, potentially including the initial and current states."""
         assert now or snapshots or initial, 'At least one of now, snapshots, or initial must be True'
         data_tables = []
         if now:
@@ -258,12 +259,12 @@ class Halo:
 
     @property
     def v(self) -> Quantity['velocity']:
-        """The velocity of the particle, as a 3-vector (vx, vy, vr)."""
+        """The velocity of the particle, as a 3-vector `(vx, vy, vr)`."""
         return Quantity(self._particles[['vx', 'vy', 'vr']], run_units.velocity)
 
     @property
     def time_step(self) -> Unit:
-        """Calculate the time step size, returning it as a Unit object"""
+        """Calculate the time step size, returning it as a `Unit` object"""
         return def_unit('time step', self.dt.to(run_units.time), format={'latex': r'time\ step'})
 
     @property
@@ -423,35 +424,31 @@ class Halo:
     ##Save/Load
     #####################
 
-    def to_payload(self) -> tuple[dict[str, Any], dict[str, Any]]:
-        """Convert the simulation state to a payload for saving."""
-        payload = {
-            'time': self.time,
-            'dt': self.dt,
-            'densities': self.densities,
-            'save_every_n_steps': self.save_every_n_steps,
-            'save_every_time': self.save_every_time,
-            'dynamics_params': self.dynamics_params,
-            'scatter_params': self.scatter_params,
-            'scatter_track': self.scatter_track,
-            'background': self.background,
-            'last_saved_time': self.last_saved_time,
-            'scatter_rounds': self.scatter_rounds,
-            'scatter_every_n_steps': self.scatter_every_n_steps,
-            'hard_save': self.hard_save,
-        }
-        tables = {
-            'particles': self.particles,
-            'initial_particles': self.initial_particles,
-            'snapshots': self.snapshots,
-        }
-        return payload, tables
+    @staticmethod
+    def payload_keys() -> list[str]:
+        """Return the keys of the payload dictionary, used for saving and loading halos. A `@staticmethod` and not a `@property` to allow getting it from an uninitialized cls during `@classmethod`."""
+        return [
+            'time',
+            'dt',
+            'densities',
+            'save_every_n_steps',
+            'save_every_time',
+            'dynamics_params',
+            'scatter_params',
+            'scatter_track',
+            'background',
+            'last_saved_time',
+            'scatter_rounds',
+            'scatter_every_n_steps',
+            'hard_save',
+        ]
 
     def save(self, path: str | Path = Path('halo_state')) -> None:
         """Save the simulation state to a directory."""
         path = Path(path)
         path.mkdir(exist_ok=True)
-        payload, tables = self.to_payload()
+        payload = {key: getattr(self, key) for key in self.payload_keys()}
+        tables = {'particles': self.particles, 'initial_particles': self.initial_particles, 'snapshots': self.snapshots}
         with open(path / 'halo_payload.pkl', 'wb') as f:
             pickle.dump(payload, f)
         for name, data in tables.items():
@@ -463,10 +460,8 @@ class Halo:
         """Load the simulation state from a directory."""
         path = Path(path)
         with open(path / 'halo_payload.pkl', 'rb') as f:
-            payload = pickle.load(f)
-        for dep_key in ['interactions_track', 'n_interactions']:  # TODO: remove once fully deprecated
-            if dep_key in payload:
-                payload.pop(dep_key)
+            payload = {key: value for key, value in pickle.load(f).items() if key in cls.payload_keys()}
+
         tables = {}
         for name in ['particles', 'initial_particles', 'snapshots']:
             fits_table = table.QTable.read(path / f'{name}.fits')
@@ -492,7 +487,7 @@ class Halo:
     #####################
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
-        """If the unit is `Tdyn` return self.Tdyn. If it's `time step` return self.time_step, otherwise return unit."""
+        """If the `unit` is `Tdyn` return `self.Tdyn`. If it's `time step` return `self.time_step`, otherwise return `unit`."""
         if unit == 'Tdyn':
             return self.Tdyn
         elif unit == 'time step':
@@ -541,14 +536,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             include_start: Whether to include the initial particle distribution in the plot.
             include_now: Whether to include the current particle distribution in the plot.
             filter_particle_type: Whether to filter to only plot the specified particle type.
-            x_range: The radius range to clip the data to. If None, ignores.
+            x_range: The radius range to clip the data to. If `None`, ignores.
             time_units: The time units to use in the plot.
             time_format: Format string for time.
             title: The title of the plot.
             xlabel: The label for the x-axis.
-            indices: The snapshot indices to plot. If None plots everything.
-            color_palette: The color palette to use for the halos. If None, uses the default color palette.
-            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+            indices: The snapshot indices to plot. If `None` plots everything.
+            color_palette: The color palette to use for the halos. If `None`, uses the default color palette.
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
             fig, ax.
@@ -615,17 +610,17 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             absolute: Whether to plot the absolute values.
             title: The title of the plot.
             xlabel: The label for the x-axis.
-            x_range: The radius range to clip the data to. If None, ignores.
-            x_plot_range: The range to plot on the x-axis. If None, uses the data range.
-            stat: The type of statistic to plot. Gets passed to sns.histplot. Only used if `plot_type` is 'hist'.
+            x_range: The radius range to clip the data to. If `None` ignores.
+            x_plot_range: The range to plot on the x-axis. If `None` uses the data range.
+            stat: The type of statistic to plot. Gets passed to `sns.histplot()`. Only used if `plot_type` is `hist`.
             plot_type: The type of plot to create.
             x_units: The x-axis units to use in the plot.
             ylabel: The label for the y-axis.
             label: The label for the histogram (legend).
             fig: The figure to plot on.
             ax: The axes to plot on.
-            plt_kwargs: Additional keyword arguments to pass to the sns plotting function (sns.histplot or sns.kdeplot).
-            kwargs: Additional keyword arguments to pass to plot.setup_plot().
+            plt_kwargs: Additional keyword arguments to pass to the sns plotting function (`sns.histplot()` or `sns.kdeplot()`).
+            kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
 
         Returns:
             fig, ax.
@@ -659,9 +654,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         density_label: str | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        """Plot the radial distribution of the halo. Wraps plot_distribution() with additional options.
+        """Plot the radial distribution of the halo. Wraps `plot_distribution()` with additional options.
 
-        Args:
+        Parameters:
             data: The data to plot.
             cumulative: Whether to plot the cumulative distribution.
             add_density: Whether to add the density distribution from the first density in the densities list.
@@ -669,7 +664,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             x_range: The range of the x-axis.
             hist_label: The label for the histogram (legend).
             density_label: The label for the density distribution (legend).
-            kwargs: Additional keyword arguments to pass to plot.setup_plot().
+            kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
 
         Returns:
             fig, ax.
@@ -701,7 +696,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             r_range: Range of radial distances to plot.
             v_range: Range of velocities to plot.
             length_units: Units to use for the length axis.
-            velocity_units: Units to use for the velocity axis. Set to default to 'km/second' and not 'kpc/Myr' and thus explicitly mentioned (the length unit use the default of the plotting function, and can be passed on as optional keyword arguments)
+            velocity_units: Units to use for the velocity axis. Set to default to `km/second` and not `kpc/Myr`.
             fig: Figure to use for the plot.
             ax: Axes to use for the plot.
 
@@ -759,8 +754,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             label: Label for the plot (legend).
             fig: Figure to use for the plot.
             ax: Axes to use for the plot.
-            line_kwargs: Additional keyword arguments to pass to the lineplot function (sns.lineplot).
-            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+            line_kwargs: Additional keyword arguments to pass to the lineplot function (`sns.lineplot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
             fig, ax.
@@ -831,8 +826,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel: Label for the radius axis.
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
-            row_normalization: The normalization to apply to each row. If None, no normalization is applied. If float, it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
-            kwargs: Additional keyword arguments to pass to the plot function (utils.plot_2d()).
+            row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
+            kwargs: Additional keyword arguments to pass to the plot function (`utils.plot_2d()`).
 
         Returns:
             fig, ax.
@@ -878,7 +873,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        """Plot the temperature evolution of the halo. Wraps prep_2d_data().
+        """Plot the temperature evolution of the halo. Wraps `prep_2d_data()`.
 
         Parameters:
             include_start: Whether to include the initial particle distribution in the plot.
@@ -892,8 +887,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel: Label for the radius axis.
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
-            row_normalization: The normalization to apply to each row. If None, no normalization is applied. If float, it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
-            kwargs: Additional keyword arguments to pass to the plot function (utils.plot_2d()).
+            row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
+            kwargs: Additional keyword arguments to pass to the plot function (`utils.plot_2d()`).
 
         Returns:
             fig, ax.
@@ -947,9 +942,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             label_end: Label for the end distribution.
             fig: Figure to use for the plot.
             ax: Axes to use for the plot.
-            start_kwargs: Additional keyword arguments to pass to the distribution plotting function (self.plot_distribution), for the start distribution only.
-            end_kwargs: Additional keyword arguments to pass to the distribution plotting function (self.plot_distribution), for the end distribution only.
-            **kwargs: Additional keyword arguments to pass to the distribution plotting function (self.plot_distribution), for *both* distributions. Overwritten by start_kwargs/end_kwargs as needed.
+            start_kwargs: Additional keyword arguments to pass to the distribution plotting function (`self.plot_distribution()`), for the start distribution only.
+            end_kwargs: Additional keyword arguments to pass to the distribution plotting function (`self.plot_distribution()`), for the end distribution only.
+            **kwargs: Additional keyword arguments to pass to the distribution plotting function (`self.plot_distribution()`), for *both* distributions. Overwritten by start_kwargs/end_kwargs as needed.
 
         Returns:
             fig, ax.
@@ -1035,7 +1030,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_format: Format string for time.
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
             smooth_interpolate_kind: Interpolation kind for the density plot. Applied after the gaussian smoothing to further smooth the plot data.
-            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
             fig, ax.
@@ -1085,7 +1080,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_units: Units to use for time.
             time_format: Format string for time.
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
-            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
             fig, ax.
@@ -1132,8 +1127,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             log_scale: Whether to use a logarithmic scale for the x-axis.
             stat: The type of statistic to plot. Gets passed to sns.histplot.
             cumulative: Whether to plot the cumulative distribution.
-            hist_kwargs: Additional keyword arguments to pass to sns.histogram().
-            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+            hist_kwargs: Additional keyword arguments to pass to `sns.histogram()`.
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
             fig, ax.
@@ -1169,9 +1164,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
         Parameters:
             key: The property to plot. Must be a valid column name in the data table.
-            data: The data table to plot (i.e. halo.snapshots, or an external table from an NSphere run). If None, use the halo's snapshots + initial and current states.
+            data: The data table to plot (i.e. halo.snapshots, or an external table from an NSphere run). If `None` use the halo's snapshots + initial and current states.
             particle_index: The index of the particle to trace.
-            relative: If `absolute`, plot the property as is. If `relative`, plot the change in the property relative to the initial value. If `relative change`, plot the change in the property relative to the initial value divided by the initial value.
+            relative: If `absolute` plot the property as is. If `relative` plot the change in the property relative to the initial value. If `relative change` plot the change in the property relative to the initial value divided by the initial value.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: Title for the plot.
@@ -1179,7 +1174,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             y_units: Units for the y-axis.
             length_units: Units for the length.
             length_format: Format string for length.
-            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
             fig, ax.
@@ -1213,7 +1208,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_unit: Units for the x-axis.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
-            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
             fig, ax.
@@ -1241,7 +1236,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_unit: Units for the x-axis.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
-            kwargs: Additional keyword arguments to pass to the plot function (plot.setup_plot).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
             fig, ax.

@@ -31,7 +31,7 @@ def normalize_params(params: Params, add_defaults: bool = False) -> Params:
 
     Parameters:
         params: Dictionary of parameters.
-        add_defaults: Whether to add default parameters (under the input params).
+        add_defaults: Whether to add default parameters (under the input `params`).
 
     Returns:
         Normalized parameters.
@@ -47,14 +47,14 @@ def normalize_params(params: Params, add_defaults: bool = False) -> Params:
 def scatter_pair_kinematics(v0: NDArray[np.float64], v1: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Calculate the new velocities of two particles after a scattering event.
 
-    Calculates a random isotropic scattering direction from a uniform cosine distribution off of v_rel.
+    Calculates a random isotropic scattering direction from a uniform cosine distribution off of `v_rel`.
 
     Parameters:
-        v0: Velocity of the first particle. Array of shape (3,) representing the velocity in 3D space as (vx,vy,vr).
-        v1: Velocity of the second particle. Array of shape (3,) representing the velocity in 3D space as (vx,vy,vr).
+        v0: Velocity of the first particle. Array of shape `(3,)` representing the velocity in 3D space as `(vx,vy,vr)`.
+        v1: Velocity of the second particle. Array of shape `(3,)` representing the velocity in 3D space as `(vx,vy,vr)`.
 
     Returns:
-        Tuple of new velocities for the two particles (two arrays of shape (3,)).
+        Tuple of new velocities for the two particles (two arrays of shape `(3,)`).
     """
     # Calculate relative velocity and center of mass velocity
     v_rel = v0 - v1
@@ -103,10 +103,10 @@ def scatter_pair_kinematics(v0: NDArray[np.float64], v1: NDArray[np.float64]) ->
 def particle_v_rel(v: NDArray[np.float64], particle: int, max_radius_j: int) -> NDArray[np.float64]:
     """Calculates the relative velocity of a particle with its neighbors.
 
-    The result is an array of relative velocity norms sqrt(sum((v[partner]-v[particle])^2)), and the partners are taken from: [particle + 1 : particle + 1 + max_radius_j]
+    The result is an array of relative velocity norms `sqrt(sum((v[partner]-v[particle])^2))`, and the partners are taken from: `[particle + 1 : particle + 1 + max_radius_j]`
 
     Parameters:
-        v: Array of particle velocities, shape (n_particles, 3), with components (vx,vy,vr).
+        v: Array of particle velocities, shape `(n_particles, 3)`, with components `(vx,vy,vr)`.
         particle: Index of the particle for which to calculate the relative velocity.
         max_radius_j: Maximum index radius for partners.
 
@@ -121,12 +121,12 @@ def v_rel(v: NDArray[np.float64], max_radius_j: int, whitelist_mask: NDArray[np.
     """Calculate the relative velocity between all neighboring particles.
 
     Parameters:
-        v: Array of particle velocities, shape (n_particles, 3), with components (vx,vy,vr).
+        v: Array of particle velocities, shape `(n_particles, 3)`, with components `(vx,vy,vr)`.
         max_radius_j: Maximum index radius for partners for scattering.
         whitelist_mask: Mask for particles to consider in this round. Used to maintain constant input shape to utilize the njit cache.
 
     Returns:
-        Array of relative velocities between particles, shape (n_particles, max_radius_j).
+        Array of relative velocities between particles, shape `(n_particles, max_radius_j)`.
     """
     output = np.empty((len(v), max_radius_j), np.float64)
     whitelist = np.arange(len(v))[whitelist_mask]
@@ -141,7 +141,7 @@ def particle_scatter_chance(v_rel: NDArray[np.float64], dt: float, sigma: float,
     """Calculate the scattering chance for a particle.
 
     Parameters:
-        v_rel: Array of relative velocity norms between the particle and its neighbors, shape (max_radius_j,).
+        v_rel: Array of relative velocity norms between the particle and its neighbors, shape `(max_radius_j,)`.
         dt: Scattering time step.
         sigma: Scattering cross-section. At the moment, it is assumed to be constant (TODO to make it velocity dependent).
         density_term: Density term for the scattering chance calculation.
@@ -163,14 +163,14 @@ def scatter_chance(
     """Calculate the scattering chance for each particle
 
     Parameters:
-        v_rel: relative velocities of neighboring particles. An array of shape (n_particles, max_radius_j), where each row holds the norm of the relative velocity (the 3-vector difference). For particles too close to the edge (less than max_radius_j places from the end), the overflow cells hold 0.
+        v_rel: relative velocities of neighboring particles. An array of shape `(n_particles, max_radius_j)`, where each row holds the norm of the relative velocity (the 3-vector difference). For particles too close to the edge (less than max_radius_j places from the end), the overflow cells hold 0.
         whitelist_mask: Mask for particles to consider in this round. Used to maintain constant input shape to utilize the njit cache.
-        dt: Time step for each particle, adjusted by 1/number_of_rounds to allow parallelized calculation for particles with a different number of rounds.
+        dt: Time step for each particle, adjusted by `1/number_of_rounds` to allow parallelized calculation for particles with a different number of rounds.
         sigma: Scattering cross-section.
-        density_term: Density term of particles, in the form m/(2*pi*r^2*dr).
+        density_term: Density term of particles, in the form `m/(2*pi*r^2*dr)`.
 
     Returns:
-        Scattering chance for each particle (shape (n_particles,))
+        Scattering chance for each particle (shape `(n_particles,)`)
     """
     output = np.empty(len(v_rel), np.float64)
     whitelist = np.arange(len(v_rel))[whitelist_mask]
@@ -196,9 +196,9 @@ def pick_scatter_partner(v_rel: NDArray[np.float64], scatter_mask: NDArray[np.bo
     For every particle that was deemed to have scattered in this round, the relative velocity is used to calculate the probability cdf for the scattering partner, and the random roll input is used to pick the partner from the cdf.
 
     Parameters:
-        v_rel: relative velocities of neighboring particles. An array of shape (n_particles, max_radius_j), where each row holds the norm of the relative velocity (the 3-vector difference). For particles too close to the edge (less than max_radius_j places from the end), the overflow cells hold 0.
+        v_rel: relative velocities of neighboring particles. An array of shape `(n_particles, max_radius_j)`, where each row holds the norm of the relative velocity (the 3-vector difference). For particles too close to the edge (less than max_radius_j places from the end), the overflow cells hold 0.
         scatter_mask: mask indicating which particles are scattering. Used to maintain constant input shape to utilize the njit cache.
-        rolls: random numbers between 0 and 1 for each particle (shape (n_particles,)).
+        rolls: random numbers between 0 and 1 for each particle (shape `(n_particles,)`).
 
     Returns:
         pairs of interacting particles.
@@ -231,7 +231,7 @@ def scatter_found_pairs(
     found_pairs: NDArray[np.int64],
     memory_allocated: int,
 ) -> NDArray[np.float64]:
-    """Scatter particles that have been found to interact. Handles memory allocation and wraps around scatter_unique_pairs()."""
+    """Scatter particles that have been found to interact. Handles memory allocation and wraps around `scatter_unique_pairs()`."""
     if len(found_pairs) == 0:
         return v
     pairs = np.full((memory_allocated, 2), -1, dtype=np.int64)
@@ -254,15 +254,15 @@ def scatter(
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64], int]:
     """Perform SIDM scatter events.
 
-    Every time step the particle density is calculated, the overall scattering rate is estimated, and each particle is given N scattering rounds where in each round the scatter probability is at most kappa. Specifically:
-        N = ceil(estimated scattering rate / kappa), and at most max_allowed_rounds to prevent stalling.
-        dt -> dt / N
-        So scatter chance in every round (which is proportional to dt) is ~kappa.
+    Every time step the particle density is calculated, the overall scattering rate is estimated, and each particle is given `N` scattering rounds where in each round the scatter probability is at most `kappa`. Specifically:
+        `N = ceil(estimated scattering rate / kappa)`, and at most max_allowed_rounds to prevent stalling.
+        `dt -> dt / N`
+        So scatter chance in every round (which is proportional to `dt`) is ~`kappa`.
     In every round, the relative velocity is recalculated for any particle that scattered in the previous round to re-estimate the scattering change.
     Scattering is allowed with the next max_radius_j particles (one sided to avoid double counting), with the probability:
-        p = dt/2 * m/(2*pi*r^2*dr) * sigma * sum(v_rel_j)
-        With the sum over indices i to i+max_radius_j, and dr the distance between the particle (i) and the i+max_radius_j one.
-        v_rel is the norm of the relative velocity vector between the particle and the potential partner (from i to i+max_radius_j).
+        `p = dt/2 * m/(2*pi*r^2*dr) * sigma * sum(v_rel_j)`
+        With the sum over indices `i` to `i+max_radius_j`, and `dr` the distance between the `particle` (`i`) and the `i+max_radius_j` one.
+        `v_rel` is the norm of the relative velocity vector between the `particle` and the potential `partner` (from `i` to `i+max_radius_j`).
     If a particle is rolled to have scattered, the partner is chosen randomly weighted by the relative velocity.
 
     Parameters:
@@ -274,7 +274,7 @@ def scatter(
         m: The mass of the particles.
         sigma: Cross-section for scattering. At the moment, it is assumed to be constant (TODO to make it velocity dependent).
         max_radius_j: Maximum index radius for partners for scattering.
-        kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform N scattering rounds over a time step dt/N to lower the rate in each round to match kappa.
+        kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
         max_interactions_per_mini_timestep: Internal memory buffer size parameter. No need to change it. Sets the maximum allowed number of interactions per round.
 
