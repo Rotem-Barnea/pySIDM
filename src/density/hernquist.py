@@ -36,4 +36,4 @@ class Hernquist(Density):
     @staticmethod
     @njit
     def calculate_rho(r: FloatOrArray, rho_s: float = 1, Rs: float = 1, Rvir: float = 1) -> FloatOrArray:
-        return rho_s / ((r / Rs) * (1 + (r / Rs) ** 3)) / (1 + (r / Rvir) ** 10)
+        return rho_s / ((r / Rs) * (1 + (r / Rs)) ** 3) / (1 + (r / Rvir) ** 10)
