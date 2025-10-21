@@ -173,10 +173,13 @@ def plot_2d(
     x_units: UnitLike = run_units.length,
     y_units: UnitLike = run_units.velocity,
     cbar_units: UnitLike = '',
+    transparent_value: float | None = None,
     x_nbins: int | None = 6,
     y_nbins: int | None = 6,
     x_tick_format: str = '%.0f',
     y_tick_format: str = '%.0f',
+    x_log: bool = False,
+    y_log: bool = False,
     title: str | None = None,
     xlabel: str | None = None,
     ylabel: str | None = None,
@@ -189,6 +192,7 @@ def plot_2d(
     vlines: list[dict[str, Any]] = [],
     fig: Figure | None = None,
     ax: Axes | None = None,
+    setup_kwargs: dict[str, Any] = {},
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Plot a 2d heatmap, such as a phase space distribution.
@@ -201,10 +205,13 @@ def plot_2d(
         x_units: Units to use for the x-axis.
         y_units: Units to use for the y-axis.
         cbar_units: Units to use for the value of each grid cell.
+        transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
         x_nbins: Number of bins to use for the x-axis.
         y_nbins: Number of bins to use for the y-axis.
         x_tick_format: Format string for the x-axis ticks.
         y_tick_format: Format string for the y-axis ticks.
+        x_log: Sets the x-axis to a log scale.
+        y_log: Sets the y-axis to a log scale.
         title: Title of the plot.
         xlabel: Label for the x-axis.
         ylabel: Label for the y-axis.
@@ -216,6 +223,7 @@ def plot_2d(
         vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`.
         fig: Figure to plot on.
         ax: Axes to plot on.
+        setup_kwargs: Additional keyword arguments to pass to `setup_plot()`.
         kwargs: Additional keyword arguments to pass to `plt.imshow()`.
 
     Returns:
@@ -240,6 +248,7 @@ def plot_2d(
         title=title,
         xlabel=utils.add_label_unit(xlabel, x_units),
         ylabel=utils.add_label_unit(ylabel, y_units),
+        **setup_kwargs,
     )
     if cbar_units != '':
         grid = grid.to(cbar_units)
@@ -249,6 +258,9 @@ def plot_2d(
         kwargs.update(norm=LogNorm())
     elif percentile_clip_scale is not None:
         kwargs.update(norm=Normalize(*np.nanpercentile(grid.value, percentile_clip_scale)))
+
+    if transparent_value is not None:
+        grid[grid.value == transparent_value] = np.nan
 
     im = ax.imshow(grid.value, origin='lower', aspect='auto', extent=extent_value, **kwargs)
     cbar = fig.colorbar(im, ax=ax)
@@ -270,16 +282,28 @@ def plot_2d(
         cbar.set_label(cbar_label)
 
     if x_nbins is not None:
-        ax.xaxis.set_major_locator(mtick.MaxNLocator(nbins=x_nbins))
-        ax.xaxis.set_major_formatter(mtick.FormatStrFormatter(x_tick_format))
+        if x_log:
+            ax.xaxis.set_major_locator(mtick.LogLocator(base=10, numticks=x_nbins))
+            ax.xaxis.set_major_formatter(mtick.LogFormatterSciNotation(base=10))
+            ax.xaxis.set_minor_locator(mtick.LogLocator(base=10, subs=list(np.arange(2, 10)), numticks=999))
+            ax.set_xscale('log')
+        else:
+            ax.xaxis.set_major_locator(mtick.MaxNLocator(nbins=x_nbins))
+            ax.xaxis.set_major_formatter(mtick.FormatStrFormatter(x_tick_format))
         ax.xaxis.tick_bottom()
         for lab in ax.get_xticklabels():
             lab.set_rotation(0)
             lab.set_horizontalalignment('center')
 
     if y_nbins is not None:
-        ax.yaxis.set_major_locator(mtick.MaxNLocator(nbins=y_nbins))
-        ax.yaxis.set_major_formatter(mtick.FormatStrFormatter(y_tick_format))
+        if y_log:
+            ax.yaxis.set_major_locator(mtick.LogLocator(base=10, numticks=y_nbins))
+            ax.yaxis.set_major_formatter(mtick.LogFormatterSciNotation(base=10))
+            ax.yaxis.set_minor_locator(mtick.LogLocator(base=10, subs=list(np.arange(2, 10)), numticks=999))
+            ax.set_yscale('log')
+        else:
+            ax.yaxis.set_major_locator(mtick.MaxNLocator(nbins=y_nbins))
+            ax.yaxis.set_major_formatter(mtick.FormatStrFormatter(y_tick_format))
 
     for line in hlines:
         ax.axhline(**line)
@@ -377,41 +401,48 @@ def aggregate_2d_data(
     radius_bins: Quantity['length'] = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
     time_range: Quantity['time'] | None = None,
     unit_mass: Quantity['mass'] = Quantity(1, 'Msun'),
-    output_type: Literal['density', 'counts', 'temperature'] = 'counts',
+    output_type: Literal['density', 'counts', 'temperature', 'specific heat flux'] = 'counts',
     row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
+    v_axis: Literal['vx', 'vy', 'vr'] = 'vr',
     density_units: UnitLike = run_units.density,
     data_time_units: UnitLike = 'Gyr',
     data_length_units: UnitLike = 'kpc',
-    data_velocity_units: UnitLike = 'kpc/Myr',
+    data_specific_energy_units: UnitLike = 'kpc^2/Myr^2',
+    data_mass_units: UnitLike = 'Msun',
     output_grid_units: UnitLike | None = None,
 ) -> tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']]]:
-    """Prepares data to be plotted in a 2d heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to plot_2d().
+    """Prepares data to be plotted in a 2d heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to `plot_2d()`.
 
     Parameters:
-        data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns 'r' and 'time'. If `output_type='temperature'` must also contain the column 'v_norm'.
+        data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns `r` and `time`. If `output_type='temperature'` or `'specific heat flux'` must also contain the columns `vx`, `vy`, and `vr`.
         radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
         time_range: The range of time to consider.
         unit_mass: The unit of mass. Used for density calculations, only relevant if `output_type='density'`.
         output_type: The type of calculation to fill each bin.
         row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
+        v_axis: The velocity to calculate the heat flux in. Only relevant if `output_type='specific heat flux'`.
         density_units: The units for the density.
         data_time_units: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
         data_length_units: The units for the radius in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_specific_energy_units: The units for the specific energy in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_mass_units: The units for the mass in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
 
     Returns:
         data, extent.
     """
     keep_columns = ['r', 'time']
-    if output_type == 'temperature':
-        keep_columns += ['v_norm']
+    if output_type in ['temperature', 'specific heat flux']:
+        keep_columns += ['vx', 'vy', 'vr']
     if isinstance(data, pd.DataFrame):
         sub = data[keep_columns]
     else:
         sub = data[keep_columns].to_pandas()
         data_time_units = data['time'].unit
         data_length_units = data['r'].unit
-        if output_type == 'temperature':
-            data_velocity_units = data['v_norm'].unit
+        if 'vx' in sub:
+            data_specific_energy_units = data['vx'].unit ** 2
+        if 'm' in sub:
+            data_mass_units = data['m'].unit
 
     if time_range is not None:
         sub = sub[sub['time'].between(*time_range.to(data_time_units).value)]
@@ -423,7 +454,12 @@ def aggregate_2d_data(
     for i, (_, group) in enumerate(sub.groupby('time')):
         if output_type == 'temperature':
             group_bins = pd.cut(Quantity(group['r'], data_length_units).to(radius_bins.unit).value, bins=radius_bins.value)
-            grid[i] = np.array(group.groupby(group_bins, observed=True)['v_norm'].std())
+            grid[i] = group.groupby(group_bins, observed=False)[['vx', 'vy', 'vr']].var().sum(axis=1)
+        elif output_type == 'specific heat flux':
+            group_bins = pd.cut(Quantity(group['r'], data_length_units).to(radius_bins.unit).value, bins=radius_bins.value)
+            centralized_group = group.groupby(group_bins, observed=False)[['vx', 'vy', 'vr']].apply(lambda q: q - q.mean())
+            velocity_term = centralized_group * np.vstack((centralized_group**2).sum(axis=1))
+            grid[i] = 1 / 2 * np.array(velocity_term.reset_index().groupby('level_0', observed=False)[v_axis].sum()) / r_bin_volume
         else:
             counts, _ = np.histogram(Quantity(group['r'], data_length_units), bins=radius_bins)
             if output_type == 'density':
@@ -432,9 +468,11 @@ def aggregate_2d_data(
                 grid[i] = counts
 
     if output_type == 'density':
-        grid_units = unit_mass.unit / r_bin_volume.unit
+        grid_units = Unit(str(data_mass_units)) / Unit(str(data_length_units))
     elif output_type == 'temperature':
-        grid_units = data_velocity_units
+        grid_units = data_specific_energy_units
+    elif output_type == 'specific heat flux':
+        grid_units = Unit(str(data_specific_energy_units)) / (Unit(str(data_length_units)) ** 2 * Unit(str(data_time_units)))
     else:
         grid_units = ''
 

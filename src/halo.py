@@ -43,7 +43,6 @@ class Halo:
         dynamics_params: leapfrog.Params = {},
         scatter_params: sidm.Params = {},
         snapshots: table.QTable = table.QTable(),
-        scatter_every_n_steps: int = 1,
         hard_save: str | None = None,
     ) -> None:
         """Initialize a Halo object.
@@ -67,7 +66,6 @@ class Halo:
             dynamics_params: Dynamics parameters of the halo, sent to the leapfrog integrator.
             scatter_params: Scatter parameters of the halo, used in the SIDM calculation.
             snapshots: Snapshots of the halo.
-            scatter_every_n_steps: How often should a scattering event be conducted, in time-step units (integer).
             hard_save: Whether to save the halo to db at every snapshot save, or just keep in RAM.
 
         Returns:
@@ -97,7 +95,6 @@ class Halo:
         self.initial_particles = self.particles.copy()
         self.last_saved_time = last_saved_time
         self.scatter_rounds = scatter_rounds
-        self.scatter_every_n_steps: int = scatter_every_n_steps
         self.hard_save: str | None = hard_save
 
     @classmethod
@@ -325,14 +322,9 @@ class Halo:
         )
 
     @property
-    def dt_scatter(self) -> Quantity['time']:
-        """The time step for scattering."""
-        return self.scatter_every_n_steps * self.dt
-
-    @property
     def n_scatters(self) -> NDArray[np.int64]:
         """The number of scatters every scattering round."""
-        return np.array([len(x) for x in self.interactions_track])
+        return np.array([len(x) for x in self.scatter_track])
 
     #####################
     ##Dynamic evolution
@@ -372,29 +364,25 @@ class Halo:
         Every step:
             - Sort particles by radius.
             - Save a snapshot if it's time.
-            - Perform scattering if necessary. This is done before the leapfrog integration since it doesn't modify the particle positions and thus doesn't require resorting.
+            - Perform scattering. This is done before the leapfrog integration since it doesn't modify the particle positions and thus doesn't require resorting.
             - Perform leapfrog integration.
             - Update simulation time.
         """
         self._particles.sort_values('r', inplace=True)
         if self.is_save_round():
             self.save_snapshot()
-        if self.scatter_params.get('sigma', 0) > 0 and self.current_step % self.scatter_every_n_steps == 0:
+        if self.scatter_params.get('sigma', 0) > 0:
             mask = self._particles['particle_type'] == 'dm'
-            (
-                self._particles.loc[mask, 'vx'],
-                self._particles.loc[mask, 'vy'],
-                self._particles.loc[mask, 'vr'],
-                indices,
-                scatter_rounds,
-            ) = sidm.scatter(
-                r=self._particles.loc[mask, 'r'],
-                vx=self._particles.loc[mask, 'vx'],
-                vy=self._particles.loc[mask, 'vy'],
-                vr=self._particles.loc[mask, 'vr'],
-                dt=self.dt_scatter,
-                m=self._particles.loc[mask, 'm'],
-                **self.scatter_params,
+            (self._particles.loc[mask, 'vx'], self._particles.loc[mask, 'vy'], self._particles.loc[mask, 'vr'], indices, scatter_rounds) = (
+                sidm.scatter(
+                    r=self._particles.loc[mask, 'r'],
+                    vx=self._particles.loc[mask, 'vx'],
+                    vy=self._particles.loc[mask, 'vy'],
+                    vr=self._particles.loc[mask, 'vr'],
+                    dt=self.dt,
+                    m=self._particles.loc[mask, 'm'],
+                    **self.scatter_params,
+                )
             )
             self.scatter_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
@@ -410,14 +398,34 @@ class Halo:
         )
         self.time += self.dt
 
-    def evolve(self, n_steps: int | None = None, t: Quantity['time'] | None = None, disable_tqdm: bool = False) -> None:
-        """Evolve the simulation for a given number of steps or time."""
+    def evolve(
+        self,
+        n_steps: int | None = None,
+        t: Quantity['time'] | None = None,
+        until_t: Quantity['time'] | None = None,
+        disable_tqdm: bool = False,
+    ) -> None:
+        """Evolve the simulation for a given number of steps or time.
+
+        Parameters:
+            n_steps: Number of steps to evolve the simulation for. Takes precedence over `t`.
+            t: Time to evolve the simulation for. Ignored if `n_steps` is specified, otherwise transformed into steps using `to_steps()`.
+            until_t: Evolve the simulation until this time. Ignored if `n_steps` or `t` are specified, otherwise transformed into steps using `to_steps()`.
+            disable_tqdm: Whether to disable the `tqdm` progress bar.
+
+        Returns:
+            None
+        """
         if n_steps is None:
             if t is not None:
                 n_steps = self.to_step(t)
+            elif until_t is not None:
+                if self.time > until_t:
+                    raise ValueError('current time is greater than the specified end time')
+                n_steps = self.to_step(cast(Quantity, until_t - self.time))
             else:
-                raise ValueError('Either n_steps or t must be specified')
-        for _ in tqdm(range(int(n_steps)), disable=disable_tqdm):
+                raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
+        for _ in tqdm(range(n_steps), disable=disable_tqdm):
             self.step()
 
     #####################
@@ -439,7 +447,6 @@ class Halo:
             'background',
             'last_saved_time',
             'scatter_rounds',
-            'scatter_every_n_steps',
             'hard_save',
         ]
 
@@ -468,6 +475,8 @@ class Halo:
             csv_table = table.QTable.read(path / f'{name}_strings.csv')
             for col in fits_table.colnames:
                 fits_table[col] = fits_table[col].astype(fits_table[col].dtype.newbyteorder('='), copy=False)
+            for col in csv_table.colnames:
+                csv_table[col] = np.array(csv_table[col]).astype('O')
             tables[name] = table.hstack([fits_table, csv_table])
         particles = tables['particles']
         particles.sort('particle_index')
@@ -521,6 +530,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         include_now: bool = True,
         filter_particle_type: ParticleType | None = None,
         x_range: Quantity['length'] | None = None,
+        x_clip: Quantity['length'] | None = None,
         x_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
         time_format: str = '.1f',
@@ -528,6 +538,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         xlabel: str | None = 'Radius',
         indices: list[int] | None = None,
         color_palette: str | None = None,
+        legend_loc: str | None = 'outside center right',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the density progression over time.
@@ -536,13 +547,15 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             include_start: Whether to include the initial particle distribution in the plot.
             include_now: Whether to include the current particle distribution in the plot.
             filter_particle_type: Whether to filter to only plot the specified particle type.
-            x_range: The radius range to clip the data to. If `None`, ignores.
+            x_range: The radius range to clip the data to (hard slicing the source data prior to plotting). If `None`, ignores.
+            x_clip: The radius range to clip the data to (using the `clip` keyword argument in `sns.kdeplot()`). If `None`, ignores.
             time_units: The time units to use in the plot.
             time_format: Format string for time.
             title: The title of the plot.
             xlabel: The label for the x-axis.
             indices: The snapshot indices to plot. If `None` plots everything.
             color_palette: The color palette to use for the halos. If `None`, uses the default color palette.
+            legend_loc: The location of the legend. If `None` uses the default location.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -559,24 +572,26 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
         indices = indices if indices is not None else list(range(len(np.unique(np.array(data['time'])))))
 
-        if color_palette is not None:
-            colors = sns.color_palette(color_palette, len(indices))
-        else:
-            colors = None
+        colors = sns.color_palette(color_palette, len(indices)) if color_palette is not None else None
 
         time_units = self.fill_time_unit(time_units)
         fig, ax = plot.setup_plot(**utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_units)), **kwargs)
-        clip = tuple(x_range.to(x_units).value) if x_range is not None else None
-        for i, group in enumerate(self.snapshots.group_by('time').groups):
-            if i in indices:
-                sns.kdeplot(
-                    group['r'].to(x_units),
-                    ax=ax,
-                    clip=clip,
-                    color=colors[indices.index(i)] if colors is not None else None,
-                    label=group['time'][0].to(time_units).to_string(format='latex', formatter=time_format),
-                )
-        fig.legend(loc='outside center right')
+        clip = tuple(x_clip.to(x_units).value) if x_clip is not None else None
+        for i, group in enumerate(data.group_by('time').groups):
+            if i not in indices:
+                continue
+            sub = group['r'].to(x_units).value
+            if x_range is not None:
+                sub = sub[pd.Series(sub).between(*x_range.to(x_units).value)]
+            sns.kdeplot(
+                sub,
+                ax=ax,
+                clip=clip,
+                color=colors[indices.index(i)] if colors is not None else None,
+                label=group['time'][0].to(time_units).to_string(format='latex', formatter=time_format),
+            )
+        if legend_loc:
+            fig.legend(loc=legend_loc)
         return fig, ax
 
     def plot_distribution(
@@ -647,7 +662,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         self,
         data: table.QTable,
         cumulative: bool = False,
-        add_density: bool = True,
+        add_density: int | None = 0,
         x_units: UnitLike = 'kpc',
         x_range: Quantity | None = None,
         hist_label: str | None = None,
@@ -659,7 +674,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Parameters:
             data: The data to plot.
             cumulative: Whether to plot the cumulative distribution.
-            add_density: Whether to add the density distribution from the first density in the densities list.
+            add_density: Density distribution to plot on top of the plot (index from the densities list). If `None` ignores.
             x_units: The units to plot the x-axis in.
             x_range: The range of the x-axis.
             hist_label: The label for the histogram (legend).
@@ -670,9 +685,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig, ax.
         """
         fig, ax = self.plot_distribution(key='r', data=data, cumulative=cumulative, x_units=x_units, x_range=x_range, label=hist_label, **kwargs)
-        if add_density:
+        if add_density is not None:
             params = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
-            return self.densities[0].plot_radius_distribution(
+            return self.densities[add_density].plot_radius_distribution(
                 cumulative=cumulative, length_units=x_units, fig=fig, ax=ax, label=density_label, **params
             )
         return fig, ax
@@ -683,10 +698,11 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         filter_particle_type: ParticleType | None = None,
         r_range: Quantity['length'] = Quantity(np.linspace(1e-2, 50, 200), 'kpc'),
         v_range: Quantity['velocity'] = Quantity(np.linspace(0, 100, 200), 'km/second'),
+        cmap: str = 'jet',
+        transparent_value: float | None = 0,
         length_units: UnitLike = 'kpc',
         velocity_units: UnitLike = 'km/second',
-        fig: Figure | None = None,
-        ax: Axes | None = None,
+        **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the phase space distribution of the particles.
 
@@ -695,10 +711,11 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             filter_particle_type: Whether to filter to only plot the specified particle type.
             r_range: Range of radial distances to plot.
             v_range: Range of velocities to plot.
+            cmap: The colormap to use for the plot.
+            transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
             length_units: Units to use for the length axis.
             velocity_units: Units to use for the velocity axis. Set to default to `km/second` and not `kpc/Myr`.
-            fig: Figure to use for the plot.
-            ax: Axes to use for the plot.
+            kwargs: Additional keyword arguments to pass to `plot.plot_phase_space()`.
 
         Returns:
             fig, ax.
@@ -718,7 +735,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data_table = data_table.groupby(['r', 'v_norm']).agg('count').reset_index()
         grid[data_table['v_norm'].to_numpy(), data_table['r'].to_numpy()] = data_table['count']
 
-        return plot.plot_phase_space(Quantity(grid), r_range, v_range, length_units, velocity_units, fig=fig, ax=ax)
+        return plot.plot_phase_space(
+            Quantity(grid), r_range, v_range, length_units, velocity_units, cmap=cmap, transparent_value=transparent_value, **kwargs
+        )
 
     def plot_inner_core_density(
         self,
@@ -862,15 +881,16 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         include_start: bool = True,
         include_now: bool = True,
         filter_particle_type: ParticleType | None = None,
-        radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
+        radius_bins: Quantity = Quantity(np.linspace(1e-1, 5, 100), 'kpc'),
         time_range: Quantity = Quantity([2, 17], 'Gyr'),
-        velocity_units: UnitLike = 'km/second',
+        specific_energy_units: UnitLike = 'km^2/second^2',
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = r'$\propto$Temperature (velocity std)',
         row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
+        cmap: str = 'jet',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the temperature evolution of the halo. Wraps `prep_2d_data()`.
@@ -881,13 +901,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             filter_particle_type: Whether to filter to only plot the specified particle type.
             radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
             time_range: Range of times to consider (filters the data).
-            velocity_units: Units to use for the velocity.
+            specific_energy_units: Units to use for the specific energy.
             length_units: Units to use for the radius axis.
             time_units: Units to use for the time axis.
             xlabel: Label for the radius axis.
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
+            cmap: The colormap to use for the plot.
             kwargs: Additional keyword arguments to pass to the plot function (`utils.plot_2d()`).
 
         Returns:
@@ -903,7 +924,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_range=time_range,
             output_type='temperature',
             row_normalization=row_normalization,
-            output_grid_units=velocity_units,
+            output_grid_units=specific_energy_units,
         )
 
         return plot.plot_2d(
@@ -916,6 +937,78 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             cbar_label=cbar_label,
             grid_row_normalization=row_normalization,
             cbar_label_autosuffix=True if row_normalization is not None else False,
+            cmap=cmap,
+            **kwargs,
+        )
+
+    def plot_heat_flux_evolution(
+        self,
+        include_start: bool = True,
+        include_now: bool = True,
+        filter_particle_type: ParticleType | None = None,
+        radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
+        time_range: Quantity = Quantity([2, 17], 'Gyr'),
+        v_axis: Literal['vx', 'vy', 'vr'] = 'vr',
+        heat_units: UnitLike = '1/Myr^3',
+        length_units: UnitLike = 'kpc',
+        time_units: UnitLike = 'Tdyn',
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = 'Time',
+        cbar_label: str | None = 'Specific Heat flux',
+        row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
+        cmap: str = 'seismic',
+        setup_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the temperature evolution of the halo. Wraps `prep_2d_data()`.
+
+        Parameters:
+            include_start: Whether to include the initial particle distribution in the plot.
+            include_now: Whether to include the current particle distribution in the plot.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
+            radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
+            time_range: Range of times to consider (filters the data).
+            v_axis: The velocity to calculate the heat flux in.
+            velocity_units: Units to use for the velocity.
+            length_units: Units to use for the radius axis.
+            time_units: Units to use for the time axis.
+            xlabel: Label for the radius axis.
+            ylabel: Label for the time axis.
+            cbar_label: Label for the colorbar.
+            row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
+            cmap: The colormap to use for the plot.
+            setup_kwargs: Additional keyword arguments to pass to `utils.setup_plot()`.
+            kwargs: Additional keyword arguments to pass to the plot function (`utils.plot_2d()`).
+
+        Returns:
+            fig, ax.
+        """
+        time_units = self.fill_time_unit(time_units)
+        data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
+        if filter_particle_type is not None:
+            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
+        grid, extent = plot.aggregate_2d_data(
+            data=data,
+            radius_bins=radius_bins,
+            time_range=time_range,
+            v_axis=v_axis,
+            output_type='specific heat flux',
+            row_normalization=row_normalization,
+            output_grid_units=heat_units,
+        )
+
+        return plot.plot_2d(
+            grid=grid,
+            extent=extent,
+            x_units=length_units,
+            y_units=time_units,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            cbar_label=cbar_label,
+            grid_row_normalization=row_normalization,
+            cbar_label_autosuffix=True if row_normalization is not None else False,
+            cmap=cmap,
+            setup_kwargs=setup_kwargs,
             **kwargs,
         )
 
@@ -999,7 +1092,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if title is not None:
             title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_scatters=self.n_scatters.sum())
         fig, ax = plot.setup_plot(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
-        sns.histplot(Quantity(np.hstack(self.interactions_track), run_units.length).to(length_units), ax=ax)
+        sns.histplot(Quantity(np.hstack(self.scatter_track), run_units.length).to(length_units), ax=ax)
         return fig, ax
 
     def plot_scattering_density(
@@ -1035,7 +1128,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        r = np.hstack(self.interactions_track).to(length_units)
+        r = np.hstack(self.scatter_track).to(length_units)
         r_bins = np.linspace(0, r.max(), num=num)
         dr = r_bins[1] - r_bins[0]
         density = Quantity(
@@ -1213,7 +1306,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        scatters = np.array([len(x) for x in self.interactions_track])
+        scatters = np.array([len(x) for x in self.scatter_track])
         x = (np.arange(len(scatters)) * self.dt).to(time_unit)
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, **kwargs)
         sns.lineplot(x=x, y=scatters.cumsum(), ax=ax)
@@ -1242,7 +1335,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig, ax.
         """
         n = int(time_binning / self.dt)
-        scatters = np.array([len(x) for x in self.interactions_track])
+        scatters = np.array([len(x) for x in self.scatter_track])
         x = (np.arange(len(scatters)) * self.dt).to(time_unit)[::n]
         scatters = np.add.reduceat(scatters, np.arange(0, len(scatters), n))
 
