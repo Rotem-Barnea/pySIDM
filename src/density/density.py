@@ -26,6 +26,7 @@ class Density:
         space_steps: float | int = 1e3,
         h: Quantity['length'] = Quantity(1e-5, 'kpc'),
         initialize_grids: list[str] = [],
+        label: str = '',
     ) -> None:
         """General mass distribution profile.
 
@@ -38,6 +39,7 @@ class Density:
             space_steps: Number of space steps for the `internal logarithmic grid`.
             h: Radius step size for numerical differentiation.
             initialize_grid: Grids to initialize at startup, otherwise they will only be calculated at runtime as needed.
+            label: Label for the density profile.
 
         Returns:
             General mass distribution object.
@@ -45,6 +47,7 @@ class Density:
         self.space_steps: int = int(space_steps)
         self.Mtot: Quantity['mass'] = Mtot.to(run_units.mass)
         self.title = 'Density'
+        self.label: str = label
         self.h: Quantity['length'] = h.to(run_units.length)
         self.Rs: Quantity['length'] = Rs.to(run_units.length)
         self.Rvir: Quantity['length'] = Rvir.to(run_units.length)
@@ -491,8 +494,10 @@ class Density:
         r_end: Quantity['length'] | None = Quantity(1e4, 'kpc'),
         density_units: UnitLike = 'Msun/kpc^3',
         length_units: UnitLike = 'kpc',
-        fig: Figure | None = None,
-        ax: Axes | None = None,
+        label: str | None = None,
+        add_markers: bool = True,
+        ax_set: dict[str, Any] = {'xscale': 'log', 'yscale': 'log'},
+        **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the density distribution (`rho`) of the density profile.
 
@@ -501,18 +506,18 @@ class Density:
             r_end: The ending radius for the plot. If `None` uses `Rmax`.
             density_units: The units for the density axis.
             length_units: The units for the radius axis.
-            fig: The figure to plot on.
-            ax: The axes to plot on.
+            ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
+            kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
 
         Returns:
             fig, ax.
         """
         fig, ax = plot.setup_plot(
-            fig,
-            ax,
             title='Density distribution (rho)',
             xlabel=utils.add_label_unit('Radius', length_units),
             ylabel=utils.add_label_unit('Density', density_units),
+            ax_set=ax_set,
+            **kwargs,
         )
 
         if r_start is None:
@@ -522,10 +527,13 @@ class Density:
 
         r = cast(Quantity['length'], np.geomspace(r_start, r_end, self.space_steps))
         rho = self.rho(r)
-        sns.lineplot(x=r.to(length_units).value, y=rho.to(density_units).value, ax=ax)
-        ax.set(xscale='log', yscale='log')
+        sns.lineplot(x=r.to(length_units).value, y=rho.to(density_units).value, ax=ax, label=label)
 
-        ax = self.add_plot_R_markers(ax, ymax=rho.max().to(density_units).value, x_units=length_units)
+        if add_markers:
+            ax = self.add_plot_R_markers(ax, ymax=rho.max().to(density_units).value, x_units=length_units)
+
+        if label is not None:
+            ax.legend()
         return fig, ax
 
     def plot_radius_distribution(

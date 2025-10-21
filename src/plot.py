@@ -342,11 +342,11 @@ def plot_density(
     title: str | None = None,
     length_units: UnitLike = 'kpc',
     density_units: UnitLike = 'Msun/kpc^3',
+    ax_set: dict[str, Any] = {'xscale': 'log', 'yscale': 'log'},
+    minorticks: bool = True,
     label: str | None = None,
     cleanup_nonpositive: bool = True,
     smooth_sigma: float = 1,
-    fig: Figure | None = None,
-    ax: Axes | None = None,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Plot the density distribution per unit volume.
@@ -360,11 +360,11 @@ def plot_density(
         title: Title for the plot.
         length_units: Units to use for the x-axis.
         density_units: Number of bins to use for the y-axis.
+        ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
+        minorticks: Whether to add the grid for the minor ticks.
         label: label to add to the plot legend.
         cleanup_nonpositive: drop non-positive values from the plot, to avoid "pits" in the log plot.
         smooth_sigma: sigma for smoothing the density distribution.
-        fig: Figure to plot on.
-        ax: Axes to plot on.
         kwargs: Additional keyword arguments to pass to `setup_plot()`.
 
 
@@ -377,10 +377,8 @@ def plot_density(
     volume = 4 / 3 * np.pi * (histogram_bins[:, 1] ** 3 - histogram_bins[:, 0] ** 3)
     density = (counts / volume * unit_mass).to(density_units)
     fig, ax = setup_plot(
-        fig=fig,
-        ax=ax,
-        ax_set={'xscale': 'log', 'yscale': 'log'},
-        minorticks=True,
+        ax_set=ax_set,
+        minorticks=minorticks,
         **default_plot_text('r', xlabel=xlabel, ylabel=ylabel, title=title, x_units=length_units, y_units=density_units),
         **kwargs,
     )

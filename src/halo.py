@@ -111,6 +111,7 @@ class Halo:
             Halo object.
         """
         r, v, particle_type, m = [], [], [], []
+        Density.merge_densities_grids(densities)
         for density, p_type, n in zip(densities, particle_types, n_particles):
             r_sub = density.roll_r(int(n)).to(run_units.length)
             v_sub = density.roll_v_3d(r_sub).to(run_units.velocity)
@@ -1344,4 +1345,58 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
         sns.lineplot(x=x, y=scatters, ax=ax)
+        return fig, ax
+
+    def plot_densities_rho(self, markers_on_first_only: bool = False, **kwargs: Any) -> tuple[Figure, Axes]:
+        """Plot the density profile (`rho`) of each of the provided densities in the halo.
+
+        Parameters:
+            markers_on_first_only: If `True` only plot markers (`Rs` and `Rvir`) for the first density.
+            kwargs: Additional keyword arguments are passed to every call to the plotting function.
+
+        Returns:
+            fig, ax.
+        """
+        fig, ax = None, None
+        for i, density in enumerate(self.densities):
+            fig, ax = density.plot_rho(
+                label=f'{density.label} ({density.title})', fig=fig, ax=ax, add_markers=(i == 0 or not markers_on_first_only), **kwargs
+            )
+        assert fig is not None and ax is not None
+        return fig, ax
+
+    def plot_densities_over_time(
+        self,
+        times: Quantity['time'] = Quantity([0, 2, 10], 'Gyr'),
+        labels: list[str] = ['start', 'max core', 'core collapse'],
+        radius_bins: Quantity['length'] = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the density profiles of the halo over time.
+
+        Parameters:
+            times (Quantity['time']): The times at which to plot the density profiles.
+            labels (list[str]): The labels for the density profiles.
+            radius_bins (Quantity['length']): The radius bins for the density profile calculations.
+            kwargs: Additional keyword arguments are passed to every call to the plotting function.
+
+        Returns:
+            fig, ax.
+        """
+        data = self.get_particle_states()
+        unique_times = np.unique(cast(NDArray[np.float64], data['time']))
+        real_times = unique_times[np.argmin(np.abs(unique_times - np.expand_dims(times, 1)), axis=1)]
+        fig, ax = None, None
+        for name, particle_type, unit_mass in zip(['Baryonic matter', 'DM'], ['baryon', 'dm'], np.unique(self.m)):
+            for label, time in zip(labels, real_times):
+                fig, ax = plot.plot_density(
+                    cast(Quantity['length'], data[(data['time'] == time) * (data['particle_type'] == particle_type)]['r']),
+                    unit_mass=unit_mass,
+                    bins=radius_bins,
+                    label=f'{name} {label}',
+                    fig=fig,
+                    ax=ax,
+                    **kwargs,
+                )
+        assert fig is not None and ax is not None
         return fig, ax
