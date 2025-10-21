@@ -350,17 +350,21 @@ class Density:
             self.memoization['f_grid'] = self.calculate_f(self.E_grid, 10000).to(run_units.f_units)
         return self.memoization['f_grid']
 
-    def f(self, E: Quantity) -> Quantity:
+    def f(self, E: Quantity['specific energy']) -> Quantity:
         """Interpolate the distribution function (`f`) based on the `internal energy grid` (memoized)."""
         if 'f' not in self.memoization:
             self.memoization['f'] = scipy.interpolate.interp1d(self.E_grid, self.f_grid, bounds_error=False, fill_value=0)
         return Quantity(self.memoization['f'](E.to(self.E_grid.unit)), self.f_grid.unit)
 
-    def Psi_interpolate(self, r: Quantity) -> Quantity:
+    def Psi_interpolate(self, r: Quantity['length']) -> Quantity['specific energy']:
         """Interpolate the relative gravitational potential (`Psi`) based on the  `internal logarithmic grid` (memoized)."""
         if 'Psi_interpolate' not in self.memoization:
             self.memoization['Psi_interpolate'] = scipy.interpolate.interp1d(self.geomspace_grid, self.Psi_grid, bounds_error=False, fill_value=0)
         return Quantity(self.memoization['Psi_interpolate'](r.to(self.geomspace_grid.unit)), self.Psi_grid.unit)
+
+    def E(self, r: Quantity['length'], v: Quantity['velocity']) -> Quantity['specific energy']:
+        """Interpolate the internal energy (`E`) At the given radius `r` using `Psi_interpolate()`."""
+        return cast(Quantity['specific energy'], self.Psi_interpolate(r) - 1 / 2 * v**2)
 
     def recalculate(self, key: str, inplace: bool = False) -> Any:
         if key in self.memoization:
@@ -368,6 +372,14 @@ class Density:
         new_value = getattr(self, key)
         if not inplace:
             return new_value
+
+    @staticmethod
+    def merge_densities_grids(densities: list['Density'], grid_base_name: list[str] = ['Psi']):
+        for grid_name in grid_base_name:
+            for suffix in ['', '_h', '_2h']:
+                grid = sum([getattr(density, f'{grid_name}_grid{suffix}') for density in densities])
+                for density in densities:
+                    density.memoization[f'{grid_name}_grid{suffix}'] = grid
 
     ## Roll initial setup
 
@@ -441,6 +453,8 @@ class Density:
         r_range: Quantity['length'] = Quantity(np.linspace(1e-2, 50, 200), 'kpc'),
         v_range: Quantity['velocity'] = Quantity(np.linspace(0, 100, 200), 'km/second'),
         velocity_units: UnitLike = 'km/second',
+        cmap: str = 'jet',
+        transparent_value: float | None = 0,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the phase space distribution of the density profile.
@@ -449,6 +463,8 @@ class Density:
             r_range: Range of radial distances to plot.
             v_range: Range of velocities to plot.
             velocity_units: Units to use for the velocity axis.
+            cmap: The colormap to use for the plot.
+            transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
             kwargs: Additional keyword arguments to pass to `plot.plot_phase_space()`.
 
         Returns:
@@ -456,8 +472,10 @@ class Density:
         """
         r, v = cast(tuple[Quantity['length'], Quantity['velocity']], np.meshgrid(r_range, v_range))
         f = self.f(self.E(r, v))
-        grid = np.asarray((16 * np.pi * r**2 * v**2 * f).value)
-        fig, ax = plot.plot_phase_space(Quantity(grid), r_range, v_range, velocity_units=velocity_units, **kwargs)
+        grid = 16 * np.pi * r**2 * v**2 * f
+        fig, ax = plot.plot_phase_space(
+            grid, r_range, v_range, velocity_units=velocity_units, cmap=cmap, transparent_value=transparent_value, **kwargs
+        )
         return fig, ax
 
     def add_plot_R_markers(self, ax: Axes, ymax: float, x_units: UnitLike = 'kpc') -> Axes:
