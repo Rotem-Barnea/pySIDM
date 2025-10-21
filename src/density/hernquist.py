@@ -24,7 +24,6 @@ class Hernquist(Density):
         return f"""Hernquist density
   - Rs = {self.Rs:.4f}
   - Rvir = {self.Rvir:.4f}
-  - Mp = {self.unit_mass:.3e}
   - Mtot = {self.Mtot:.3e}
   - rho_s = {self.rho_s:.4f}
   - Tdyn = {self.Tdyn:.4f}
