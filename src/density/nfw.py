@@ -30,7 +30,6 @@ class NFW(Density):
   - Rs = {self.Rs:.4f}
   - c = {self.c:.1f}
   - Mtot = {self.Mtot:.3e}
-  - Mdm = {self.unit_mass:.3e}
   - Rvir = {self.Rvir:.4f}
   - rho_s = {self.rho_s:.4f}
   - Tdyn = {(1 * self.Tdyn).to(run_units.time):.4f}
