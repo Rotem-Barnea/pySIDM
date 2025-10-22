@@ -134,3 +134,21 @@ def prepare_for_plotting(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame
     initial_data = data[data['time'] == data['time'].min()].copy().sort_values('r')
     unit_mass = Quantity(initial_data['mass'].diff(1).iloc[-1], 'Msun')
     return data, initial_data, unit_mass
+
+
+def read_log(
+    filepath: str | Path,
+    pattern: str = r'time=([\d.]+) Myr.+, n_scatters=(\d+)',
+    columns: list[str] = ['time', 'cumulative_scatters'],
+    append_zero: bool = False,
+) -> pd.DataFrame:
+    results = []
+    with open(filepath) as f:
+        for line in f.readlines():
+            finds = regex.findall(pattern, line)
+            if finds:
+                results += [finds[0]]
+    output = pd.DataFrame(np.array(results, dtype=float), columns=columns)
+    if append_zero:
+        output = pd.concat([pd.DataFrame([[0] * len(columns)], columns=columns), output], ignore_index=True)
+    return output
