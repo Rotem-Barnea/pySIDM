@@ -25,13 +25,13 @@ class Params(TypedDict, total=False):
 
 
 default_params: Params = {
-    'max_minirounds': 50,
+    'max_minirounds': 20,
     'r_convergence_threshold': 1e-7,
     'vr_convergence_threshold': 1e-7,
     'first_mini_round': 0,
     'richardson_extrapolation': True,
     'adaptive': True,
-    'grid_window_radius': 0,
+    'grid_window_radius': 50,
     'raise_warning': True,
 }
 
