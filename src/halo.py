@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 import seaborn as sns
 from pathlib import Path
 import pickle
@@ -18,6 +17,7 @@ from .background import Mass_Distribution
 from . import utils, run_units, physics, plot
 from .physics import sidm, leapfrog
 from .types import ParticleType
+from .tqdm import tqdm
 
 
 class Halo:
@@ -43,7 +43,11 @@ class Halo:
         dynamics_params: leapfrog.Params = {},
         scatter_params: sidm.Params = {},
         snapshots: table.QTable = table.QTable(),
-        hard_save: str | None = None,
+        hard_save: bool = False,
+        save_path: Path | str | None = None,
+        Rmax: Quantity['length'] = Quantity(300, 'kpc'),
+        cleanup_nullish_particles: bool = False,
+        cleanup_particles_by_radius: bool = False,
     ) -> None:
         """Initialize a Halo object.
 
@@ -66,7 +70,11 @@ class Halo:
             dynamics_params: Dynamics parameters of the halo, sent to the leapfrog integrator.
             scatter_params: Scatter parameters of the halo, used in the SIDM calculation.
             snapshots: Snapshots of the halo.
-            hard_save: Whether to save the halo to db at every snapshot save, or just keep in RAM.
+            hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
+            save_path: Path to save the halo to memory.
+            Rmax: Maximum radius of the halo, particles outside of this radius get killed off. If `None` ignores.
+            cleanup_nullish_particles: Whether to remove particles from the halo after each interaction if they are nullish.
+            cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `Rmax`).
 
         Returns:
             Halo object.
@@ -95,15 +103,18 @@ class Halo:
         self.initial_particles = self.particles.copy()
         self.last_saved_time = last_saved_time
         self.scatter_rounds = scatter_rounds
-        self.hard_save: str | None = hard_save
+        self.hard_save: bool = hard_save
+        self.save_path: Path | str | None = save_path
+        self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
+        self.cleanup_nullish_particles = cleanup_nullish_particles
+        self.cleanup_particles_by_radius = cleanup_particles_by_radius
 
     @classmethod
-    def setup(cls, densities: list[Density], particle_types: list[ParticleType], n_particles: list[int | float], **kwargs: Any) -> Self:
+    def setup(cls, densities: list[Density], n_particles: list[int | float], **kwargs: Any) -> Self:
         """Initialize a Halo object from a given set of densities.
 
         Parameters:
             densities: List of densities for each particle type.
-            particle_types: List of particle types.
             n_particles: List of number of particles for each particle type.
             kwargs: Additional keyword arguments, passed to the constructor.
 
@@ -112,12 +123,12 @@ class Halo:
         """
         r, v, particle_type, m = [], [], [], []
         Density.merge_densities_grids(densities)
-        for density, p_type, n in zip(densities, particle_types, n_particles):
+        for density, n in zip(densities, n_particles):
             r_sub = density.roll_r(int(n)).to(run_units.length)
             v_sub = density.roll_v_3d(r_sub).to(run_units.velocity)
             r += [r_sub]
             v += [v_sub]
-            particle_type += [[p_type] * int(n)]
+            particle_type += [[density.particle_type] * int(n)]
             m += [np.ones(int(n)) * density.Mtot / n]
 
         return cls(
@@ -230,6 +241,12 @@ class Halo:
     def scatter_params(self, value: sidm.Params) -> None:
         """Normalize and set the scatter parameters of the halo."""
         self._scatter_params = sidm.normalize_params(value)
+
+    def cleanup_particles(self) -> None:
+        if self.cleanup_nullish_particles:
+            self._particles.dropna(how='any', inplace=True)
+        if self.cleanup_particles_by_radius:
+            self._particles.drop(index=self._particles[self._particles['r'] > self.Rmax.value].index, inplace=True)
 
     #####################
     ##Physical properties
@@ -346,8 +363,8 @@ class Halo:
         data['step'] = self.current_step
         self.snapshots = table.vstack([self.snapshots, data])
         self.last_saved_time = self.time.copy()
-        if self.hard_save is not None:
-            self.save(self.hard_save)
+        if self.hard_save:
+            self.save()
 
     def is_save_round(self) -> bool:
         """Check if it's time to save the simulation state."""
@@ -397,6 +414,7 @@ class Halo:
             dt=self.dt,
             **self.dynamics_params,
         )
+        self.cleanup_particles()
         self.time += self.dt
 
     def evolve(
@@ -404,7 +422,7 @@ class Halo:
         n_steps: int | None = None,
         t: Quantity['time'] | None = None,
         until_t: Quantity['time'] | None = None,
-        disable_tqdm: bool = False,
+        tqdm_kwargs: dict[str, Any] = {},
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
 
@@ -412,7 +430,7 @@ class Halo:
             n_steps: Number of steps to evolve the simulation for. Takes precedence over `t`.
             t: Time to evolve the simulation for. Ignored if `n_steps` is specified, otherwise transformed into steps using `to_steps()`.
             until_t: Evolve the simulation until this time. Ignored if `n_steps` or `t` are specified, otherwise transformed into steps using `to_steps()`.
-            disable_tqdm: Whether to disable the `tqdm` progress bar.
+            tqdm_kwargs: Additional keyword arguments to pass to `tqdm` (NOTE this is the custom submodule defined in this project at `tqdm.py`).
 
         Returns:
             None
@@ -426,8 +444,10 @@ class Halo:
                 n_steps = self.to_step(cast(Quantity, until_t - self.time))
             else:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
-        for _ in tqdm(range(n_steps), disable=disable_tqdm):
+        for _ in tqdm(range(n_steps), start_time=self.time, dt=self.dt, **tqdm_kwargs):
             self.step()
+        if self.hard_save:
+            self.save()
 
     #####################
     ##Save/Load
@@ -449,10 +469,14 @@ class Halo:
             'last_saved_time',
             'scatter_rounds',
             'hard_save',
+            'save_path',
         ]
 
-    def save(self, path: str | Path = Path('halo_state')) -> None:
-        """Save the simulation state to a directory."""
+    def save(self, path: str | Path | None = None) -> None:
+        """Save the simulation state to a directory. If `path` is None, attempts to use the internal save path."""
+        if path is None:
+            path = self.save_path
+        assert path is not None, 'Save path must be provided'
         path = Path(path)
         path.mkdir(exist_ok=True)
         payload = {key: getattr(self, key) for key in self.payload_keys()}
@@ -1264,6 +1288,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: Title for the plot.
+            label: Label for the plot (legend).
             time_units: Units for the x-axis.
             y_units: Units for the y-axis.
             length_units: Units for the length.
@@ -1294,6 +1319,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_unit: UnitLike = 'Gyr',
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Cumulative number of scattering events',
+        label: str | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the cumulative number of scattering events over time.
@@ -1302,6 +1328,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_unit: Units for the x-axis.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
+            label: Label for the plot (legend).
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -1310,7 +1337,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         scatters = np.array([len(x) for x in self.scatter_track])
         x = (np.arange(len(scatters)) * self.dt).to(time_unit)
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, **kwargs)
-        sns.lineplot(x=x, y=scatters.cumsum(), ax=ax)
+        sns.lineplot(x=x, y=scatters.cumsum(), ax=ax, label=label)
+        if label is not None:
+            ax.legend()
         return fig, ax
 
     def plot_binned_scattering_amount_over_time(
@@ -1320,6 +1349,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Number of scattering events',
         title: str | None = 'Number of scattering events over time per {time}',
+        label: str | None = None,
         time_format: str | None = None,
         title_time_unit: str | None = 'Myr',
         **kwargs: Any,
@@ -1330,6 +1360,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_unit: Units for the x-axis.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
+            label: Label for the plot (legend).
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -1344,7 +1375,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             title = title.format(time=time_binning.to(title_time_unit).to_string(format='latex', formatter=time_format))
 
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
-        sns.lineplot(x=x, y=scatters, ax=ax)
+        sns.lineplot(x=x, y=scatters, ax=ax, label=label)
+        if label is not None:
+            ax.legend()
         return fig, ax
 
     def plot_densities_rho(self, markers_on_first_only: bool = False, **kwargs: Any) -> tuple[Figure, Axes]:
