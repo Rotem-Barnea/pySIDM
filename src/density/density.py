@@ -10,7 +10,7 @@ from astropy import constants
 from astropy.units import Quantity, Unit, def_unit
 from astropy.units.typing import UnitLike
 from .. import utils, run_units, plot
-from ..types import FloatOrArray
+from ..types import FloatOrArray, ParticleType
 
 
 class Density:
@@ -20,13 +20,15 @@ class Density:
         self,
         Rmin: Quantity['length'] = Quantity(1e-4, 'kpc'),
         Rmax: Quantity['length'] | None = None,
-        Rs: Quantity['length'] = Quantity(1, 'kpc'),
-        Rvir: Quantity['length'] = Quantity(1, 'kpc'),
+        Rs: Quantity['length'] | None = None,
+        c: Quantity['length'] | None = None,
+        Rvir: Quantity['length'] | None = None,
         Mtot: Quantity['mass'] = Quantity(1, 'Msun'),
         space_steps: float | int = 1e3,
         h: Quantity['length'] = Quantity(1e-5, 'kpc'),
         initialize_grids: list[str] = [],
         label: str = '',
+        particle_type: ParticleType = 'dm',
     ) -> None:
         """General mass distribution profile.
 
@@ -34,6 +36,7 @@ class Density:
             Rmin: Minimum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
             Rmax: Maximum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
             Rs: Scale radius of the distribution profile.
+            c: Concentration parameter of the distribution profile (such that Rvir = c * Rs).
             Rvir: Virial radius of the distribution profile.
             Mtot: Total mass of the distribution profile.
             space_steps: Number of space steps for the `internal logarithmic grid`.
@@ -44,13 +47,29 @@ class Density:
         Returns:
             General mass distribution object.
         """
-        self.space_steps: int = int(space_steps)
-        self.Mtot: Quantity['mass'] = Mtot.to(run_units.mass)
-        self.title = 'Density'
-        self.label: str = label
-        self.h: Quantity['length'] = h.to(run_units.length)
+
+        assert sum([Rs is not None, Rvir is not None, c is not None]) == 2, 'Exactly two of Rs, Rvir, and c must be specified'
+        if Rs is not None and Rvir is not None:
+            c = (Rvir / Rs).to('')
+        elif Rs is not None and c is not None:
+            Rvir = Quantity(c * Rs.to(run_units.length))
+        elif Rvir is not None and c is not None:
+            Rs = Quantity(Rvir.to(run_units.length) / c)
+
+        assert Rs is not None, 'Failed to evaluate Rs'
+        assert Rvir is not None, 'Failed to evaluate Rvir'
+        assert c is not None, 'Failed to evaluate c'
+
         self.Rs: Quantity['length'] = Rs.to(run_units.length)
         self.Rvir: Quantity['length'] = Rvir.to(run_units.length)
+        self.c: float = c
+
+        self.space_steps: int = int(space_steps)
+        self.Mtot: Quantity['mass'] = Mtot.to(run_units.mass)
+        self.title = 'General'
+        self.particle_type: ParticleType = particle_type
+        self._label: str = label
+        self.h: Quantity['length'] = h.to(run_units.length)
         self.Rmin: Quantity['length'] = Rmin.to(run_units.length)
         self.Rmax: Quantity['length'] = (Rmax or 85 * self.Rs).to(run_units.length)
         self.rho_s: Quantity['mass density'] = self.calculate_rho_scale()
@@ -59,11 +78,18 @@ class Density:
             getattr(self, grid)
 
     def __repr__(self):
-        return f"""General mass density function
+        return f"""{self.title} density function
+  - particle_type = {self.particle_type}
+  - Rs = {self.Rs:.4f}
+  - c = {self.c:.1f}
+  - Rvir = {self.Rvir:.4f}
+  - Mtot = {self.Mtot:.3e}
+  - rho_s = {self.rho_s:.4f}
+  - Tdyn = {(1 * self.Tdyn).to(run_units.time):.4f}
+
   - Rmin = {self.Rmin:.4f}
   - Rmax = {self.Rmax:.4f}
-  - space_steps = {self.space_steps:.0e}
-  - Mtot = {self.Mtot:.3e}"""
+  - space_steps = {self.space_steps:.0e}"""
 
     def __call__(self, r: Quantity['length']) -> Quantity['mass density']:
         """Calculate `rho(r)`"""
@@ -72,6 +98,20 @@ class Density:
     def to_scale(self, x: Quantity['length']) -> Quantity['dimensionless']:
         """Scale the distance, i.e. `x/Rs`"""
         return x.to(self.Rs.unit) / self.Rs
+
+    @property
+    def label(self) -> str:
+        """Return the label of the profile."""
+        if self._label == '':
+            if self.particle_type == 'dm':
+                return 'DM'
+            elif self.particle_type == 'baryon':
+                return 'Baryonic matter'
+        return self._label
+
+    @label.setter
+    def label(self, label: str) -> None:
+        self._label = label
 
     @property
     def Tdyn(self) -> Unit:
