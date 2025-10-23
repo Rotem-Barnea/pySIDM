@@ -6,7 +6,7 @@ from astropy import table
 from astropy.units import Quantity, Unit
 from astropy.units.typing import UnitLike
 from matplotlib import pyplot as plt
-from matplotlib.colors import LogNorm, Normalize
+from matplotlib import colors
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
 import matplotlib.ticker as mtick
@@ -218,7 +218,7 @@ def plot_2d(
         cbar_label: Label for the colorbar.
         cbar_label_autosuffix: Add a prefix and suffix based on the `row_normalization` selected.
         grid_row_normalization: Normalization applied to the grid row values, used for the cbar label prefix and suffix.
-        log_scale: Whether to use a log scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `LogNorm()`.
+        log_scale: Whether to use a log scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `colors.LogNorm()`.
         hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`.
         vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`.
         fig: Figure to plot on.
@@ -255,9 +255,9 @@ def plot_2d(
     cbar_units = Unit(str(grid.unit))
 
     if log_scale:
-        kwargs.update(norm=LogNorm())
+        kwargs.update(norm=colors.LogNorm())
     elif percentile_clip_scale is not None:
-        kwargs.update(norm=Normalize(*np.nanpercentile(grid.value, percentile_clip_scale)))
+        kwargs.update(norm=colors.Normalize(*np.nanpercentile(grid.value, percentile_clip_scale)))
 
     if transparent_value is not None:
         grid[grid.value == transparent_value] = np.nan
@@ -324,8 +324,8 @@ def plot_phase_space(
     """Plot the phase space distribution. Wrapper for `plot_2d()` to provide convenient defaults and variable names (i.e. `r` and `v`)."""
     return plot_2d(
         grid,
-        xlabel=utils.add_label_unit('Radius', length_units),
-        ylabel=utils.add_label_unit('Velocity', velocity_units),
+        xlabel='Radius',
+        ylabel='Velocity',
         x_units=length_units,
         y_units=velocity_units,
         **utils.drop_None(x_range=r_range, y_range=v_range),
@@ -489,3 +489,36 @@ def aggregate_2d_data(
 
     extent = (radius_bins.min(), radius_bins.max(), Quantity(sub['time'].min(), data_time_units), Quantity(sub['time'].max(), data_time_units))
     return cast(Quantity, grid_quantity), extent
+
+
+def plot_cumulative_scattering_amount_over_time(
+    cumulative_scatters: pd.Series | NDArray[np.float64],
+    time: pd.Series | NDArray[np.float64] | Quantity['time'],
+    time_unit: UnitLike = 'Gyr',
+    xlabel: str | None = 'Time',
+    ylabel: str | None = 'Cumulative number of scattering events',
+    label: str | None = None,
+    data_time_units: UnitLike = 'Myr',
+    **kwargs: Any,
+) -> tuple[Figure, Axes]:
+    """Plot the cumulative number of scattering events over time.
+
+    Parameters:
+        cumulative_scatters: Cumulative number of scattering events.
+        time_unit: Units for the x-axis.
+        xlabel: Label for the x-axis.
+        ylabel: Label for the y-axis.
+        label: Label for the plot (legend).
+        data_time_units: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        kwargs: Additional keyword arguments to pass to the plot function (`setup_plot()`).
+
+    Returns:
+        fig, ax.
+    """
+    if not isinstance(time, Quantity):
+        time = Quantity(time, data_time_units)
+    fig, ax = setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, **kwargs)
+    sns.lineplot(x=time.to(time_unit).value, y=cumulative_scatters, ax=ax, label=label)
+    if label is not None:
+        ax.legend()
+    return fig, ax
