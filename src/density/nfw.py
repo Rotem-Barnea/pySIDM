@@ -4,39 +4,14 @@ from typing import Any
 from astropy.units import Quantity
 from .density import Density
 from ..types import FloatOrArray
-from .. import run_units
 
 
 class NFW(Density):
     """NFW density profile."""
 
-    def __init__(self, Rs: Quantity['length'], c: float, **kwargs: Any) -> None:
-        """NFW density profile.
-
-        Parameters:
-            Rs: Scale radius of the NFW profile.
-            c: Concentration of the NFW profile.
-            kwargs: Additional keyword arguments passed to the Density parent class.
-
-        Returns:
-            NFW distribution object.
-        """
-        super().__init__(Rs=Rs, Rvir=c * Rs, **kwargs)
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(**kwargs)
         self.title = 'NFW'
-        self.c = c
-
-    def __repr__(self):
-        return f"""NFW density
-  - Rs = {self.Rs:.4f}
-  - c = {self.c:.1f}
-  - Mtot = {self.Mtot:.3e}
-  - Rvir = {self.Rvir:.4f}
-  - rho_s = {self.rho_s:.4f}
-  - Tdyn = {(1 * self.Tdyn).to(run_units.time):.4f}
-
-  - Rmin = {self.Rmin:.4f}
-  - Rmax = {self.Rmax:.4f}
-  - space_steps = {self.space_steps:.0e}"""
 
     @staticmethod
     @njit
