@@ -771,6 +771,23 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         velocity_units: UnitLike = 'km/second',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
+        """Plot the phase space distribution of the data.
+
+        Parameters:
+            data: The data to plot.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
+            radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
+            velocity_bins: The bins for the velocity axis. Also used to define the velocity range to consider.
+            cmap: The colormap to use for the plot.
+            transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
+            length_units: Units to use for the radius axis.
+            velocity_units: Units to use for the velocity axis.
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
+
+        Returns:
+            fig, ax.
+        """
+
         if filter_particle_type is not None:
             data = cast(table.QTable, data[data['particle_type'] == filter_particle_type]).copy()
         grid, extent = plot.aggregate_phase_space_data(data=data, radius_bins=radius_bins, velocity_bins=velocity_bins)
@@ -893,7 +910,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
-            kwargs: Additional keyword arguments to pass to the plot function (`utils.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
 
         Returns:
             fig, ax.
@@ -956,7 +973,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             cbar_label: Label for the colorbar.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
             cmap: The colormap to use for the plot.
-            kwargs: Additional keyword arguments to pass to the plot function (`utils.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
 
         Returns:
             fig, ax.
