@@ -1,4 +1,5 @@
 from numba import njit
+import numpy as np
 from typing import Any
 from ..types import FloatOrArray
 from .distribution import Distribution
@@ -14,4 +15,7 @@ class Hernquist(Distribution):
     @staticmethod
     @njit
     def calculate_rho(r: FloatOrArray, rho_s: float = 1, Rs: float = 1, Rvir: float = 1) -> FloatOrArray:
-        return rho_s / ((r / Rs) * (1 + (r / Rs)) ** 3) / (1 + (r / Rvir) ** 10)
+        rho = rho_s / ((r / Rs) * (1 + (r / Rs)) ** 3) / np.exp((r / Rvir) ** 2)
+        if isinstance(r, float):
+            return rho[0]
+        return rho

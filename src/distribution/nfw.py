@@ -16,7 +16,10 @@ class NFW(Distribution):
     @staticmethod
     @njit
     def calculate_rho(r: FloatOrArray, rho_s: float = 1, Rs: float = 1, Rvir: float = 1) -> FloatOrArray:
-        return rho_s / ((r / Rs) * (1 + (r / Rs)) ** 2) / (1 + (r / Rvir) ** 10)
+        rho = rho_s / ((r / Rs) * (1 + (r / Rs)) ** 2) / np.exp((r / Rvir) ** 2)
+        if isinstance(r, float):
+            return rho[0]
+        return rho
 
     def calculate_theoretical_M(self, r: Quantity['length']) -> Quantity['mass']:
         x = self.to_scale(r)

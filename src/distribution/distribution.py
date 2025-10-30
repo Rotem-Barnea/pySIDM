@@ -23,7 +23,7 @@ class Distribution:
         Rs: Quantity['length'] | None = None,
         c: Quantity['length'] | None = None,
         Rvir: Quantity['length'] | None = None,
-        Mtot: Quantity['mass'] = Quantity(1, 'Msun'),
+        Mtot: Quantity['mass'] | None = None,
         rho_s: Quantity['mass density'] | None = None,
         space_steps: float | int = 1e3,
         h: Quantity['length'] = Quantity(1e-5, 'kpc'),
@@ -39,8 +39,8 @@ class Distribution:
             Rs: Scale radius of the distribution profile.
             c: Concentration parameter of the distribution profile (such that Rvir = c * Rs).
             Rvir: Virial radius of the distribution profile.
-            rho_s: Scale density of the distribution profile. If `None`, calculated from the total mass and distribution function. If provided, no attempts are made to reconcile with the rest of the parameters.
-            Mtot: Total mass of the distribution profile.
+            rho_s: Scale density of the distribution profile. Either `Mtot` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
+            Mtot: Total mass of the distribution profile. Either `Mtot` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
             space_steps: Number of space steps for the `internal logarithmic grid`.
             h: Radius step size for numerical differentiation.
             initialize_grid: Grids to initialize at startup, otherwise they will only be calculated at runtime as needed.
@@ -61,20 +61,28 @@ class Distribution:
         assert Rs is not None, 'Failed to evaluate Rs'
         assert Rvir is not None, 'Failed to evaluate Rvir'
         assert c is not None, 'Failed to evaluate c'
+        assert Mtot is not None or rho_s is not None, 'Either Mtot or rho_s must be specified'
 
         self.Rs: Quantity['length'] = Rs.to(run_units.length)
         self.Rvir: Quantity['length'] = Rvir.to(run_units.length)
         self.c: float = c
 
         self.space_steps: int = int(space_steps)
-        self.Mtot: Quantity['mass'] = Mtot.to(run_units.mass)
         self.title = 'General'
         self.particle_type: ParticleType = particle_type
         self._label: str = label
         self.h: Quantity['length'] = h.to(run_units.length)
         self.Rmin: Quantity['length'] = Rmin.to(run_units.length)
         self.Rmax: Quantity['length'] = (Rmax if Rmax is not None else 85 * self.Rs).to(run_units.length)
-        self.rho_s: Quantity['mass density'] = self.calculate_rho_scale() if rho_s is None else rho_s.to(run_units.density)
+        if Mtot is not None:
+            self.Mtot: Quantity['mass'] = Mtot.to(run_units.mass)
+        if rho_s is not None:
+            self.rho_s: Quantity['mass density'] = rho_s.to(run_units.density)
+        else:
+            self.rho_s = self.calculate_rho_scale()
+        if Mtot is None:
+            self.Mtot = self.calculate_M_tot()
+
         self.memoization = {}
         for grid in initialize_grids:
             getattr(self, grid)
@@ -235,6 +243,10 @@ class Distribution:
         if 'M_grid' not in self.memoization:
             self.memoization['M_grid'] = self.M(self.geomspace_grid)
         return self.memoization['M_grid']
+
+    def calculate_M_tot(self) -> Quantity['mass']:
+        """Calculate the total mass, i.e. the integral over `[0, Rmax]`."""
+        return cast(Quantity['mass'], self.spherical_rho_integrate(self.Rmax, True)[0])
 
     def calculate_rho_scale(self) -> Quantity['mass density']:
         """Calculate the density scale to set the integral over `[0, Rmax]` to equal `Mtot`."""
