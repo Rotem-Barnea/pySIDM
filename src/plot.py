@@ -1,3 +1,5 @@
+from pathlib import Path
+from numba.misc.coverage_support import Callable
 import numpy as np
 import pandas as pd
 import scipy
@@ -9,11 +11,51 @@ from matplotlib import pyplot as plt
 from matplotlib import colors
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+from matplotlib.transforms import BboxTransformTo
+from PIL import Image
 import matplotlib.ticker as mtick
-from . import run_units
+from . import utils, run_units
+from .tqdm import tqdm
 from numpy.typing import NDArray
 from typing import Any, Literal, cast
-from . import utils
+
+
+def pretty_ax_text(
+    x: float | None = None,
+    y: float | None = None,
+    transform: BboxTransformTo | str | None = None,
+    verticalalignment: str | None = 'top',
+    bbox_boxstyle: str | None = 'round',
+    bbox_facecolor: str | None = 'wheat',
+    bbox_alpha: float | None = 0.5,
+    bbox: dict[str, Any] = {},
+    **kwargs: Any,
+):
+    """Pretty text keyword arguments.
+
+    Parameters:
+        ax: Axes to plot on.
+        x: x-coordinate of the text.
+        y: y-coordinate of the text.
+        verticalalignment: Vertical alignment of the text.
+        bbox_boxstyle: Box style of the text. Gets added to `bbox` with lower priority.
+        bbox_facecolor: Face color of the text. Gets added to `bbox` with lower priority.
+        bbox_alpha: Alpha of the text. Gets added to `bbox` with lower priority.
+        bbox: Additional bounding box properties. Supercedes all other `bbox_` arguments.
+        **kwargs: Additional keyword arguments.
+
+    Returns:
+        Keyword arguments for `ax.text`.
+    """
+    return {
+        'x': x,
+        'y': y,
+        'transform': transform,
+        'verticalalignment': verticalalignment,
+        'bbox': {**utils.drop_None(boxstyle=bbox_boxstyle, facecolor=bbox_facecolor, alpha=bbox_alpha), **bbox},
+        **kwargs,
+    }
 
 
 def setup_plot(
@@ -190,6 +232,7 @@ def plot_2d(
     percentile_clip_scale: tuple[float, float] | None = None,
     hlines: list[dict[str, Any]] = [],
     vlines: list[dict[str, Any]] = [],
+    texts: list[dict[str, Any]] = [],
     fig: Figure | None = None,
     ax: Axes | None = None,
     setup_kwargs: dict[str, Any] = {},
@@ -219,8 +262,9 @@ def plot_2d(
         cbar_label_autosuffix: Add a prefix and suffix based on the `row_normalization` selected.
         grid_row_normalization: Normalization applied to the grid row values, used for the cbar label prefix and suffix.
         log_scale: Whether to use a log scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `colors.LogNorm()`.
-        hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`.
-        vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`.
+        hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
+        vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
+        texts: List of texts to plot. Each element contains the keywords arguments passed to `ax.text()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         fig: Figure to plot on.
         ax: Axes to plot on.
         setup_kwargs: Additional keyword arguments to pass to `setup_plot()`.
@@ -306,9 +350,17 @@ def plot_2d(
             ax.yaxis.set_major_formatter(mtick.FormatStrFormatter(y_tick_format))
 
     for line in hlines:
+        if line.get('transform', None) == 'transAxes':
+            line['transform'] = ax.transAxes
         ax.axhline(**line)
     for line in vlines:
+        if line.get('transform', None) == 'transAxes':
+            line['transform'] = ax.transAxes
         ax.axvline(**line)
+    for text in texts:
+        if text.get('transform', None) == 'transAxes':
+            text['transform'] = ax.transAxes
+        ax.text(**text)
 
     return fig, ax
 
@@ -394,7 +446,7 @@ def plot_density(
     return fig, ax
 
 
-def aggregate_2d_data(
+def aggregate_evolution_data(
     data: table.QTable | pd.DataFrame,
     radius_bins: Quantity['length'] = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
     time_range: Quantity['time'] | None = None,
@@ -409,7 +461,7 @@ def aggregate_2d_data(
     data_mass_units: UnitLike = 'Msun',
     output_grid_units: UnitLike | None = None,
 ) -> tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']]]:
-    """Prepares data to be plotted in a 2d heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to `plot_2d()`.
+    """Prepares data to be plotted in a 2d evolution heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to `plot_2d()`.
 
     Parameters:
         data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns `r` and `time`. If `output_type='temperature'` or `'specific heat flux'` must also contain the columns `vx`, `vy`, and `vr`.
@@ -491,6 +543,51 @@ def aggregate_2d_data(
     return cast(Quantity, grid_quantity), extent
 
 
+def aggregate_phase_space_data(
+    data: table.QTable | pd.DataFrame,
+    radius_bins: Quantity['length'] = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
+    velocity_bins: Quantity['velocity'] = Quantity(np.linspace(0, 100, 200), 'km/second'),
+    row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
+    data_length_units: UnitLike = 'kpc',
+    data_velocity_units: UnitLike = 'km/second',
+) -> tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['velocity'], Quantity['velocity']]]:
+    """Prepares data to be plotted in a 2d phase space heatmap plot, with radius x-axis and velocity y-axis. Intended to be passed on to `plot_2d()`.
+
+    Parameters:
+        data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns `r` and `v_norm`.
+        radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
+        velocity_bins: The bins for the velocity axis. Also used to define the velocity range to consider.
+        row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
+        data_length_units: The units for the radius in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_velocity_units: The units for the velocity in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+
+    Returns:
+        data, extent.
+    """
+    keep_columns = ['r', 'v_norm']
+    if isinstance(data, pd.DataFrame):
+        sub = table.QTable(data[keep_columns], units=[data_length_units, data_velocity_units])
+    else:
+        sub = data[keep_columns]
+        data_velocity_units = data['v_norm'].unit
+        data_length_units = data['r'].unit
+
+    radius_bins = radius_bins.to(data_length_units)
+    velocity_bins = velocity_bins.to(data_velocity_units)
+    grid = np.histogram2d(cast(NDArray[np.float64], sub['r']), cast(NDArray[np.float64], sub['v_norm']), (radius_bins, velocity_bins))[0].T
+
+    if row_normalization == 'max':
+        grid /= grid.max(1, keepdims=True)
+    elif type(row_normalization) is float:
+        grid /= np.quantile(grid, row_normalization, axis=1, keepdims=True)
+    elif row_normalization == 'sum':
+        grid /= grid.sum(1, keepdims=True)
+    elif row_normalization == 'integral':
+        grid /= cast(NDArray[np.float64], np.expand_dims(np.trapezoid(y=grid, x=np.matlib.repmat(radius_bins[:-1], len(grid), 1), axis=1), 1))
+
+    return Quantity(grid, ''), (radius_bins.min(), radius_bins.max(), velocity_bins.min(), velocity_bins.max())
+
+
 def plot_cumulative_scattering_amount_over_time(
     cumulative_scatters: pd.Series | NDArray[np.float64],
     time: pd.Series | NDArray[np.float64] | Quantity['time'],
@@ -522,3 +619,38 @@ def plot_cumulative_scattering_amount_over_time(
     if label is not None:
         ax.legend()
     return fig, ax
+
+
+def to_images(
+    data: table.QTable,
+    plot_fn: Callable[[Any], tuple[Figure, Axes]],
+    tight_layout: dict[str, Any] | None = {'pad': 1.5},
+) -> list[Image.Image]:
+    images = []
+    unique_times = np.unique(cast(NDArray[np.float64], data['time']))
+    for group in tqdm(data.group_by('time').groups, start_time=unique_times.min(), dt=unique_times.diff(1).mean()):
+        fig, _ = plot_fn(group)
+        if tight_layout:
+            fig.tight_layout(**tight_layout)
+        canvas = FigureCanvasAgg(fig)
+        canvas.draw()
+        raw_data, size = canvas.print_to_buffer()
+        images += [Image.frombytes('RGBA', size=size, data=raw_data).convert('RGB')]
+        plt.close()
+    return images
+
+
+def save_images(images: list[Image.Image], save_path: str | Path, duration: int = 200, loop: int = 0, **kwargs: Any) -> None:
+    """Save a list of images as a GIF.
+
+    Parameters:
+        images: List of images to save.
+        save_path: Path to save the GIF.
+        duration: Duration of each frame in milliseconds.
+        loop: Number of times to loop the GIF. 0 means infinite loop.
+        kwargs: Additional keyword arguments to pass to the save function.
+
+    Returns:
+        None.
+    """
+    images[0].save(save_path, save_all=True, append_images=images[1:], duration=duration, loop=loop, **kwargs)

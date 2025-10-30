@@ -6,12 +6,12 @@ import pickle
 import scipy
 from matplotlib.figure import Figure
 from matplotlib.axes import Axes
+from PIL import Image
 from numpy.typing import NDArray
 from typing import Any, Self, cast, Literal
 from astropy import table
 from astropy.units import Quantity, Unit, def_unit
 from astropy.units.typing import UnitLike
-from .spatial_approximation import Lattice
 from .density.density import Density
 from .background import Mass_Distribution
 from . import utils, run_units, physics, plot
@@ -711,57 +711,79 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """
         fig, ax = self.plot_distribution(key='r', data=data, cumulative=cumulative, x_units=x_units, x_range=x_range, label=hist_label, **kwargs)
         if add_density is not None:
-            params = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
+            params: dict[str, Any] = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
             return self.densities[add_density].plot_radius_distribution(
-                cumulative=cumulative, length_units=x_units, fig=fig, ax=ax, label=density_label, **params
+                cumulative=cumulative,
+                length_units=x_units,
+                fig=fig,
+                ax=ax,
+                label=density_label,
+                **params,
             )
         return fig, ax
+
+    def plot_phase_space_evolution(
+        self,
+        include_start: bool = True,
+        include_now: bool = True,
+        save_path: str | Path | None = None,
+        frame_plot_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> list[Image.Image]:
+        """Plot the phase space evolution of the halo.
+
+        Parameters:
+            include_start: Whether to include the initial state.
+            include_now: Whether to include the current state.
+            save_path: Path to save the images. If `None` images are not saved.
+            frame_plot_kwargs: Additional keyword arguments for the frame plot (`plot_phase_space()`).
+            save_kwargs: Additional keyword arguments for saving the images (`plot.save_images()`).
+            **kwargs: Additional keyword arguments for transforming the frames to images (`plot.to_images()`).
+
+        Returns:
+            The list of frames.
+        """
+        data = self.get_particle_states(now=include_now, initial=include_start)
+
+        images = plot.to_images(
+            data=data,
+            plot_fn=lambda x: self.plot_phase_space(
+                data=x,
+                texts=[{'s': f'{x["time"][0].to("Gyr"):.2f}', **plot.pretty_ax_text(x=0.05, y=0.95, transform='transAxes')}],
+                **frame_plot_kwargs,
+            ),
+            **kwargs,
+        )
+        if save_path is not None:
+            plot.save_images(images=images, save_path=save_path, **save_kwargs)
+        return images
 
     def plot_phase_space(
         self,
         data: table.QTable,
         filter_particle_type: ParticleType | None = None,
-        r_range: Quantity['length'] = Quantity(np.linspace(1e-2, 50, 200), 'kpc'),
-        v_range: Quantity['velocity'] = Quantity(np.linspace(0, 100, 200), 'km/second'),
+        radius_bins: Quantity['length'] = Quantity(np.linspace(1e-2, 50, 200), 'kpc'),
+        velocity_bins: Quantity['velocity'] = Quantity(np.linspace(0, 100, 200), 'km/second'),
         cmap: str = 'jet',
         transparent_value: float | None = 0,
         length_units: UnitLike = 'kpc',
         velocity_units: UnitLike = 'km/second',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        """Plot the phase space distribution of the particles.
-
-        Parameters:
-            data: The data to plot.
-            filter_particle_type: Whether to filter to only plot the specified particle type.
-            r_range: Range of radial distances to plot.
-            v_range: Range of velocities to plot.
-            cmap: The colormap to use for the plot.
-            transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
-            length_units: Units to use for the length axis.
-            velocity_units: Units to use for the velocity axis. Set to default to `km/second` and not `kpc/Myr`.
-            kwargs: Additional keyword arguments to pass to `plot.plot_phase_space()`.
-
-        Returns:
-            fig, ax.
-        """
-        r_lattice = Lattice(len(r_range), r_range.min().to(length_units).value, r_range.max().to(length_units).value, log=False)
-        v_lattice = Lattice(len(v_range), v_range.min().to(velocity_units).value, v_range.max().to(velocity_units).value, log=False)
-        grid = np.zeros((len(v_range), len(r_range)))
-
         if filter_particle_type is not None:
-            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
-        r = data['r'].to(length_units).value
-        v_norm = data['v_norm'].to(velocity_units).value
-
-        mask = r_lattice.in_lattice(r) * v_lattice.in_lattice(v_norm)
-        data_table = pd.DataFrame({'r': r_lattice(r[mask]), 'v_norm': v_lattice(v_norm[mask])})
-        data_table['count'] = 1
-        data_table = data_table.groupby(['r', 'v_norm']).agg('count').reset_index()
-        grid[data_table['v_norm'].to_numpy(), data_table['r'].to_numpy()] = data_table['count']
-
-        return plot.plot_phase_space(
-            Quantity(grid), r_range, v_range, length_units, velocity_units, cmap=cmap, transparent_value=transparent_value, **kwargs
+            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type]).copy()
+        grid, extent = plot.aggregate_phase_space_data(data=data, radius_bins=radius_bins, velocity_bins=velocity_bins)
+        return plot.plot_2d(
+            grid=grid,
+            extent=extent,
+            xlabel='Radius',
+            ylabel='Velocity',
+            x_units=length_units,
+            y_units=velocity_units,
+            cmap=cmap,
+            transparent_value=transparent_value,
+            **kwargs,
         )
 
     def plot_inner_core_density(
@@ -881,7 +903,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
-        grid, extent = plot.aggregate_2d_data(
+        grid, extent = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
             time_range=time_range,
@@ -943,7 +965,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
-        grid, extent = plot.aggregate_2d_data(
+        grid, extent = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
             time_range=time_range,
@@ -1012,7 +1034,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
-        grid, extent = plot.aggregate_2d_data(
+        grid, extent = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
             time_range=time_range,
