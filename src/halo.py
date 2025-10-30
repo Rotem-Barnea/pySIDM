@@ -1364,7 +1364,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_unit: UnitLike = 'Gyr',
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Cumulative number of scattering events',
+        title: str | None = 'Cumulative number of scattering events',
         label: str | None = None,
+        ax_set: dict[str, Any] = {'yscale': 'log'},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the cumulative number of scattering events over time.
@@ -1373,16 +1375,50 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_unit: Units for the x-axis.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
+            title: The title of the plot.
             label: Label for the plot (legend).
+            ax_set: Additional keyword arguments to pass to `Axes.set()`.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
             fig, ax.
         """
-        scatters = np.array([len(x) for x in self.scatter_track])
+        scatters = np.array([len(x) for x in self.scatter_track]).cumsum()
         x = (np.arange(len(scatters)) * self.dt).to(time_unit)
-        fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, **kwargs)
-        sns.lineplot(x=x, y=scatters.cumsum(), ax=ax, label=label)
+        fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, ax_set=ax_set, **kwargs)
+        sns.lineplot(x=x, y=scatters, ax=ax, label=label)
+        if label is not None:
+            ax.legend()
+        return fig, ax
+
+    def plot_cumulative_scattering_amount_per_particle_over_time(
+        self,
+        time_unit: UnitLike = 'Gyr',
+        xlabel: str | None = 'Time',
+        ylabel: str | None = 'Cumulative number of scattering events',
+        title: str | None = 'Mean cumulative number of scattering events per particle',
+        label: str | None = None,
+        per_dm_particle: bool = False,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the cumulative number of scattering events over time.
+
+        Parameters:
+            time_unit: Units for the x-axis.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            title: The title of the plot.
+            label: Label for the plot (legend).
+            per_dm_particle: If `True` plot the mean cumulative number of scattering events, i.e. devide by the number of dm particles.
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+
+        Returns:
+            fig, ax.
+        """
+        scatters = np.array([len(x) for x in self.scatter_track]).cumsum() / self.n_particles['dm']
+        x = (np.arange(len(scatters)) * self.dt).to(time_unit)
+        fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
+        sns.lineplot(x=x, y=scatters, ax=ax, label=label)
         if label is not None:
             ax.legend()
         return fig, ax

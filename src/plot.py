@@ -69,9 +69,14 @@ def setup_plot(
     title: str | None = None,
     xlabel: str | None = None,
     ylabel: str | None = None,
+    hlines: list[dict[str, Any]] = [],
+    vlines: list[dict[str, Any]] = [],
+    texts: list[dict[str, Any]] = [],
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Setup a plot with optional grid, minor ticks, and axis settings.
+
+    If both `fig` and `ax` are provided, they are returned as is (early quit).
 
     Parameters:
         fig: Figure to plot on. If `None` a new figure is created.
@@ -83,11 +88,16 @@ def setup_plot(
         title: The title of the plot.
         xlabel: The label of the x-axis.
         ylabel: The label of the y-axis.
+        hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
+        vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
+        texts: List of texts to plot. Each element contains the keywords arguments passed to `ax.text()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         kwargs: Additional keyword arguments to pass to `plt.subplots()`.
 
     Returns:
         fig, ax.
     """
+    if fig is not None and ax is not None:
+        return fig, ax
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize, **kwargs)
     assert fig is not None and ax is not None
@@ -104,6 +114,19 @@ def setup_plot(
         ax.set_xlabel(xlabel)
     if ylabel is not None:
         ax.set_ylabel(ylabel)
+    for line in hlines:
+        if line.get('transform', None) == 'transAxes':
+            line['transform'] = ax.transAxes
+        ax.axhline(**line)
+    for line in vlines:
+        if line.get('transform', None) == 'transAxes':
+            line['transform'] = ax.transAxes
+        ax.axvline(**line)
+    for text in texts:
+        if text.get('transform', None) == 'transAxes':
+            text['transform'] = ax.transAxes
+        ax.text(**text)
+
     return fig, ax
 
 
@@ -231,9 +254,9 @@ def plot_2d(
     grid_row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
     log_scale: bool = False,
     percentile_clip_scale: tuple[float, float] | None = None,
-    hlines: list[dict[str, Any]] = [],
-    vlines: list[dict[str, Any]] = [],
-    texts: list[dict[str, Any]] = [],
+    hlines: list[dict[str, Any]] = [],  # TODO - deprecate
+    vlines: list[dict[str, Any]] = [],  # TODO - deprecate
+    texts: list[dict[str, Any]] = [],  # TODO - deprecate
     fig: Figure | None = None,
     ax: Axes | None = None,
     setup_kwargs: dict[str, Any] = {},
@@ -283,8 +306,6 @@ def plot_2d(
         float(extent[2].to(y_units).value),
         float(extent[3].to(y_units).value),
     )
-
-    # extent_value = tuple(np.hstack([*extent[:2].to(x_units).value, *extent[2:].to(y_units).value]))
 
     fig, ax = setup_plot(
         fig=fig,
