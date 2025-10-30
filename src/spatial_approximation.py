@@ -3,7 +3,7 @@ from . import utils
 from numba import njit, prange
 from .types import FloatOrArray
 from numpy.typing import NDArray
-from .density.density import Density
+from .distribution.distribution import Distribution
 from typing import Any, cast, Self
 
 
@@ -35,9 +35,11 @@ class Lattice:
         self.lattice_spacing: float = np.abs(self.end_lattice - self.start_lattice) / self.n_posts
 
     @classmethod
-    def from_density(cls, density: Density, start: float = 1e-4, overide_start: bool = True, n_posts: int | float = int(1e4), **kwargs: Any) -> Self:
+    def from_distribution(
+        cls, distribution: Distribution, start: float = 1e-4, overide_start: bool = True, n_posts: int | float = int(1e4), **kwargs: Any
+    ) -> Self:
         """Construct a lattice to match the extent of a density object."""
-        return cls(start=density.Rmin.value if overide_start else start, end=density.Rmax.value, n_posts=n_posts, **kwargs)
+        return cls(start=distribution.Rmin.value if overide_start else start, end=distribution.Rmax.value, n_posts=n_posts, **kwargs)
 
     def __len__(self) -> int:
         """Return the number of posts in the lattice."""

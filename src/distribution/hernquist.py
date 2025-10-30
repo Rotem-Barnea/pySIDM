@@ -1,10 +1,10 @@
 from numba import njit
 from typing import Any
 from ..types import FloatOrArray
-from .density import Density
+from .distribution import Distribution
 
 
-class Hernquist(Density):
+class Hernquist(Distribution):
     """Hernquist density profile."""
 
     def __init__(self, **kwargs: Any) -> None:

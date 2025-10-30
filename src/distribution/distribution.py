@@ -13,7 +13,7 @@ from .. import utils, run_units, plot
 from ..types import FloatOrArray, ParticleType
 
 
-class Density:
+class Distribution:
     """General mass distribution profile."""
 
     def __init__(
@@ -419,12 +419,12 @@ class Density:
             return new_value
 
     @staticmethod
-    def merge_densities_grids(densities: list['Density'], grid_base_name: list[str] = ['Psi']):
+    def merge_distribution_grids(distributions: list['Distribution'], grid_base_name: list[str] = ['Psi']):
         for grid_name in grid_base_name:
             for suffix in ['', '_h', '_2h']:
-                grid = sum([getattr(density, f'{grid_name}_grid{suffix}') for density in densities])
-                for density in densities:
-                    density.memoization[f'{grid_name}_grid{suffix}'] = grid
+                grid = sum([getattr(density, f'{grid_name}_grid{suffix}') for density in distributions])
+                for distribution in distributions:
+                    distribution.memoization[f'{grid_name}_grid{suffix}'] = grid
 
     ## Roll initial setup
 

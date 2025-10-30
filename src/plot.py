@@ -48,14 +48,14 @@ def pretty_ax_text(
     Returns:
         Keyword arguments for `ax.text`.
     """
-    return {
-        'x': x,
-        'y': y,
-        'transform': transform,
-        'verticalalignment': verticalalignment,
-        'bbox': {**utils.drop_None(boxstyle=bbox_boxstyle, facecolor=bbox_facecolor, alpha=bbox_alpha), **bbox},
+    return utils.drop_None(
+        x=x,
+        y=y,
+        transform=transform,
+        verticalalignment=verticalalignment,
+        bbox={**utils.drop_None(boxstyle=bbox_boxstyle, facecolor=bbox_facecolor, alpha=bbox_alpha), **bbox},
         **kwargs,
-    }
+    )
 
 
 def setup_plot(

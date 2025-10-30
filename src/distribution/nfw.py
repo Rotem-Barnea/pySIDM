@@ -2,11 +2,11 @@ import numpy as np
 from numba import njit
 from typing import Any
 from astropy.units import Quantity
-from .density import Density
+from .distribution import Distribution
 from ..types import FloatOrArray
 
 
-class NFW(Density):
+class NFW(Distribution):
     """NFW density profile."""
 
     def __init__(self, **kwargs: Any) -> None:

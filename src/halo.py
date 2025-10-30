@@ -12,7 +12,7 @@ from typing import Any, Self, cast, Literal
 from astropy import table
 from astropy.units import Quantity, Unit, def_unit
 from astropy.units.typing import UnitLike
-from .density.density import Density
+from .distribution.distribution import Distribution
 from .background import Mass_Distribution
 from . import utils, run_units, physics, plot
 from .physics import sidm, leapfrog
@@ -32,7 +32,7 @@ class Halo:
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         Tdyn: Quantity['time'] | None = None,
         Phi0: Quantity['energy'] | None = None,
-        densities: list[Density] = [],
+        distributions: list[Distribution] = [],
         scatter_rounds: list[int] = [],
         scatter_track: list[NDArray[np.float64]] = [],
         time: Quantity['time'] = 0 * run_units.time,
@@ -58,7 +58,7 @@ class Halo:
             particle_type: Type of the halo particles. Should comply with ParticleType (i.e. `dm` or `baryon`).
             Tdyn: Dynamical time of the halo. If `None` calculates from the first density.
             Phi0: Potential at infinity of the halo. If `None` calculates from the first density.
-            densities: List of densities of the halo.
+            distributions: List of distributions of the halo.
             n_interactions: Number of interactions the halo had.
             scatter_rounds: Number of scatter rounds the halo had every time step.
             scatter_track: The interacting particles (particle index) at every time step.
@@ -83,13 +83,13 @@ class Halo:
         self._particles.sort_values('r', inplace=True)
         self.time: Quantity['time'] = time.to(run_units.time)
         self.dt: Quantity['time'] = dt.to(run_units.time)
-        self.densities: list[Density] = densities
+        self.distributions: list[Distribution] = distributions
         self.Tdyn: Quantity['time']
         if Tdyn is not None:
             self.Tdyn = Tdyn
-        elif len(self.densities) > 0:
-            self.Tdyn = self.densities[0].Tdyn
-        elif len(self.densities) == 0:
+        elif len(self.distributions) > 0:
+            self.Tdyn = self.distributions[0].Tdyn
+        elif len(self.distributions) == 0:
             self.Tdyn = Quantity(1, run_units.time)
         self.background: Mass_Distribution | None = background
         self.Phi0: Quantity['energy'] = Phi0 if Phi0 is not None else physics.utils.Phi(self.r, self.M, self.m)[-1]
@@ -110,11 +110,11 @@ class Halo:
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
 
     @classmethod
-    def setup(cls, densities: list[Density], n_particles: list[int | float], **kwargs: Any) -> Self:
-        """Initialize a Halo object from a given set of densities.
+    def setup(cls, distributions: list[Distribution], n_particles: list[int | float], **kwargs: Any) -> Self:
+        """Initialize a Halo object from a given set of distributions.
 
         Parameters:
-            densities: List of densities for each particle type.
+            distributions: List of distributions for each particle type.
             n_particles: List of number of particles for each particle type.
             kwargs: Additional keyword arguments, passed to the constructor.
 
@@ -122,21 +122,21 @@ class Halo:
             Halo object.
         """
         r, v, particle_type, m = [], [], [], []
-        Density.merge_densities_grids(densities)
-        for density, n in zip(densities, n_particles):
-            r_sub = density.roll_r(int(n)).to(run_units.length)
-            v_sub = density.roll_v_3d(r_sub).to(run_units.velocity)
+        Distribution.merge_distributions_grids(distributions)
+        for distribution, n in zip(distributions, n_particles):
+            r_sub = distribution.roll_r(int(n)).to(run_units.length)
+            v_sub = distribution.roll_v_3d(r_sub).to(run_units.velocity)
             r += [r_sub]
             v += [v_sub]
-            particle_type += [[density.particle_type] * int(n)]
-            m += [np.ones(int(n)) * density.Mtot / n]
+            particle_type += [[distribution.particle_type] * int(n)]
+            m += [np.ones(int(n)) * distribution.Mtot / n]
 
         return cls(
             r=cast(Quantity['length'], np.hstack(r)),
             v=cast(Quantity['length'], np.vstack(v)),
             m=cast(Quantity['length'], np.hstack(m)),
             particle_type=np.hstack(particle_type),
-            densities=densities,
+            distributions=distributions,
             **kwargs,
         )
 
@@ -459,7 +459,7 @@ class Halo:
         return [
             'time',
             'dt',
-            'densities',
+            'distributions',
             'save_every_n_steps',
             'save_every_time',
             'dynamics_params',
@@ -699,7 +699,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Parameters:
             data: The data to plot.
             cumulative: Whether to plot the cumulative distribution.
-            add_density: Density distribution to plot on top of the plot (index from the densities list). If `None` ignores.
+            add_density: Density distribution to plot on top of the plot (index from the distributions list). If `None` ignores.
             x_units: The units to plot the x-axis in.
             x_range: The range of the x-axis.
             hist_label: The label for the histogram (legend).
@@ -712,7 +712,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig, ax = self.plot_distribution(key='r', data=data, cumulative=cumulative, x_units=x_units, x_range=x_range, label=hist_label, **kwargs)
         if add_density is not None:
             params: dict[str, Any] = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
-            return self.densities[add_density].plot_radius_distribution(
+            return self.distributions[add_density].plot_radius_distribution(
                 cumulative=cumulative,
                 length_units=x_units,
                 fig=fig,
@@ -1402,8 +1402,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             ax.legend()
         return fig, ax
 
-    def plot_densities_rho(self, markers_on_first_only: bool = False, **kwargs: Any) -> tuple[Figure, Axes]:
-        """Plot the density profile (`rho`) of each of the provided densities in the halo.
+    def plot_distributions_rho(self, markers_on_first_only: bool = False, **kwargs: Any) -> tuple[Figure, Axes]:
+        """Plot the density profile (`rho`) of each of the provided distributions in the halo.
 
         Parameters:
             markers_on_first_only: If `True` only plot markers (`Rs` and `Rvir`) for the first density.
@@ -1413,14 +1413,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig, ax.
         """
         fig, ax = None, None
-        for i, density in enumerate(self.densities):
-            fig, ax = density.plot_rho(
-                label=f'{density.label} ({density.title})', fig=fig, ax=ax, add_markers=(i == 0 or not markers_on_first_only), **kwargs
+        for i, distribution in enumerate(self.distributions):
+            fig, ax = distribution.plot_rho(
+                label=f'{distribution.label} ({distribution.title})', fig=fig, ax=ax, add_markers=(i == 0 or not markers_on_first_only), **kwargs
             )
         assert fig is not None and ax is not None
         return fig, ax
 
-    def plot_densities_over_time(
+    def plot_distributions_over_time(
         self,
         times: Quantity['time'] = Quantity([0, 2, 10], 'Gyr'),
         labels: list[str] = ['start', 'max core', 'core collapse'],
