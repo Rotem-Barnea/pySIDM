@@ -19,6 +19,7 @@ from . import utils, run_units
 from .tqdm import tqdm
 from numpy.typing import NDArray
 from typing import Any, Literal, cast
+from collections.abc import Iterable
 
 
 def pretty_ax_text(
@@ -622,14 +623,25 @@ def plot_cumulative_scattering_amount_over_time(
 
 
 def to_images(
-    data: table.QTable,
+    iterator: Iterable[Any],
     plot_fn: Callable[[Any], tuple[Figure, Axes]],
     tight_layout: dict[str, Any] | None = {'pad': 1.5},
+    tqdm_kwargs: dict[str, Any] = {},
 ) -> list[Image.Image]:
+    """Applies a plotting function over an iterator and produce a set of PIL images.
+
+    Parameters:
+        iterator: An iterable object containing the data to be plotted.
+        plot_fn: A function that takes an element from the iterator and returns a tuple of `Figure` and `Axes`.
+        tight_layout: A dictionary of arguments to be passed to the `tight_layout` method of the `Figure` object.
+        tqdm_kwargs: Additional keyword arguments to be passed to the `tqdm` function.
+
+    Returns:
+        A list of PIL images.
+    """
     images = []
-    unique_times = np.unique(cast(NDArray[np.float64], data['time']))
-    for group in tqdm(data.group_by('time').groups, start_time=unique_times.min(), dt=unique_times.diff(1).mean()):
-        fig, _ = plot_fn(group)
+    for element in tqdm(iterator):
+        fig, _ = plot_fn(element)
         if tight_layout:
             fig.tight_layout(**tight_layout)
         canvas = FigureCanvasAgg(fig)
@@ -638,6 +650,21 @@ def to_images(
         images += [Image.frombytes('RGBA', size=size, data=raw_data).convert('RGB')]
         plt.close()
     return images
+
+
+def evolution_to_images(data: table.QTable, **kwargs: Any) -> list[Image.Image]:
+    """Convert a snapshot data table to a list of PIL images with frames for every saved time.
+
+    Parameters:
+        data: Table of evolution data.
+        kwargs: Additional keyword arguments to pass to the `to_images()` function.
+
+    Returns:
+        A list of PIL images.
+    """
+    unique_times = np.unique(cast(NDArray[np.float64], data['time']))
+    tqdm_kwargs = {'start_time': unique_times.min(), 'dt': unique_times.diff(1).mean()}
+    return to_images(iterator=data.group_by('time').groups, tqdm_kwargs=tqdm_kwargs, **kwargs)
 
 
 def save_images(images: list[Image.Image], save_path: str | Path, duration: int = 200, loop: int = 0, **kwargs: Any) -> None:

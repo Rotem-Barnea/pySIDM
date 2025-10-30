@@ -122,7 +122,7 @@ class Halo:
             Halo object.
         """
         r, v, particle_type, m = [], [], [], []
-        Distribution.merge_distributions_grids(distributions)
+        Distribution.merge_distribution_grids(distributions)
         for distribution, n in zip(distributions, n_particles):
             r_sub = distribution.roll_r(int(n)).to(run_units.length)
             v_sub = distribution.roll_v_3d(r_sub).to(run_units.velocity)
@@ -746,7 +746,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """
         data = self.get_particle_states(now=include_now, initial=include_start)
 
-        images = plot.to_images(
+        images = plot.evolution_to_images(
             data=data,
             plot_fn=lambda x: self.plot_phase_space(
                 data=x,
