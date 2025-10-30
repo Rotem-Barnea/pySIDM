@@ -24,6 +24,7 @@ class Density:
         c: Quantity['length'] | None = None,
         Rvir: Quantity['length'] | None = None,
         Mtot: Quantity['mass'] = Quantity(1, 'Msun'),
+        rho_s: Quantity['mass density'] | None = None,
         space_steps: float | int = 1e3,
         h: Quantity['length'] = Quantity(1e-5, 'kpc'),
         initialize_grids: list[str] = [],
@@ -38,6 +39,7 @@ class Density:
             Rs: Scale radius of the distribution profile.
             c: Concentration parameter of the distribution profile (such that Rvir = c * Rs).
             Rvir: Virial radius of the distribution profile.
+            rho_s: Scale density of the distribution profile. If `None`, calculated from the total mass and distribution function. If provided, no attempts are made to reconcile with the rest of the parameters.
             Mtot: Total mass of the distribution profile.
             space_steps: Number of space steps for the `internal logarithmic grid`.
             h: Radius step size for numerical differentiation.
@@ -71,8 +73,8 @@ class Density:
         self._label: str = label
         self.h: Quantity['length'] = h.to(run_units.length)
         self.Rmin: Quantity['length'] = Rmin.to(run_units.length)
-        self.Rmax: Quantity['length'] = (Rmax or 85 * self.Rs).to(run_units.length)
-        self.rho_s: Quantity['mass density'] = self.calculate_rho_scale()
+        self.Rmax: Quantity['length'] = (Rmax if Rmax is not None else 85 * self.Rs).to(run_units.length)
+        self.rho_s: Quantity['mass density'] = self.calculate_rho_scale() if rho_s is None else rho_s.to(run_units.density)
         self.memoization = {}
         for grid in initialize_grids:
             getattr(self, grid)
@@ -583,8 +585,11 @@ class Density:
         cumulative: bool = False,
         length_units: UnitLike = 'kpc',
         label: str | None = None,
+        add_markers: bool = True,
+        color: str = 'red',
         fig: Figure | None = None,
         ax: Axes | None = None,
+        **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the radius distribution (`pdf`/`cdf`) of the density profile.
 
@@ -594,8 +599,11 @@ class Density:
             cumulative: Plot the `cdf`, if `False` plot the `pdf` instead.
             length_units: The units for the radius axis.
             label: The label for the plot (legend).
+            add_markers: Whether to add markers to the plot.
+            color: The color for the plot.
             fig: The figure to plot on.
             ax: The axes to plot on.
+            kwargs: Additional keyword arguments for the plotting function (`sns.lineplot()`).
 
         Returns:
             fig, ax.
@@ -610,8 +618,9 @@ class Density:
 
         r = cast(Quantity['length'], np.geomspace(r_start, r_end, self.space_steps))
         y = self.mass_cdf(r) if cumulative else self.mass_pdf(r)
-        sns.lineplot(x=r.to(length_units).value, y=y, color='r', ax=ax, label=label)
-        ax = self.add_plot_R_markers(ax, ymax=y.max(), x_units=length_units)
+        sns.lineplot(x=r.to(length_units).value, y=y, color=color, ax=ax, label=label, **kwargs)
+        if add_markers:
+            ax = self.add_plot_R_markers(ax, ymax=y.max(), x_units=length_units)
         return fig, ax
 
     def plot_drho_dPsi(
