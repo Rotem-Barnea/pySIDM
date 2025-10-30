@@ -243,6 +243,7 @@ class Halo:
         self._scatter_params = sidm.normalize_params(value)
 
     def cleanup_particles(self) -> None:
+        """Cleanup the particles by dropping nullish values and particles outside the radius."""
         if self.cleanup_nullish_particles:
             self._particles.dropna(how='any', inplace=True)
         if self.cleanup_particles_by_radius:
@@ -343,6 +344,11 @@ class Halo:
     def n_scatters(self) -> NDArray[np.int64]:
         """The number of scatters every scattering round."""
         return np.array([len(x) for x in self.scatter_track])
+
+    @property
+    def n_particles(self) -> dict[str, int]:
+        """The total number of particles of every type in the halo."""
+        return self._particles['particle_type'].value_counts().to_dict()
 
     #####################
     ##Dynamic evolution

@@ -47,6 +47,7 @@ class tqdm(tqdm_base):
             yield obj
 
     def cleanup_time(self, time: Quantity['time'], add_units: bool = False) -> str:
+        """Cleanup the time string."""
         value = format(time.value, self.time_format).rstrip('0').rstrip('.')
         if add_units:
             return f'{value} {time.unit}'
