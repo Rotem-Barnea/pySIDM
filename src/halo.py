@@ -764,7 +764,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data: table.QTable,
         filter_particle_type: ParticleType | None = None,
         radius_bins: Quantity['length'] = Quantity(np.linspace(1e-2, 50, 200), 'kpc'),
-        velocity_bins: Quantity['velocity'] = Quantity(np.linspace(0, 100, 200), 'km/second'),
+        velocity_bins: Quantity['velocity'] = Quantity(np.linspace(0, 60, 200), 'km/second'),
         cmap: str = 'jet',
         transparent_value: float | None = 0,
         length_units: UnitLike = 'kpc',
