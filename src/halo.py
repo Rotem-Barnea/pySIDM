@@ -46,6 +46,7 @@ class Halo:
         hard_save: bool = False,
         save_path: Path | str | None = None,
         Rmax: Quantity['length'] = Quantity(300, 'kpc'),
+        scatters_to_collapse: int = 340,
         cleanup_nullish_particles: bool = False,
         cleanup_particles_by_radius: bool = False,
     ) -> None:
@@ -73,6 +74,7 @@ class Halo:
             hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
             save_path: Path to save the halo to memory.
             Rmax: Maximum radius of the halo, particles outside of this radius get killed off. If `None` ignores.
+            scatters_to_collapse: Number of scatters required on average for every dark matter particle to reach core collapse. Only used for estimating core collapse time for the early stopping mechanism, has no effect on the physical calculation (which will reach core-collapse on its own independently).
             cleanup_nullish_particles: Whether to remove particles from the halo after each interaction if they are nullish.
             cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `Rmax`).
 
@@ -106,6 +108,7 @@ class Halo:
         self.hard_save: bool = hard_save
         self.save_path: Path | str | None = save_path
         self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
+        self.scatters_to_collapse: int = scatters_to_collapse
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
 
@@ -350,6 +353,11 @@ class Halo:
         """The total number of particles of every type in the halo."""
         return self._particles['particle_type'].value_counts().to_dict()
 
+    @property
+    def core_collapse_time(self) -> Quantity['time']:
+        """Time at which the halo underwent core collapse, defined by on average every dm particle undergoing `scatters_to_collapse` events."""
+        return (self.n_scatters.cumsum() < self.scatters_to_collapse * self.n_particles['dm']).argmin() * self.dt
+
     #####################
     ##Dynamic evolution
     #####################
@@ -429,6 +437,7 @@ class Halo:
         t: Quantity['time'] | None = None,
         until_t: Quantity['time'] | None = None,
         tqdm_kwargs: dict[str, Any] = {},
+        t_after_core_collapse: Quantity['time'] = Quantity(0, 'Myr'),
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
 
@@ -437,6 +446,7 @@ class Halo:
             t: Time to evolve the simulation for. Ignored if `n_steps` is specified, otherwise transformed into steps using `to_steps()`.
             until_t: Evolve the simulation until this time. Ignored if `n_steps` or `t` are specified, otherwise transformed into steps using `to_steps()`.
             tqdm_kwargs: Additional keyword arguments to pass to `tqdm` (NOTE this is the custom submodule defined in this project at `tqdm.py`).
+            t_after_core_collapse: Time after core collapse to evolve the simulation for, afterwhich the simulation will stop (early quit). If negative ignore the core collapse check.
 
         Returns:
             None
@@ -452,6 +462,10 @@ class Halo:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
         for _ in tqdm(range(n_steps), start_time=self.time, dt=self.dt, **tqdm_kwargs):
             self.step()
+            if np.sign(t_after_core_collapse) >= 0 and self.n_scatters.sum() > self.scatters_to_collapse * self.n_particles['dm']:
+                if self.time > self.core_collapse_time + t_after_core_collapse:
+                    print(f'Core collapse detected at time {self.time}')
+                    break
         if self.hard_save:
             self.save()
 
@@ -732,6 +746,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         self,
         include_start: bool = True,
         include_now: bool = True,
+        filter_particle_type: ParticleType | None = None,
         save_path: str | Path | None = None,
         frame_plot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
@@ -742,6 +757,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Parameters:
             include_start: Whether to include the initial state.
             include_now: Whether to include the current state.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
             save_path: Path to save the images. If `None` images are not saved.
             frame_plot_kwargs: Additional keyword arguments for the frame plot (`plot_phase_space()`).
             save_kwargs: Additional keyword arguments for saving the images (`plot.save_images()`).
@@ -751,6 +767,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             The list of frames.
         """
         data = self.get_particle_states(now=include_now, initial=include_start)
+        if filter_particle_type is not None:
+            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type]).copy()
 
         images = plot.evolution_to_images(
             data=data,
