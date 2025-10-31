@@ -424,6 +424,7 @@ class Distribution:
         return cast(Quantity['specific energy'], self.Psi_interpolate(r) - 1 / 2 * v**2)
 
     def recalculate(self, key: str, inplace: bool = False) -> Any:
+        """Recalculate the memoized value of the given key."""
         if key in self.memoization:
             self.memoization.pop(key)
         new_value = getattr(self, key)
@@ -432,6 +433,7 @@ class Distribution:
 
     @staticmethod
     def merge_distribution_grids(distributions: list['Distribution'], grid_base_name: list[str] = ['Psi']):
+        """Merges the grid values of the given distributions of the given types. Used to combine the potentials of multiple distributions to sample via Eddington's inversion."""
         for grid_name in grid_base_name:
             for suffix in ['', '_h', '_2h']:
                 grid = sum([getattr(density, f'{grid_name}_grid{suffix}') for density in distributions])
