@@ -145,15 +145,6 @@ def scatter_chance(
 
 
 @njit(parallel=True)
-def roll_particle_scattering(probability_array: NDArray[np.float64], rolls: NDArray[np.float64]) -> NDArray[np.bool_]:
-    """Check which of the particles scatter"""
-    output = np.empty(len(probability_array), np.bool_)
-    for i in prange(len(probability_array)):
-        output[i] = probability_array[i] > rolls[i]
-    return output
-
-
-@njit(parallel=True)
 def pick_scatter_partner(v_rel: NDArray[np.float64], scatter_mask: NDArray[np.bool_], rolls: NDArray[np.float64]):
     """Choose the scattering partner for an interacting particle.
 
@@ -186,19 +177,6 @@ def scatter_unique_pairs(v: NDArray[np.float64], pairs: NDArray[np.int64]) -> No
         if i0 == -1 or i1 == -1:
             continue
         v[i0], v[i1] = scatter_pair_kinematics(v0=v[i0], v1=v[i1])
-
-
-# def scatter_found_pairs(
-#     v: NDArray[np.float64],
-#     found_pairs: NDArray[np.int64],
-#     memory_allocated: int,
-# ) -> NDArray[np.float64]:
-#     """Scatter particles that have been found to interact. Handles memory allocation and wraps around `scatter_unique_pairs()`."""
-#     if len(found_pairs) == 0:
-#         return v
-#     pairs = np.full((memory_allocated, 2), -1, dtype=np.int64)
-#     pairs[: len(found_pairs)] = found_pairs
-#     return scatter_unique_pairs(v=v, pairs=pairs)
 
 
 def scatter_chance_shortcut(
@@ -348,7 +326,7 @@ def scatter(
             density_term=local_density[mask],
         )
         rolls = np.random.random(len(v_output))
-        events = roll_particle_scattering(probability_array=scatter_base_chance, rolls=rolls)
+        events = scatter_base_chance >= rolls  # TODO - slice with mask
         pairs = pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=rolls)
         pairs = utils.clean_pairs(pairs)
         interacted_particles = pairs.ravel()

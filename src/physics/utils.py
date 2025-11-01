@@ -11,7 +11,7 @@ def M(
     r: Quantity['length'],
     m: Quantity['mass'] | None = None,
     count_self: bool = False,
-    M_below: Quantity['mass'] = Quantity(0, run_units.mass),
+    M_below: Quantity['mass'] | None = None,
 ) -> Quantity['mass']:
     """Calculate the cumulative mass of a set of particles.
 
@@ -30,8 +30,9 @@ def M(
     M = masses.cumsum()
     if not count_self:
         M -= masses
-    M += M_below
-    return cast(Quantity['mass'], M)
+    if M_below is not None:
+        M += M_below
+    return cast(Quantity, M)
 
 
 def local_density(

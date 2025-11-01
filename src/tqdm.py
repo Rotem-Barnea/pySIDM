@@ -33,7 +33,7 @@ class tqdm(tqdm_base):
             self.dt: Quantity['time'] = dt.to(time_units)
             self.time_format = time_format
             iterable = list(iterable)
-            self.total_time = cast(Quantity['time'], self.start_time + self.dt * len(iterable))
+            self.total_time = cast(Quantity, self.start_time + self.dt * len(iterable))
         else:
             self.time_mode = False
 
@@ -42,7 +42,7 @@ class tqdm(tqdm_base):
     def __iter__(self) -> Generator[Any, None, None]:
         for i, obj in enumerate(super().__iter__()):
             if self.time_mode:
-                current_time = cast(Quantity['time'], i * self.dt + self.start_time)
+                current_time = cast(Quantity, i * self.dt + self.start_time)
                 self.set_description(f'Time: [{self.cleanup_time(current_time)}]/[{self.cleanup_time(self.total_time, add_units=True)}]')
             yield obj
 

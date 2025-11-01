@@ -54,18 +54,18 @@ class Mass_Distribution:
         """
         mask = self.time == t
         if mask.any():
-            return cast(Quantity['mass'], self.M[mask][0])
+            return cast(Quantity, self.M[mask][0])
         mask = self.time < t
         if not mask.any():
-            return cast(Quantity['mass'], self.M[0])
+            return cast(Quantity, self.M[0])
         elif mask.all():
-            return cast(Quantity['mass'], self.M[-1])
+            return cast(Quantity, self.M[-1])
 
         after = np.argmin(mask)
         before = after - 1
         f = (t - self.time[before]) / (self.time[after] - self.time[before])
-        return cast(Quantity['mass'], self.M[before] * f + self.M[after] * (1 - f))
+        return cast(Quantity, self.M[before] * f + self.M[after] * (1 - f))
 
     def M_at_time(self, r: Quantity['length'], time: Quantity['time']) -> Quantity['mass']:
         """Calculate the mass at a given radius and time. Achieved by finding the nearest grid point and using linear interpolation in the time dimension (see `self.at_time()`)."""
-        return cast(Quantity['mass'], self.at_time(time)[self.lattice(r.value).clip(min=0, max=len(self.lattice) - 1).astype(np.int64)])
+        return cast(Quantity, self.at_time(time)[self.lattice(r.value).clip(min=0, max=len(self.lattice) - 1).astype(np.int64)])

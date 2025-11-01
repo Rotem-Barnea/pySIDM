@@ -140,14 +140,14 @@ class Distribution:
     def geomspace_grid(self) -> Quantity['length']:
         """Calculate the `internal logarithmic grid` (memoized)."""
         if 'geomspace_grid' not in self.memoization:
-            self.memoization['geomspace_grid'] = cast(Quantity['length'], np.geomspace(self.Rmin, self.Rmax, self.space_steps))
+            self.memoization['geomspace_grid'] = cast(Quantity, np.geomspace(self.Rmin, self.Rmax, self.space_steps))
         return self.memoization['geomspace_grid']
 
     @property
     def linspace_grid(self) -> Quantity['length']:
         """Calculate the  `internal linear grid` (memoized)."""
         if 'linspace_grid' not in self.memoization:
-            self.memoization['linspace_grid'] = cast(Quantity['length'], np.linspace(start=self.Rmin, stop=self.Rmax, num=self.space_steps))
+            self.memoization['linspace_grid'] = cast(Quantity, np.linspace(start=self.Rmin, stop=self.Rmax, num=self.space_steps))
         return self.memoization['linspace_grid']
 
     @staticmethod
@@ -246,7 +246,7 @@ class Distribution:
 
     def calculate_M_tot(self) -> Quantity['mass']:
         """Calculate the total mass, i.e. the integral over `[0, Rmax]`."""
-        return cast(Quantity['mass'], self.spherical_rho_integrate(self.Rmax, True)[0])
+        return cast(Quantity, self.spherical_rho_integrate(self.Rmax, True)[0])
 
     def calculate_rho_scale(self) -> Quantity['mass density']:
         """Calculate the density scale to set the integral over `[0, Rmax]` to equal `Mtot`."""
@@ -421,7 +421,7 @@ class Distribution:
 
     def E(self, r: Quantity['length'], v: Quantity['velocity']) -> Quantity['specific energy']:
         """Interpolate the internal energy (`E`) At the given radius `r` using `Psi_interpolate()`."""
-        return cast(Quantity['specific energy'], self.Psi_interpolate(r) - 1 / 2 * v**2)
+        return cast(Quantity, self.Psi_interpolate(r) - 1 / 2 * v**2)
 
     def recalculate(self, key: str, inplace: bool = False) -> Any:
         """Recalculate the memoized value of the given key."""
@@ -498,7 +498,7 @@ class Distribution:
         The velocity is split into radial and perpendicular components by a uniform cosine distributed angle, and then the perpendicular component is split into x and y components by a uniform angle.
         See `roll_v()` for parameter details.
         """
-        return cast(Quantity['velocity'], np.vstack(utils.split_3d(self.roll_v(r))).T)
+        return cast(Quantity, np.vstack(utils.split_3d(self.roll_v(r))).T)
 
     def roll_initial_angle(self, n_particles: int) -> NDArray[np.float64]:
         """Sample initial angle off the radial direction from a uniform cosine distribution."""
@@ -581,7 +581,7 @@ class Distribution:
         if r_end is None:
             r_end = self.Rmax
 
-        r = cast(Quantity['length'], np.geomspace(r_start, r_end, self.space_steps))
+        r = cast(Quantity, np.geomspace(r_start, r_end, self.space_steps))
         rho = self.rho(r)
         sns.lineplot(x=r.to(length_units).value, y=rho.to(density_units).value, ax=ax, label=label)
 
@@ -630,7 +630,7 @@ class Distribution:
         if r_end is None:
             r_end = self.Rmax
 
-        r = cast(Quantity['length'], np.geomspace(r_start, r_end, self.space_steps))
+        r = cast(Quantity, np.geomspace(r_start, r_end, self.space_steps))
         y = self.mass_cdf(r) if cumulative else self.mass_pdf(r)
         sns.lineplot(x=r.to(length_units).value, y=y, color=color, ax=ax, label=label, **kwargs)
         if add_markers:

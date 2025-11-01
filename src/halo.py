@@ -135,9 +135,9 @@ class Halo:
             m += [np.ones(int(n)) * distribution.Mtot / n]
 
         return cls(
-            r=cast(Quantity['length'], np.hstack(r)),
-            v=cast(Quantity['length'], np.vstack(v)),
-            m=cast(Quantity['length'], np.hstack(m)),
+            r=cast(Quantity, np.hstack(r)),
+            v=cast(Quantity, np.vstack(v)),
+            m=cast(Quantity, np.hstack(m)),
             particle_type=np.hstack(particle_type),
             distributions=distributions,
             **kwargs,
@@ -292,13 +292,13 @@ class Halo:
         halo_mass = physics.utils.M(r=self.r, m=self.m)
         if self.background is not None:
             background_mass = self.background.M_at_time(self.r, self.time)
-            return cast(Quantity['mass'], halo_mass + background_mass)
+            return cast(Quantity, halo_mass + background_mass)
         return halo_mass
 
     @property
     def vp(self) -> Quantity['velocity']:
         """The tangential velocity of the particle."""
-        return utils.fast_quantity_norm(cast(Quantity['velocity'], self.v[:, :2]))
+        return utils.fast_quantity_norm(cast(Quantity, self.v[:, :2]))
 
     @property
     def v_norm(self) -> Quantity['velocity']:
@@ -318,12 +318,12 @@ class Halo:
     @property
     def Phi(self) -> Quantity['energy']:
         """The gravitational potential energy of the particle."""
-        return cast(Quantity['energy'], physics.utils.Phi(self.r, self.M, self.m))
+        return cast(Quantity, physics.utils.Phi(self.r, self.M, self.m))
 
     @property
     def Psi(self) -> Quantity['specific energy']:
         """The relative gravitational potential energy of the particle."""
-        return cast(Quantity['energy'], physics.utils.Psi(self.r, self.M, self.m)).to(run_units.energy)
+        return cast(Quantity, physics.utils.Psi(self.r, self.M, self.m)).to(run_units.energy)
         # return (self.Phi0 - self.Phi).to(run_units.energy)
 
     @property
@@ -403,7 +403,7 @@ class Halo:
         self._particles.sort_values('r', inplace=True)
         if self.is_save_round():
             self.save_snapshot()
-        if self.scatter_params.get('sigma', 0) > 0:
+        if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(0, run_units.cross_section):
             mask = self._particles['particle_type'] == 'dm'
             (self._particles.loc[mask, 'vx'], self._particles.loc[mask, 'vy'], self._particles.loc[mask, 'vr'], indices, scatter_rounds) = (
                 sidm.scatter(
@@ -527,7 +527,7 @@ class Halo:
         particles.sort('particle_index')
         output = cls(
             r=particles['r'],
-            v=cast(Quantity['velocity'], np.vstack([particles['vx'], particles['vy'], particles['vr']]).T),
+            v=cast(Quantity, np.vstack([particles['vx'], particles['vy'], particles['vr']]).T),
             particle_type=particles['particle_type'],
             m=particles['m'],
             **payload,
@@ -1522,7 +1522,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         for name, particle_type, unit_mass in zip(['Baryonic matter', 'DM'], ['baryon', 'dm'], np.unique(self.m)):
             for label, time in zip(labels, real_times):
                 fig, ax = plot.plot_density(
-                    cast(Quantity['length'], data[(data['time'] == time) * (data['particle_type'] == particle_type)]['r']),
+                    cast(Quantity, data[(data['time'] == time) * (data['particle_type'] == particle_type)]['r']),
                     unit_mass=unit_mass,
                     bins=radius_bins,
                     label=f'{name} {label}',
