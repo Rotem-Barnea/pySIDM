@@ -245,12 +245,23 @@ class Halo:
         """Normalize and set the scatter parameters of the halo."""
         self._scatter_params = sidm.normalize_params(value)
 
-    def cleanup_particles(self) -> None:
-        """Cleanup the particles by dropping nullish values and particles outside the radius."""
-        if self.cleanup_nullish_particles:
-            self._particles.dropna(how='any', inplace=True)
-        if self.cleanup_particles_by_radius:
-            self._particles.drop(index=self._particles[self._particles['r'] > self.Rmax.value].index, inplace=True)
+    def cleanup_particles(self, presorted: bool = True) -> None:
+        """Cleanup the particles by dropping nullish values and particles outside the radius.
+
+        Significantly faster if the dataframe is presorted.
+        """
+        if self.cleanup_nullish_particles or self.cleanup_particles_by_radius:
+            drop_indices = pd.Series(data=np.full(len(self._particles), False), index=self._particles.index)
+            if self.cleanup_nullish_particles:
+                drop_indices += self._particles['r'].isna()
+            if self.cleanup_particles_by_radius:
+                drop_indices += self._particles['r'] > self.Rmax.value
+            if drop_indices.any():
+                if presorted:
+                    end = drop_indices.argmax()
+                    self._particles = self._particles.iloc[:end]
+                else:
+                    self._particles.drop(index=drop_indices[drop_indices].index, inplace=True)
 
     #####################
     ##Physical properties
@@ -395,12 +406,14 @@ class Halo:
 
         Every step:
             - Sort particles by radius.
+            - Cleanup erroneous particles.
             - Save a snapshot if it's time.
             - Perform scattering. This is done before the leapfrog integration since it doesn't modify the particle positions and thus doesn't require resorting.
             - Perform leapfrog integration.
             - Update simulation time.
         """
         self._particles.sort_values('r', inplace=True)
+        self.cleanup_particles()
         if self.is_save_round():
             self.save_snapshot()
         if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(0, run_units.cross_section):
@@ -428,7 +441,6 @@ class Halo:
             dt=self.dt,
             **self.dynamics_params,
         )
-        self.cleanup_particles()
         self.time += self.dt
 
     def evolve(
