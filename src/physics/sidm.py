@@ -99,27 +99,11 @@ def scatter_pair_kinematics(v0: NDArray[np.float64], v1: NDArray[np.float64]) ->
     return v0_new, v1_new
 
 
-@njit
-def particle_v_rel(v: NDArray[np.float64], particle: int, max_radius_j: int) -> NDArray[np.float64]:
-    """Calculates the relative velocity of a particle with its neighbors.
-
-    The result is an array of relative velocity norms `sqrt(sum((v[partner]-v[particle])^2))`, and the partners are taken from: `[particle + 1 : particle + 1 + max_radius_j]`
-
-    Parameters:
-        v: Array of particle velocities, shape `(n_particles, 3)`, with components `(vx,vy,vr)`.
-        particle: Index of the particle for which to calculate the relative velocity.
-        max_radius_j: Maximum index radius for partners.
-
-    Returns:
-        Array of relative velocity norms between the particle and its neighbors, shape (max_radius_j,). Edge particles have a smaller array length.
-    """
-    return np.sqrt(((v[particle + 1 : particle + 1 + max_radius_j] - v[particle]) ** 2).sum(1))
-
-
 @njit(parallel=True)
 def update_v_rel(v_rel: NDArray[np.float64], v: NDArray[np.float64], max_radius_j: int, whitelist_mask: NDArray[np.bool_]) -> None:
     """Calculate the relative velocity between all neighboring particles.
-    TODO
+
+    The result is an array of relative velocity norms `sqrt(sum((v[partner]-v[particle])^2))`, and the partners are taken from: `[particle + 1 : particle + 1 + max_radius_j]`
 
     Parameters:
         v: Array of particle velocities, shape `(n_particles, 3)`, with components `(vx,vy,vr)`.
@@ -132,7 +116,8 @@ def update_v_rel(v_rel: NDArray[np.float64], v: NDArray[np.float64], max_radius_
     whitelist = np.arange(len(v))[whitelist_mask]
     for i in prange(len(whitelist)):
         particle = whitelist[i]
-        v_rel[particle] = particle_v_rel(v, particle, max_radius_j)
+        v_rel_array = np.sqrt(((v[particle + 1 : particle + 1 + max_radius_j] - v[particle]) ** 2).sum(1))
+        v_rel[particle, : len(v_rel_array)] = v_rel_array
 
 
 @njit(parallel=True)
@@ -340,7 +325,7 @@ def scatter(
     v_output = np.vstack([_vx, _vy, _vr]).T
     _sigma = sigma.value
     local_density = cast(NDArray[np.float64], physics.utils.local_density(_r, _m, max_radius_j, volume_kind='shell', mass_kind='single'))
-    v_rel = np.empty((len(v_output), max_radius_j), dtype=np.float64)
+    v_rel = np.zeros((len(v_output), max_radius_j), dtype=np.float64)
     update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=np.full(len(v_output), True))
     scatter_base_chance = scatter_chance(
         v_rel=v_rel,
