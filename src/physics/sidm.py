@@ -121,7 +121,7 @@ def update_v_rel(v_rel: NDArray[np.float64], v: NDArray[np.float64], max_radius_
 
 
 @njit(parallel=True)
-def scatter_chance(
+def fast_scatter_chance(
     v_rel: NDArray[np.float64],
     dt: NDArray[np.float64],
     sigma: float,
@@ -141,6 +141,32 @@ def scatter_chance(
     output = np.empty(len(v_rel), np.float64)
     for particle in prange(len(v_rel)):
         output[particle] = 1 / 2 * dt[particle] * density_term[particle] * v_rel[particle].sum() * sigma
+    return output
+
+
+@njit(parallel=True)
+def fast_scatter_rounds(scatter_chance: NDArray[np.float64], kappa: float, max_allowed_rounds: int) -> NDArray[np.int64]:
+    """Calculate the number of scattering rounds required for each particle to comply with a per-round scattering chance <= `kappa`.
+
+    Parameters:
+        scatter_chance: Base scattering chance for each particle, without subdivision (shape `(n_particles,)`).
+        kappa: Maximum allowed scattering chance per round.
+        max_allowed_rounds: Maximum allowed number of scattering rounds. If negative no limit is applied.
+
+    Returns:
+        Number of scattering rounds required for each particle (shape `(n_particles,)`)
+    """
+    output = np.empty(len(scatter_chance), dtype=np.int64)
+    for particle in prange(len(scatter_chance)):
+        ratio = np.ceil(scatter_chance[particle] / kappa)
+        if np.isnan(ratio):
+            output[particle] = 0
+        elif ratio < 1:
+            output[particle] = 1
+        elif max_allowed_rounds > 0 and ratio > max_allowed_rounds:
+            output[particle] = max_allowed_rounds
+        else:
+            output[particle] = int(ratio)
     return output
 
 
@@ -174,8 +200,6 @@ def scatter_unique_pairs(v: NDArray[np.float64], pairs: NDArray[np.int64]) -> No
     """Loop over all unique pairs found and calculate the new velocities inplace. pairs MUST be unique, otherwise numba will fail the race condition check."""
     for pair_index in prange(len(pairs)):
         i0, i1 = pairs[pair_index]
-        if i0 == -1 or i1 == -1:
-            continue
         v[i0], v[i1] = scatter_pair_kinematics(v0=v[i0], v1=v[i1])
 
 
@@ -207,7 +231,7 @@ def scatter_chance_shortcut(
     v = np.vstack([np.array(vx), np.array(vy), np.array(vr)]).T
     v_rel = np.empty((len(v), max_radius_j), dtype=np.float64)
     update_v_rel(v_rel=v_rel, v=v, max_radius_j=max_radius_j, whitelist_mask=np.full(len(v), True))
-    return scatter_chance(
+    return fast_scatter_chance(
         v_rel=v_rel,
         dt=np.full(len(v), dt.value),
         sigma=sigma.value,
@@ -296,6 +320,8 @@ def scatter(
     Returns:
         post scattering vx, vy, vz, indices of the particles that interacted, and the maximum number of rounds performed.
     """
+    if max_allowed_rounds is None:
+        max_allowed_rounds = -1
     _r, _vx, _vy, _vr, _m = np.array(r), np.array(vx).copy(), np.array(vy).copy(), np.array(vr).copy(), np.array(m)
     interacted: NDArray[np.int64] = np.empty(0, dtype=np.int64)
     if sigma == 0:
@@ -305,30 +331,31 @@ def scatter(
     local_density = cast(NDArray[np.float64], physics.utils.local_density(_r, _m, max_radius_j, volume_kind='shell', mass_kind='single'))
     v_rel = np.zeros((len(v_output), max_radius_j), dtype=np.float64)
     update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=np.full(len(v_output), True))
-    scatter_base_chance = scatter_chance(
+    scatter_chance = fast_scatter_chance(
         v_rel=v_rel,
         dt=np.full(len(v_output), dt.value),
         sigma=_sigma,
         density_term=local_density,
     )
-    scatter_rounds = np.nan_to_num(np.ceil(scatter_base_chance / kappa)).clip(min=1, max=max_allowed_rounds).astype(np.int64)
+    scatter_rounds = fast_scatter_rounds(scatter_chance=scatter_chance, kappa=kappa, max_allowed_rounds=max_allowed_rounds)
     round_dt = dt.value / scatter_rounds
+    scatter_chance /= scatter_rounds
     interacted_particles = np.empty(0, dtype=np.int64)
     for round in range(1, scatter_rounds.max() + 1):
         mask = scatter_rounds >= round
         if len(interacted_particles) > 0:
+            # Only update the relative velocities and scattering chance for particles that scattered in the past round or in the neighborhood of scattering particles (i.e. only particles that would have a change in their v_rel values, otherwise the probability is the same and we don't need to recalculate it)
             mask *= utils.expand_mask_back(utils.indices_to_mask(interacted_particles, len(v_output)), n=max_radius_j)
-        update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=mask)
-        scatter_base_chance[mask] = scatter_chance(
-            v_rel=v_rel[mask],
-            dt=round_dt[mask],
-            sigma=_sigma,
-            density_term=local_density[mask],
-        )
+            update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=mask)
+            scatter_chance[mask] = fast_scatter_chance(
+                v_rel=v_rel[mask],
+                dt=round_dt[mask],
+                sigma=_sigma,
+                density_term=local_density[mask],
+            )
         rolls = np.random.random(len(v_output))
-        events = scatter_base_chance >= rolls  # TODO - slice with mask
-        pairs = pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=rolls)
-        pairs = utils.clean_pairs(pairs)
+        events = scatter_chance >= rolls  # TODO - slice with mask
+        pairs = utils.clean_pairs(pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=rolls))
         interacted_particles = pairs.ravel()
         interacted = np.hstack([interacted, interacted_particles])
         scatter_unique_pairs(v=v_output, pairs=pairs)
