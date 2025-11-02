@@ -523,7 +523,7 @@ class Halo:
             path = self.save_path
         assert path is not None, 'Save path must be provided'
         path = Path(path)
-        path.mkdir(exist_ok=True)
+        path.mkdir(exist_ok=True, parents=True)
         payload = {key: getattr(self, key) for key in self.payload_keys()}
         tables = {'particles': self.particles, 'initial_particles': self.initial_particles, 'snapshots': self.snapshots}
         with open(path / 'halo_payload.pkl', 'wb') as f:
