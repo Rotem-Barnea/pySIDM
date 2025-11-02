@@ -20,12 +20,12 @@ if __name__ == '__main__':
 
     dm_Mtot = dm_distribution.Mtot
 
-    dm_n_particles = 1e4
+    dm_n_particles = 1e5
     b_n_particles = 1e4
     dt = dm_distribution.Tdyn / 1000
     save_every_time = 10 * dm_distribution.Tdyn
     hard_save = True
-    save_path = Path.home() / 'SIDM/pySIDM/run results' / 'test run 1'
+    save_path = Path.home() / 'SIDM/pySIDM/run results' / 'full test run 1'
 
     halo = Halo.setup(
         distributions=[dm_distribution, b_distribution],
@@ -35,9 +35,9 @@ if __name__ == '__main__':
         save_path=save_path,
         save_every_time=save_every_time,
         cleanup_nullish_particles=False,
-        cleanup_particles_by_radius=True,
+        cleanup_particles_by_radius=False,
         dynamics_params={'raise_warning': False},
         scatter_params={'kappa': 0.02, 'sigma': sigma},
     )
 
-    halo.evolve(until_t=Quantity(1, 'Gyr'))
+    halo.evolve(until_t=Quantity(17, 'Gyr'), tqdm_kwargs={'mininterval': 10})
