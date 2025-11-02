@@ -27,17 +27,20 @@ if __name__ == '__main__':
     hard_save = True
     save_path = Path.home() / 'SIDM/pySIDM/run results' / 'full test run 1'
 
-    halo = Halo.setup(
-        distributions=[dm_distribution, b_distribution],
-        n_particles=[dm_n_particles, b_n_particles],
-        dt=dt,
-        hard_save=hard_save,
-        save_path=save_path,
-        save_every_time=save_every_time,
-        cleanup_nullish_particles=False,
-        cleanup_particles_by_radius=False,
-        dynamics_params={'raise_warning': False},
-        scatter_params={'kappa': 0.02, 'sigma': sigma},
-    )
+    if save_path.exists():
+        halo = Halo.load(save_path)
+    else:
+        halo = Halo.setup(
+            distributions=[dm_distribution, b_distribution],
+            n_particles=[dm_n_particles, b_n_particles],
+            dt=dt,
+            hard_save=hard_save,
+            save_path=save_path,
+            save_every_time=save_every_time,
+            cleanup_nullish_particles=False,
+            cleanup_particles_by_radius=False,
+            dynamics_params={'raise_warning': False},
+            scatter_params={'kappa': 0.02, 'sigma': sigma},
+        )
 
     halo.evolve(until_t=Quantity(17, 'Gyr'), tqdm_kwargs={'mininterval': 60})
