@@ -40,4 +40,4 @@ if __name__ == '__main__':
         scatter_params={'kappa': 0.02, 'sigma': sigma},
     )
 
-    halo.evolve(until_t=Quantity(17, 'Gyr'), tqdm_kwargs={'mininterval': 10})
+    halo.evolve(until_t=Quantity(17, 'Gyr'), tqdm_kwargs={'mininterval': 60})
