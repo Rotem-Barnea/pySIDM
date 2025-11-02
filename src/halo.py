@@ -18,6 +18,7 @@ from . import utils, run_units, physics, plot
 from .physics import sidm, leapfrog
 from .types import ParticleType
 from .tqdm import tqdm
+import time
 
 
 class Halo:
@@ -111,6 +112,10 @@ class Halo:
         self.scatters_to_collapse: int = scatters_to_collapse
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
+        self.scatter_time = []
+        self.leapfrog_time = []
+        self.sort_time = []
+        self.cleanup_time = []
 
     @classmethod
     def setup(cls, distributions: list[Distribution], n_particles: list[int | float], **kwargs: Any) -> Self:
@@ -412,11 +417,16 @@ class Halo:
             - Perform leapfrog integration.
             - Update simulation time.
         """
+        t0 = time.perf_counter()
         self._particles.sort_values('r', inplace=True)
+        self.sort_time += [time.perf_counter() - t0]
+        t0 = time.perf_counter()
         self.cleanup_particles()
+        self.cleanup_time += [time.perf_counter() - t0]
         if self.is_save_round():
             self.save_snapshot()
         if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(0, run_units.cross_section):
+            t0 = time.perf_counter()
             mask = self._particles['particle_type'] == 'dm'
             (self._particles.loc[mask, 'vx'], self._particles.loc[mask, 'vy'], self._particles.loc[mask, 'vr'], indices, scatter_rounds) = (
                 sidm.scatter(
@@ -431,6 +441,8 @@ class Halo:
             )
             self.scatter_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
+            self.scatter_time += [time.perf_counter() - t0]
+        t0 = time.perf_counter()
         self._particles['r'], self._particles['vx'], self._particles['vy'], self._particles['vr'] = leapfrog.step(
             r=self._particles['r'],
             vx=self._particles['vx'],
@@ -441,6 +453,7 @@ class Halo:
             dt=self.dt,
             **self.dynamics_params,
         )
+        self.leapfrog_time += [time.perf_counter() - t0]
         self.time += self.dt
 
     def evolve(
@@ -1532,9 +1545,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         real_times = unique_times[np.argmin(np.abs(unique_times - np.expand_dims(times, 1)), axis=1)]
         fig, ax = None, None
         for name, particle_type, unit_mass in zip(['Baryonic matter', 'DM'], ['baryon', 'dm'], np.unique(self.m)):
-            for label, time in zip(labels, real_times):
+            for label, t in zip(labels, real_times):
                 fig, ax = plot.plot_density(
-                    cast(Quantity, data[(data['time'] == time) * (data['particle_type'] == particle_type)]['r']),
+                    cast(Quantity, data[(data['time'] == t) * (data['particle_type'] == particle_type)]['r']),
                     unit_mass=unit_mass,
                     bins=radius_bins,
                     label=f'{name} {label}',

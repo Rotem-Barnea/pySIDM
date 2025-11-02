@@ -11,7 +11,6 @@ class Params(TypedDict, total=False):
     """Parameter dictionary for the SIDM calculation."""
 
     max_radius_j: int
-    max_interactions_per_mini_timestep: int
     max_allowed_rounds: int | None
     kappa: float
     sigma: Quantity[run_units.cross_section]
@@ -19,7 +18,6 @@ class Params(TypedDict, total=False):
 
 default_params: Params = {
     'max_radius_j': 10,
-    'max_interactions_per_mini_timestep': 10000,
     'max_allowed_rounds': 100,
     'kappa': 0.02,
     'sigma': Quantity(0, 'cm^2/gram').to(run_units.cross_section),
@@ -113,11 +111,10 @@ def update_v_rel(v_rel: NDArray[np.float64], v: NDArray[np.float64], max_radius_
     Returns:
         Array of relative velocities between particles, shape `(n_particles, max_radius_j)`.
     """
-    whitelist = np.arange(len(v))[whitelist_mask]
-    for i in prange(len(whitelist)):
-        particle = whitelist[i]
-        v_rel_array = np.sqrt(((v[particle + 1 : particle + 1 + max_radius_j] - v[particle]) ** 2).sum(1))
-        v_rel[particle, : len(v_rel_array)] = v_rel_array
+    for particle in prange(len(v_rel)):
+        if whitelist_mask[particle]:
+            v_rel_array = np.sqrt(((v[particle + 1 : particle + 1 + max_radius_j] - v[particle]) ** 2).sum(1))
+            v_rel[particle, : len(v_rel_array)] = v_rel_array
 
 
 @njit(parallel=True)
@@ -185,13 +182,12 @@ def pick_scatter_partner(v_rel: NDArray[np.float64], scatter_mask: NDArray[np.bo
         pairs of interacting particles.
     """
     pairs = np.empty((len(v_rel), 2), dtype=np.int64)
-    indices = np.arange(len(v_rel))[scatter_mask]
-    for i in prange(len(indices)):
-        particle = indices[i]
-        cumsum = v_rel[particle].cumsum()
-        cumsum /= cumsum[-1]
-        partner = particle + np.searchsorted(cumsum, rolls[particle]) + 1
-        pairs[particle] = [particle, partner]
+    for particle in prange(len(v_rel)):
+        if scatter_mask[particle]:
+            cumsum = v_rel[particle].cumsum()
+            cumsum /= cumsum[-1]
+            partner = particle + np.searchsorted(cumsum, rolls[particle]) + 1
+            pairs[particle] = [particle, partner]
     return pairs[scatter_mask]
 
 
@@ -289,7 +285,6 @@ def scatter(
     max_radius_j: int = default_params['max_radius_j'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
-    max_interactions_per_mini_timestep: int = default_params['max_interactions_per_mini_timestep'],
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64], int]:
     """Perform SIDM scatter events.
 
@@ -315,7 +310,6 @@ def scatter(
         max_radius_j: Maximum index radius for partners for scattering.
         kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
-        max_interactions_per_mini_timestep: Internal memory buffer size parameter. No need to change it. Sets the maximum allowed number of interactions per round.
 
     Returns:
         post scattering vx, vy, vz, indices of the particles that interacted, and the maximum number of rounds performed.
