@@ -1,69 +1,43 @@
-## To be run in a REPL setup!
+if __name__ == '__main__':
+    import sys
+    from pathlib import Path
 
-# %% Imports + fix path parameter
+    sys.path.append(str(Path.cwd().parent))
 
-import sys
-from pathlib import Path
+    from astropy.units import Quantity
+    from src.distribution.nfw import NFW
+    from src.distribution.hernquist import Hernquist
+    from src.halo import Halo
 
-sys.path.append(str(Path.cwd().parent))
+    dm_rho_s = Quantity(2.73e7, 'Msun/kpc^3')
+    Rs = Quantity(1.18, 'kpc')
+    c = 19
+    b_Mtot = Quantity(1e5, 'Msun')
+    sigma = Quantity(50, 'cm^2/gram')
 
-import seaborn as sns
-from matplotlib import pyplot as plt
+    dm_distribution = NFW(Rs=Rs, c=c, rho_s=dm_rho_s, particle_type='dm')
+    b_distribution = Hernquist(Rs=Rs, c=c, Mtot=b_Mtot, particle_type='baryon')
 
-from src import utils, physics
-from src.distribution.nfw import NFW
-from src.distribution.hernquist import Hernquist
-from src.halo import Halo
-from src.constants import G, Msun, kpc, Myr, cross_section, km, second
-from astropy import units as u
+    dm_Mtot = dm_distribution.Mtot
 
-# %% Define parameters
+    dm_n_particles = 1e4
+    b_n_particles = 1e4
+    dt = dm_distribution.Tdyn / 1000
+    save_every_time = 10 * dm_distribution.Tdyn
+    hard_save = True
+    save_path = 'test run 1'
 
-# Mtot = 1.0e10 * Msun #Default halo mass in solar masses (Msun).
-# Rs = 2.68441 * kpc #kpc
-# c = 17
-Mtot_dm = 1.15e9 * Msun
-Mtot_b = 1e5 * Msun
-Rs = 1.18 * kpc
-c = 19
-sigma = 50 * cross_section
+    halo = Halo.setup(
+        distributions=[dm_distribution, b_distribution],
+        n_particles=[dm_n_particles, b_n_particles],
+        dt=dt,
+        hard_save=hard_save,
+        save_path=save_path,
+        save_every_time=save_every_time,
+        cleanup_nullish_particles=False,
+        cleanup_particles_by_radius=True,
+        dynamics_params={'raise_warning': False},
+        scatter_params={'kappa': 0.02, 'sigma': sigma},
+    )
 
-# %% Setup system
-
-n_particles_dm = int(1e5)
-dm_density = NFW(Rs=Rs, c=c, Mtot=Mtot_dm, Rmin=1e-4 * kpc, Rmax=85 * Rs, unit_mass=Mtot_dm / n_particles_dm)
-n_particles_b = 0
-# n_particles_b = int(Mtot_b/dm_density.unit_mass)
-# b_density = Hernquist(Mtot=Mtot_b,Rmin=1e-4*kpc,Rmax=85*Rs,unit_mass=Mtot_b/n_particles_b)
-steps_per_Tdyn = 1000
-total_run_time = 1100 * dm_density.Tdyn
-save_every = 10 * dm_density.Tdyn
-
-halo = Halo.setup(
-    dm_density=dm_density,
-    steps_per_Tdyn=steps_per_Tdyn,
-    n_particles_dm=n_particles_dm,
-    n_particles_b=n_particles_b,
-    sigma=sigma,
-    save_every=save_every,
-    total_run_time=total_run_time,
-)
-# %% Run
-
-halo.evolve(n_Tdyn=1100)
-halo.saved_states.to_csv('saved_states.csv')
-
-print(halo.n_interactions)
-
-# %% Plot run results
-
-fig, ax = halo.plot_inner_core_density()
-fig, ax = halo.plot_density_evolution()
-fig, ax = halo.plot_temperature()
-
-# %% Plot initial distributions
-fig, ax = halo.dm_density.plot_rho()
-fig, ax = halo.plot_r_distribution(halo.initial_particles, cumulative=False)
-fig, ax = halo.plot_distribution('v_norm', halo.initial_particles)
-fig, ax = halo.dm_density.plot_phase_space()
-fig, ax = halo.plot_phase_space(halo.initial_particles)
+    halo.evolve(until_t=Quantity(1, 'Gyr'))
