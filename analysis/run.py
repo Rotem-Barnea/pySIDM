@@ -25,7 +25,7 @@ if __name__ == '__main__':
     dt = dm_distribution.Tdyn / 1000
     save_every_time = 10 * dm_distribution.Tdyn
     hard_save = True
-    save_path = 'test run 1'
+    save_path = Path.home() / 'SIDM/pySIDM/run results' / 'test run 1'
 
     halo = Halo.setup(
         distributions=[dm_distribution, b_distribution],
