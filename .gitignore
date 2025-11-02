@@ -1,5 +1,5 @@
 __pycache__
 **/.ipynb_checkpoints/**
-analysis/**/*.csv
-analysis/**/*.pkl
-analysis/**/*.fits
+run results/**/*.csv
+run results/**/*.pkl
+run results/**/*.fits
