@@ -66,7 +66,11 @@ def clean_pairs(pairs: NDArray[np.int64], blacklist: list[int] | NDArray[np.int6
     Ensures no particle is considered multiple times.
     If a `blacklist` is provided, also exclude pairs involving blacklisted particles.
     """
-    cleaned_pairs = pd.DataFrame(pairs).drop_duplicates(0).drop_duplicates(1).to_numpy()  # Ensures there are no particles considered multiple times
+    _, indices = np.unique(pairs.ravel(), return_index=True)
+    first_occurrence = np.zeros(2 * len(pairs), dtype=np.bool_)
+    first_occurrence[indices] = True
+    first_occurrence = first_occurrence.reshape(pairs.shape)
+    cleaned_pairs = pairs[first_occurrence.all(axis=1)]
     if len(blacklist) > 0:
         cleaned_pairs = np.array([pair for pair in cleaned_pairs if pair[0] not in blacklist and pair[1] not in blacklist])
     return cleaned_pairs
@@ -257,10 +261,21 @@ def fast_quantity_norm(x: Quantity, square: bool = False) -> Quantity:
 @njit(parallel=True)
 def indices_to_mask(indices: NDArray[np.int64], length: int) -> NDArray[np.bool_]:
     """Create a mask of length `length` with `True` at the indices specified in `indices`. njit accelerated."""
-    mask = np.full(length, False, dtype=np.bool_)
+    mask = np.zeros(length, dtype=np.bool_)
     for i in prange(len(indices)):
         mask[indices[i]] = True
     return mask
+
+
+def backfill_kernel(n: int) -> NDArray[np.int64] | NDArray[np.float64]:
+    """Create a kernel for backfilling a mask. The kernel has `n + 1` ones followed by `n` zeros.
+
+    When convolving a mask with the kernel it will fill the previous `n` elements with `True`.
+    """
+    return np.hstack([np.ones(n + 1), np.zeros(n)])
+
+
+_EXPAND_KERNEL_10 = backfill_kernel(10)
 
 
 def expand_mask_back(mask: NDArray[np.bool_], n: int) -> NDArray[np.bool_]:
@@ -268,4 +283,5 @@ def expand_mask_back(mask: NDArray[np.bool_], n: int) -> NDArray[np.bool_]:
 
     I.e. the `n` places to the right of every `True` element are also filled with `True`.
     """
-    return np.convolve(mask.astype(int), np.hstack([np.ones(n + 1), np.zeros(n)]), mode='same') > 0
+    kernel = _EXPAND_KERNEL_10 if n == 10 else backfill_kernel(n)
+    return np.convolve(mask.astype(int), kernel, mode='same') > 0
