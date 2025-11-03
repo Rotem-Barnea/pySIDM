@@ -156,9 +156,7 @@ def fast_scatter_rounds(scatter_chance: NDArray[np.float64], kappa: float, max_a
     output = np.empty(len(scatter_chance), dtype=np.int64)
     for particle in prange(len(scatter_chance)):
         ratio = np.ceil(scatter_chance[particle] / kappa)
-        if np.isnan(ratio):
-            output[particle] = 1
-        elif ratio < 1:
+        if np.isnan(ratio) or ratio < 1:
             output[particle] = 1
         elif max_allowed_rounds > 0 and ratio > max_allowed_rounds:
             output[particle] = max_allowed_rounds
