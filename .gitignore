@@ -3,3 +3,4 @@ __pycache__
 run results/**/*.csv
 run results/**/*.pkl
 run results/**/*.fits
+analysis/.ipynb
