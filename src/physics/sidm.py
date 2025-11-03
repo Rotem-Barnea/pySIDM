@@ -157,7 +157,7 @@ def fast_scatter_rounds(scatter_chance: NDArray[np.float64], kappa: float, max_a
     for particle in prange(len(scatter_chance)):
         ratio = np.ceil(scatter_chance[particle] / kappa)
         if np.isnan(ratio):
-            output[particle] = 0
+            output[particle] = 1
         elif ratio < 1:
             output[particle] = 1
         elif max_allowed_rounds > 0 and ratio > max_allowed_rounds:
@@ -226,7 +226,7 @@ def scatter_chance_shortcut(
     """
     v = np.vstack([np.array(vx), np.array(vy), np.array(vr)]).T
     v_rel = np.empty((len(v), max_radius_j), dtype=np.float64)
-    update_v_rel(v_rel=v_rel, v=v, max_radius_j=max_radius_j, whitelist_mask=np.full(len(v), True))
+    update_v_rel(v_rel=v_rel, v=v, max_radius_j=max_radius_j, whitelist_mask=np.ones(len(v), dtype=np.bool_))
     return fast_scatter_chance(
         v_rel=v_rel,
         dt=np.full(len(v), dt.value),
@@ -324,7 +324,7 @@ def scatter(
     _sigma = sigma.value
     local_density = cast(NDArray[np.float64], physics.utils.local_density(_r, _m, max_radius_j, volume_kind='shell', mass_kind='single'))
     v_rel = np.zeros((len(v_output), max_radius_j), dtype=np.float64)
-    update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=np.full(len(v_output), True))
+    update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=np.ones(len(v_output), dtype=np.bool_))
     scatter_chance = fast_scatter_chance(
         v_rel=v_rel,
         dt=np.full(len(v_output), dt.value),

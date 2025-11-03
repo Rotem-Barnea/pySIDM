@@ -270,7 +270,7 @@ class Halo:
         Significantly faster if the dataframe is presorted.
         """
         if self.cleanup_nullish_particles or self.cleanup_particles_by_radius:
-            drop_indices = pd.Series(data=np.full(len(self._particles), False), index=self._particles.index)
+            drop_indices = pd.Series(data=np.zeros(len(self._particles), dtype=np.bool_), index=self._particles.index)
             if self.cleanup_nullish_particles:
                 drop_indices += self._particles['r'].isna()
             if self.cleanup_particles_by_radius:
@@ -455,34 +455,26 @@ class Halo:
         self.runtime_track_cleanup += [time.perf_counter() - t0]
         if self.is_save_round():
             self.save_snapshot()
+
+        r, vx, vy, vr, m = self._particles[['r', 'vx', 'vy', 'vr', 'm']].values.T
+
         if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(0, run_units.cross_section):
             t0 = time.perf_counter()
-            mask = self._particles['interacting']
-            (self._particles.loc[mask, 'vx'], self._particles.loc[mask, 'vy'], self._particles.loc[mask, 'vr'], indices, scatter_rounds) = (
-                sidm.scatter(
-                    r=self._particles.loc[mask, 'r'],
-                    vx=self._particles.loc[mask, 'vx'],
-                    vy=self._particles.loc[mask, 'vy'],
-                    vr=self._particles.loc[mask, 'vr'],
-                    dt=self.dt,
-                    m=self._particles.loc[mask, 'm'],
-                    **self.scatter_params,
-                )
+            mask = self._particles['interacting'].values
+            (vx[mask], vy[mask], vr[mask], indices, scatter_rounds) = sidm.scatter(
+                r=r[mask], vx=vx[mask], vy=vy[mask], vr=vr[mask], dt=self.dt, m=m[mask], **self.scatter_params
             )
             self.scatter_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
             self.runtime_track_sidm += [time.perf_counter() - t0]
         t0 = time.perf_counter()
-        self._particles['r'], self._particles['vx'], self._particles['vy'], self._particles['vr'] = leapfrog.step(
-            r=self._particles['r'],
-            vx=self._particles['vx'],
-            vy=self._particles['vy'],
-            vr=self._particles['vr'],
-            m=self._particles['m'],
-            M=self.M,
-            dt=self.dt,
-            **self.dynamics_params,
-        )
+        r, vx, vy, vr = leapfrog.step(r=r, vx=vx, vy=vy, vr=vr, m=m, M=self.M, dt=self.dt, **self.dynamics_params)
+
+        self._particles['r'] = r
+        self._particles['vx'] = vx
+        self._particles['vy'] = vy
+        self._particles['vr'] = vr
+
         self.runtime_track_leapfrog += [time.perf_counter() - t0]
         self.time += self.dt
         self.runtime_track_full_step += [time.perf_counter() - t_start]

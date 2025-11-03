@@ -265,7 +265,7 @@ def fast_step(
         Updated position and velocity.
     """
     output_r, output_vx, output_vy, output_vr = np.empty_like(r), np.empty_like(vx), np.empty_like(vy), np.empty_like(vr)
-    output_converged = np.full(len(r), True)
+    output_converged = np.ones(len(r), dtype=np.bool_)
     for particle in prange(len(r)):
         M_grid, r_grid = get_grid(r=r, M=M, window_radius=grid_window_radius, particle_index=particle)
         if not adaptive:
