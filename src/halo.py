@@ -1,3 +1,5 @@
+import itertools
+from collections import deque
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -35,7 +37,7 @@ class Halo:
         Phi0: Quantity['energy'] | None = None,
         distributions: list[Distribution] = [],
         scatter_rounds: list[int] = [],
-        scatter_track: list[NDArray[np.float64]] = [],
+        scatter_track: deque[NDArray[np.float64]] = deque(),
         time: Quantity['time'] = 0 * run_units.time,
         background: Mass_Distribution | None = None,
         last_saved_time: Quantity['time'] = 0 * run_units.time,
@@ -50,6 +52,11 @@ class Halo:
         scatters_to_collapse: int = 340,
         cleanup_nullish_particles: bool = False,
         cleanup_particles_by_radius: bool = False,
+        runtime_track_sort: list[float] | NDArray[np.float64] = [],
+        runtime_track_cleanup: list[float] | NDArray[np.float64] = [],
+        runtime_track_sidm: list[float] | NDArray[np.float64] = [],
+        runtime_track_leapfrog: list[float] | NDArray[np.float64] = [],
+        runtime_track_full_step: list[float] | NDArray[np.float64] = [],
     ) -> None:
         """Initialize a Halo object.
 
@@ -112,10 +119,11 @@ class Halo:
         self.scatters_to_collapse: int = scatters_to_collapse
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
-        self.scatter_time = []
-        self.leapfrog_time = []
-        self.sort_time = []
-        self.cleanup_time = []
+        self.runtime_track_sort = runtime_track_sort
+        self.runtime_track_cleanup = runtime_track_cleanup
+        self.runtime_track_sidm = runtime_track_sidm
+        self.runtime_track_leapfrog = runtime_track_leapfrog
+        self.runtime_track_full_step = runtime_track_full_step
 
     @classmethod
     def setup(cls, distributions: list[Distribution], n_particles: list[int | float], **kwargs: Any) -> Self:
@@ -169,6 +177,7 @@ class Halo:
                 'particle_index': particle_index if particle_index is not None else np.arange(len(r)),
             }
         )
+        data['interacting'] = data['particle_type'] == 'dm'
         data.set_index('particle_index', inplace=True)
         return data
 
@@ -182,6 +191,11 @@ class Halo:
         self._particles = self._initial_particles.copy()
         self.scatter_track = []
         self.snapshots = table.QTable()
+        self.runtime_track_sort = []
+        self.runtime_track_cleanup = []
+        self.runtime_track_sidm = []
+        self.runtime_track_leapfrog = []
+        self.runtime_track_full_step = []
 
     @property
     def particles(self) -> table.QTable:
@@ -374,6 +388,21 @@ class Halo:
         """Time at which the halo underwent core collapse, defined by on average every dm particle undergoing `scatters_to_collapse` events."""
         return (self.n_scatters.cumsum() < self.scatters_to_collapse * self.n_particles['dm']).argmin() * self.dt
 
+    @property
+    def runtime_track(self):
+        """Runtime tracking of the simulation."""
+        return pd.DataFrame(
+            itertools.zip_longest(
+                self.runtime_track_sort,
+                self.runtime_track_cleanup,
+                self.runtime_track_sidm,
+                self.runtime_track_leapfrog,
+                self.runtime_track_full_step,
+                fillvalue=np.nan,
+            ),
+            columns=['sort', 'cleanup', 'sidm', 'leapfrog', 'full step'],
+        )
+
     #####################
     ##Dynamic evolution
     #####################
@@ -417,17 +446,18 @@ class Halo:
             - Perform leapfrog integration.
             - Update simulation time.
         """
+        t_start = time.perf_counter()
         t0 = time.perf_counter()
         self._particles.sort_values('r', inplace=True)
-        self.sort_time += [time.perf_counter() - t0]
+        self.runtime_track_sort += [time.perf_counter() - t0]
         t0 = time.perf_counter()
         self.cleanup_particles()
-        self.cleanup_time += [time.perf_counter() - t0]
+        self.runtime_track_cleanup += [time.perf_counter() - t0]
         if self.is_save_round():
             self.save_snapshot()
         if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(0, run_units.cross_section):
             t0 = time.perf_counter()
-            mask = self._particles['particle_type'] == 'dm'
+            mask = self._particles['interacting']
             (self._particles.loc[mask, 'vx'], self._particles.loc[mask, 'vy'], self._particles.loc[mask, 'vr'], indices, scatter_rounds) = (
                 sidm.scatter(
                     r=self._particles.loc[mask, 'r'],
@@ -441,7 +471,7 @@ class Halo:
             )
             self.scatter_track += [self.r[indices]]
             self.scatter_rounds += [scatter_rounds]
-            self.scatter_time += [time.perf_counter() - t0]
+            self.runtime_track_sidm += [time.perf_counter() - t0]
         t0 = time.perf_counter()
         self._particles['r'], self._particles['vx'], self._particles['vy'], self._particles['vr'] = leapfrog.step(
             r=self._particles['r'],
@@ -453,8 +483,9 @@ class Halo:
             dt=self.dt,
             **self.dynamics_params,
         )
-        self.leapfrog_time += [time.perf_counter() - t0]
+        self.runtime_track_leapfrog += [time.perf_counter() - t0]
         self.time += self.dt
+        self.runtime_track_full_step += [time.perf_counter() - t_start]
 
     def evolve(
         self,
@@ -462,9 +493,11 @@ class Halo:
         t: Quantity['time'] | None = None,
         until_t: Quantity['time'] | None = None,
         tqdm_kwargs: dict[str, Any] = {},
-        t_after_core_collapse: Quantity['time'] = Quantity(0, 'Myr'),
+        t_after_core_collapse: Quantity['time'] = Quantity(-1, 'Myr'),
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
+
+        t_after_core_collapse IS DEPRECATED FOR NOW!!!
 
         Parameters:
             n_steps: Number of steps to evolve the simulation for. Takes precedence over `t`.
@@ -515,6 +548,15 @@ class Halo:
             'scatter_rounds',
             'hard_save',
             'save_path',
+            'Rmax',
+            'scatters_to_collapse',
+            'cleanup_nullish_particles',
+            'cleanup_particles_by_radius',
+            'runtime_track_sort',
+            'runtime_track_cleanup',
+            'runtime_track_sidm',
+            'runtime_track_leapfrog',
+            'runtime_track_full_step',
         ]
 
     def save(self, path: str | Path | None = None) -> None:
@@ -533,7 +575,7 @@ class Halo:
             data[[column for column in data.colnames if data[column].dtype == np.dtype('O')]].write(path / f'{name}_strings.csv', overwrite=True)
 
     @classmethod
-    def load(cls, path: str | Path = Path('halo_state')) -> Self:
+    def load(cls, path: str | Path = Path('halo_state'), update_save_path: bool = True) -> Self:
         """Load the simulation state from a directory."""
         path = Path(path)
         with open(path / 'halo_payload.pkl', 'rb') as f:
@@ -559,6 +601,8 @@ class Halo:
             snapshots=tables['snapshots'],
         )
         output.initial_particles = tables['initial_particles']
+        if update_save_path:
+            output.save_path = path.resolve()
         return output
 
     #####################
