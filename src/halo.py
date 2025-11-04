@@ -1,5 +1,7 @@
 import itertools
 import shutil
+import time
+from datetime import datetime
 from collections import deque
 import numpy as np
 import pandas as pd
@@ -21,7 +23,6 @@ from . import utils, run_units, physics, plot
 from .physics import sidm, leapfrog
 from .types import ParticleType
 from .tqdm import tqdm
-import time
 
 
 class Halo:
@@ -53,11 +54,12 @@ class Halo:
         scatters_to_collapse: int = 340,
         cleanup_nullish_particles: bool = False,
         cleanup_particles_by_radius: bool = False,
-        runtime_track_sort: list[float] | NDArray[np.float64] = [],
-        runtime_track_cleanup: list[float] | NDArray[np.float64] = [],
-        runtime_track_sidm: list[float] | NDArray[np.float64] = [],
-        runtime_track_leapfrog: list[float] | NDArray[np.float64] = [],
-        runtime_track_full_step: list[float] | NDArray[np.float64] = [],
+        runtime_realtime_track: deque[float] = deque(),
+        runtime_track_sort: deque[float] = deque(),
+        runtime_track_cleanup: deque[float] = deque(),
+        runtime_track_sidm: deque[float] = deque(),
+        runtime_track_leapfrog: deque[float] = deque(),
+        runtime_track_full_step: deque[float] = deque(),
     ) -> None:
         """Initialize a Halo object.
 
@@ -120,6 +122,7 @@ class Halo:
         self.scatters_to_collapse: int = scatters_to_collapse
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
+        self.runtime_realtime_track = runtime_realtime_track
         self.runtime_track_sort = runtime_track_sort
         self.runtime_track_cleanup = runtime_track_cleanup
         self.runtime_track_sidm = runtime_track_sidm
@@ -192,11 +195,11 @@ class Halo:
         self._particles = self._initial_particles.copy()
         self.scatter_track = []
         self.snapshots = table.QTable()
-        self.runtime_track_sort = []
-        self.runtime_track_cleanup = []
-        self.runtime_track_sidm = []
-        self.runtime_track_leapfrog = []
-        self.runtime_track_full_step = []
+        self.runtime_track_sort = deque()
+        self.runtime_track_cleanup = deque()
+        self.runtime_track_sidm = deque()
+        self.runtime_track_leapfrog = deque()
+        self.runtime_track_full_step = deque()
 
     @property
     def particles(self) -> table.QTable:
@@ -399,9 +402,10 @@ class Halo:
                 self.runtime_track_sidm,
                 self.runtime_track_leapfrog,
                 self.runtime_track_full_step,
+                self.runtime_realtime_track,
                 fillvalue=np.nan,
             ),
-            columns=['sort', 'cleanup', 'sidm', 'leapfrog', 'full step'],
+            columns=['sort', 'cleanup', 'sidm', 'leapfrog', 'full step', 'real timestep'],
         )
 
     #####################
@@ -447,6 +451,7 @@ class Halo:
             - Perform leapfrog integration.
             - Update simulation time.
         """
+        self.runtime_realtime_track += [datetime.now().timestamp()]
         t_start = time.perf_counter()
         t0 = time.perf_counter()
         self._particles.sort_values('r', inplace=True)
