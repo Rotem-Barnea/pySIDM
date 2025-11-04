@@ -377,7 +377,7 @@ class Halo:
     @property
     def n_scatters(self) -> NDArray[np.int64]:
         """The number of scatters every scattering round."""
-        return np.array([len(x) for x in self.scatter_track])
+        return np.array([len(x) / 2 for x in self.scatter_track], dtype=np.int64)
 
     @property
     def n_particles(self) -> dict[str, int]:
@@ -465,7 +465,7 @@ class Halo:
             (vx[mask], vy[mask], vr[mask], indices, scatter_rounds) = sidm.scatter(
                 r=r[mask], vx=vx[mask], vy=vy[mask], vr=vr[mask], dt=self.dt, m=m[mask], **self.scatter_params
             )
-            self.scatter_track += [self.r[indices]]
+            self.scatter_track += [self.r[mask][indices]]
             self.scatter_rounds += [scatter_rounds]
             self.runtime_track_sidm += [time.perf_counter() - t0]
         t0 = time.perf_counter()
