@@ -39,6 +39,7 @@ def local_density(
     r: QuantityOrArray,
     m: QuantityOrArray,
     max_radius_j: int = 10,
+    volume_include_final_unit_cell: bool = True,
     volume_kind: Literal['density', 'shell'] = 'shell',
     mass_kind: Literal['sum', 'single'] = 'single',
 ) -> QuantityOrArray:
@@ -54,6 +55,7 @@ def local_density(
         r: The positions of the particles.
         m: The masses of the particles. If `None` all particles are assumed to have a mass of 1 `Msun` (`run_units.mass`).
         max_radius_j: Maximum index radius for partners for scattering.
+        volume_include_final_unit_cell: If `True` counts the volume from each particle to it's `max_radius_j+1` neighbor, effectively including the unit cell of the final particle as well (without including the mass at the end of that unit cell).
         volume_kind: The kind of volume to calculate (thick shell or approximation using thin-shell).
         mass_kind: Either calculate the total mass enclosed, or count just a single mass (used for the scattering term).
 
@@ -61,7 +63,7 @@ def local_density(
         The local density of the particles.
     """
     x = np.array(r)
-    x_end = np.pad(x, (0, max_radius_j), mode='edge')[max_radius_j:]
+    x_end = np.pad(x, (0, max_radius_j + volume_include_final_unit_cell), mode='edge')[max_radius_j + volume_include_final_unit_cell :]
 
     if mass_kind == 'sum':
         y = np.pad(np.array(m), (0, max_radius_j), mode='edge').cumsum()
