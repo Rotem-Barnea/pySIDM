@@ -30,8 +30,10 @@ if __name__ == '__main__':
     # save_path = Path(os.environ['SAVE_PATH']) / 'SIDM/pySIDM/run results' / 'full test run 1'
 
     if save_path.exists():
+        print('Loaded existing halo (continuing run)')
         halo = Halo.load(save_path)
     else:
+        print('Starting new run')
         halo = Halo.setup(
             distributions=[dm_distribution, b_distribution],
             n_particles=[dm_n_particles, b_n_particles],
