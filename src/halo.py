@@ -417,14 +417,14 @@ class Halo:
         """The current simulation step count (calculated based on the simulation time)."""
         return self.to_step(self.time)
 
-    def save_snapshot(self) -> None:
+    def save_snapshot(self, **kwargs: Any) -> None:
         """Save the current state of the simulation."""
         data = self.particles.copy()
         data['step'] = self.current_step
         self.snapshots = table.vstack([self.snapshots, data])
         self.last_saved_time = self.time.copy()
         if self.hard_save:
-            self.save()
+            self.save(**kwargs)
 
     def is_save_round(self) -> bool:
         """Check if it's time to save the simulation state."""
@@ -436,7 +436,7 @@ class Halo:
             return True
         return False
 
-    def step(self) -> None:
+    def step(self, save_kwargs: dict[str, Any] = {}) -> None:
         """Perform a single time step of the simulation.
 
         Every step:
@@ -455,7 +455,7 @@ class Halo:
         self.cleanup_particles()
         self.runtime_track_cleanup += [time.perf_counter() - t0]
         if self.is_save_round():
-            self.save_snapshot()
+            self.save_snapshot(**save_kwargs)
 
         r, vx, vy, vr, m = self._particles[['r', 'vx', 'vy', 'vr', 'm']].values.T
 
@@ -486,6 +486,7 @@ class Halo:
         t: Quantity['time'] | None = None,
         until_t: Quantity['time'] | None = None,
         tqdm_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] = {},
         t_after_core_collapse: Quantity['time'] = Quantity(-1, 'Myr'),
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
@@ -497,6 +498,7 @@ class Halo:
             t: Time to evolve the simulation for. Ignored if `n_steps` is specified, otherwise transformed into steps using `to_steps()`.
             until_t: Evolve the simulation until this time. Ignored if `n_steps` or `t` are specified, otherwise transformed into steps using `to_steps()`.
             tqdm_kwargs: Additional keyword arguments to pass to `tqdm` (NOTE this is the custom submodule defined in this project at `tqdm.py`).
+            save_kwargs: Additional keyword arguments to pass to `save()`.
             t_after_core_collapse: Time after core collapse to evolve the simulation for, afterwhich the simulation will stop (early quit). If negative ignore the core collapse check.
 
         Returns:
@@ -518,7 +520,7 @@ class Halo:
                     print(f'Core collapse detected at time {self.time}')
                     break
         if self.hard_save:
-            self.save()
+            self.save(**save_kwargs)
 
     #####################
     ##Save/Load
