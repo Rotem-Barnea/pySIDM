@@ -596,6 +596,8 @@ class Halo:
         path.mkdir(exist_ok=True, parents=True)
         if keep_last_backup:
             for file in path.glob('*'):
+                if '_backup.' in file.stem:
+                    continue
                 if file.is_dir():
                     shutil.copytree(file, file.with_stem(f'{file.stem}_backup'), dirs_exist_ok=True)
                 else:
