@@ -1,4 +1,5 @@
 import itertools
+import shutil
 from collections import deque
 import numpy as np
 import pandas as pd
@@ -551,20 +552,35 @@ class Halo:
             'runtime_track_full_step',
         ]
 
-    def save(self, path: str | Path | None = None) -> None:
-        """Save the simulation state to a directory. If `path` is None, attempts to use the internal save path."""
+    def save(self, path: str | Path | None = None, two_steps: bool = True, keep_last_backup: bool = True) -> None:
+        """Save the simulation state to a directory.
+
+        Parameters:
+            path: Save path. If `path` is None attempts to use the internal save path.
+            two_steps: If True saves the simulation state in two steps, to avoid rewriting the existing file with data that can be stopped midway (leaving just the 1 corrupted file). This means that for the duration of the saving the disk size used is doubled.
+            keep_last_backup: If True keeps a full backup of the previous save, otherwise overwrite it based on `two_steps` rules. This option _always_ uses twice the disk space.
+
+        Returns:
+            None
+        """
         if path is None:
             path = self.save_path
         assert path is not None, 'Save path must be provided'
         path = Path(path)
         path.mkdir(exist_ok=True, parents=True)
+        if keep_last_backup:
+            for file in path.glob('*'):
+                shutil.copyfile(file, file.with_stem(f'{file.stem}_backup'))
         payload = {key: getattr(self, key) for key in self.payload_keys()}
         tables = {'particles': self.particles, 'initial_particles': self.initial_particles, 'snapshots': self.snapshots}
-        with open(path / 'halo_payload.pkl', 'wb') as f:
+        tag = '_' if two_steps else ''
+        with open(path / f'halo_payload{tag}.pkl', 'wb') as f:
             pickle.dump(payload, f)
         for name, data in tables.items():
-            data[[column for column in data.colnames if data[column].dtype != np.dtype('O')]].write(path / f'{name}.fits', overwrite=True)
-            data[[column for column in data.colnames if data[column].dtype == np.dtype('O')]].write(path / f'{name}_strings.csv', overwrite=True)
+            data[[column for column in data.colnames if data[column].dtype != np.dtype('O')]].write(path / f'{name}{tag}.fits', overwrite=True)
+            data[[column for column in data.colnames if data[column].dtype == np.dtype('O')]].write(path / f'{name}_strings{tag}.csv', overwrite=True)
+        for file in path.glob('*_.*'):
+            file.rename(file.with_stem(file.stem[-1]))
 
     @classmethod
     def load(cls, path: str | Path = Path('halo_state'), update_save_path: bool = True) -> Self:
