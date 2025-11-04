@@ -22,7 +22,7 @@ if __name__ == '__main__':
     dm_Mtot = dm_distribution.Mtot
 
     dm_n_particles = 1e5
-    b_n_particles = 1e4
+    b_n_particles = 1e5
     dt = dm_distribution.Tdyn / 1000
     save_every_time = 30 * dm_distribution.Tdyn
     hard_save = True
@@ -48,7 +48,7 @@ if __name__ == '__main__':
         )
 
     halo.evolve(
-        until_t=Quantity(10, 'Gyr'),
+        until_t=Quantity(8, 'Gyr'),
         tqdm_kwargs={'mininterval': 60},
         save_kwargs={'two_steps': False, 'keep_last_backup': False},
     )
