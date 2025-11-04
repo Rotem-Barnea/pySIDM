@@ -596,7 +596,10 @@ class Halo:
         path.mkdir(exist_ok=True, parents=True)
         if keep_last_backup:
             for file in path.glob('*'):
-                shutil.copyfile(file, file.with_stem(f'{file.stem}_backup'))
+                if file.is_dir():
+                    shutil.copytree(file, file.with_stem(f'{file.stem}_backup'))
+                else:
+                    shutil.copyfile(file, file.with_stem(f'{file.stem}_backup'))
         payload = {key: getattr(self, key) for key in self.payload_keys()}
         tables = {'particles': self.particles, 'initial_particles': self.initial_particles}
         if not split_snapshots:
