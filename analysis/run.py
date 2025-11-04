@@ -47,4 +47,8 @@ if __name__ == '__main__':
             scatter_params={'kappa': 0.02, 'sigma': sigma},
         )
 
-    halo.evolve(until_t=Quantity(17, 'Gyr'), tqdm_kwargs={'mininterval': 60})
+    halo.evolve(
+        until_t=Quantity(17, 'Gyr'),
+        tqdm_kwargs={'mininterval': 60},
+        save_kwargs={'two_steps': False, 'keep_last_backup': False},
+    )
