@@ -597,7 +597,7 @@ class Halo:
         if keep_last_backup:
             for file in path.glob('*'):
                 if file.is_dir():
-                    shutil.copytree(file, file.with_stem(f'{file.stem}_backup'))
+                    shutil.copytree(file, file.with_stem(f'{file.stem}_backup'), dirs_exist_ok=True)
                 else:
                     shutil.copyfile(file, file.with_stem(f'{file.stem}_backup'))
         payload = {key: getattr(self, key) for key in self.payload_keys()}
@@ -612,7 +612,7 @@ class Halo:
         for file in path.glob('*_.*'):
             file.rename(file.with_stem(file.stem[:-1]))
         if split_snapshots:
-            (path / 'split_snapshots').mkdir()
+            (path / 'split_snapshots').mkdir(exist_ok=True)
             for i, group in enumerate(self.snapshots.group_by('time').groups):
                 self.save_table(group, path / f'split_snapshots/snapshot_{i}.fits', overwrite=True)
 
