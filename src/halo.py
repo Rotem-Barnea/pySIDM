@@ -552,6 +552,7 @@ class Halo:
             'scatters_to_collapse',
             'cleanup_nullish_particles',
             'cleanup_particles_by_radius',
+            'runtime_realtime_track',
             'runtime_track_sort',
             'runtime_track_cleanup',
             'runtime_track_sidm',
