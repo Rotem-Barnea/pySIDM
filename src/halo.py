@@ -1480,10 +1480,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        scatters = np.array([len(x) for x in self.scatter_track]).cumsum()
-        x = (np.arange(len(scatters)) * self.dt).to(time_unit)
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, ax_set=ax_set, **kwargs)
-        sns.lineplot(x=x, y=scatters, ax=ax, label=label)
+        sns.lineplot(x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit), y=self.n_scatters.cumsum(), ax=ax, label=label)
         if label is not None:
             ax.legend()
         return fig, ax
@@ -1512,10 +1510,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        scatters = np.array([len(x) for x in self.scatter_track]).cumsum() / self.n_particles['dm']
-        x = (np.arange(len(scatters)) * self.dt).to(time_unit)
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
-        sns.lineplot(x=x, y=scatters, ax=ax, label=label)
+        sns.lineplot(x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit), y=self.n_scatters, ax=ax, label=label)
         if label is not None:
             ax.legend()
         return fig, ax
@@ -1545,9 +1541,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig, ax.
         """
         n = int(time_binning / self.dt)
-        scatters = np.array([len(x) for x in self.scatter_track])
-        x = (np.arange(len(scatters)) * self.dt).to(time_unit)[::n]
-        scatters = np.add.reduceat(scatters, np.arange(0, len(scatters), n))
+        x = (np.arange(len(self.n_scatters)) * self.dt).to(time_unit)[::n]
+        scatters = np.add.reduceat(self.n_scatters, np.arange(0, len(self.n_scatters), n))
 
         if title is not None:
             title = title.format(time=time_binning.to(title_time_unit).to_string(format='latex', formatter=time_format))
