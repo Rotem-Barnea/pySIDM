@@ -554,13 +554,31 @@ class Halo:
             'runtime_track_full_step',
         ]
 
-    def save(self, path: str | Path | None = None, two_steps: bool = True, keep_last_backup: bool = True) -> None:
+    @staticmethod
+    def save_table(data: table.QTable, path: str | Path, **kwargs: Any) -> None:
+        """Save a QTable to a file, splitting the strings from the Quantity data, and saving into `{}_strings.csv` and `{}.fits`."""
+        data[[column for column in data.colnames if data[column].dtype != np.dtype('O')]].write(path.with_name(f'{path.stem}.fits'), **kwargs)
+        data[[column for column in data.colnames if data[column].dtype == np.dtype('O')]].write(path.with_name(f'strings_{path.stem}.csv'), **kwargs)
+
+    @staticmethod
+    def load_table(path: str | Path) -> table.QTable:
+        """Load a QTable saved via `save_table()`."""
+        fits_table = table.QTable.read(path.with_name(f'{path.stem}.fits'))
+        csv_table = table.QTable.read(path.with_name(f'strings_{path.stem}.csv'))
+        for col in fits_table.colnames:
+            fits_table[col] = fits_table[col].astype(fits_table[col].dtype.newbyteorder('='), copy=False)
+        for col in csv_table.colnames:
+            csv_table[col] = np.array(csv_table[col]).astype('O')
+        return cast(table.QTable, table.hstack([fits_table, csv_table]))
+
+    def save(self, path: str | Path | None = None, two_steps: bool = True, keep_last_backup: bool = True, split_snapshots: bool = True) -> None:
         """Save the simulation state to a directory.
 
         Parameters:
             path: Save path. If `path` is None attempts to use the internal save path.
-            two_steps: If True saves the simulation state in two steps, to avoid rewriting the existing file with data that can be stopped midway (leaving just the 1 corrupted file). This means that for the duration of the saving the disk size used is doubled.
-            keep_last_backup: If True keeps a full backup of the previous save, otherwise overwrite it based on `two_steps` rules. This option _always_ uses twice the disk space.
+            two_steps: If `True` saves the simulation state in two steps, to avoid rewriting the existing file with data that can be stopped midway (leaving just the 1 corrupted file). This means that for the duration of the saving the disk size used is doubled.
+            keep_last_backup: If `True` keeps a full backup of the previous save, otherwise overwrite it based on `two_steps` rules. This option _always_ uses twice the disk space.
+            split_snapshots: If `True` saves the snapshots QTable as separate files.
 
         Returns:
             None
@@ -574,15 +592,20 @@ class Halo:
             for file in path.glob('*'):
                 shutil.copyfile(file, file.with_stem(f'{file.stem}_backup'))
         payload = {key: getattr(self, key) for key in self.payload_keys()}
-        tables = {'particles': self.particles, 'initial_particles': self.initial_particles, 'snapshots': self.snapshots}
+        tables = {'particles': self.particles, 'initial_particles': self.initial_particles}
+        if not split_snapshots:
+            tables['snapshots'] = self.snapshots
         tag = '_' if two_steps else ''
         with open(path / f'halo_payload{tag}.pkl', 'wb') as f:
             pickle.dump(payload, f)
         for name, data in tables.items():
-            data[[column for column in data.colnames if data[column].dtype != np.dtype('O')]].write(path / f'{name}{tag}.fits', overwrite=True)
-            data[[column for column in data.colnames if data[column].dtype == np.dtype('O')]].write(path / f'{name}_strings{tag}.csv', overwrite=True)
+            self.save_table(data, path / f'{name}{tag}.fits', overwrite=True)
         for file in path.glob('*_.*'):
-            file.rename(file.with_stem(file.stem[-1]))
+            file.rename(file.with_stem(file.stem[:-1]))
+        if split_snapshots:
+            (path / 'split_snapshots').mkdir()
+            for i, group in enumerate(self.snapshots.group_by('time').groups):
+                self.save_table(group, path / f'split_snapshots/snapshot_{i}.fits', overwrite=True)
 
     @classmethod
     def load(cls, path: str | Path = Path('halo_state'), update_save_path: bool = True) -> Self:
@@ -592,14 +615,14 @@ class Halo:
             payload = {key: value for key, value in pickle.load(f).items() if key in cls.payload_keys()}
 
         tables = {}
-        for name in ['particles', 'initial_particles', 'snapshots']:
-            fits_table = table.QTable.read(path / f'{name}.fits')
-            csv_table = table.QTable.read(path / f'{name}_strings.csv')
-            for col in fits_table.colnames:
-                fits_table[col] = fits_table[col].astype(fits_table[col].dtype.newbyteorder('='), copy=False)
-            for col in csv_table.colnames:
-                csv_table[col] = np.array(csv_table[col]).astype('O')
-            tables[name] = table.hstack([fits_table, csv_table])
+
+        if (path / 'split_snapshots').exists():
+            tables['snapshots'] = cast(table.QTable, table.vstack([cls.load_table(file) for file in (path / 'split_snapshots').glob('*.fits')]))
+        else:
+            tables['snapshots'] = cls.load_table(path / 'snapshots.fits')
+
+        for name in ['particles', 'initial_particles']:
+            tables[name] = cls.load_table(path / f'{name}.fits')
         particles = tables['particles']
         particles.sort('particle_index')
         output = cls(
