@@ -28,7 +28,7 @@ class Hernquist(Distribution):
         Returns:
             The density at the given radius.
         """
-        rho = rho_s / ((r / Rs) * (1 + (r / Rs)) ** 3) / np.exp((r / Rvir) ** 2)
+        rho = rho_s / ((r / Rs) * (1 + (r / Rs)) ** 3) / np.exp((r / Rvir) ** 4)
         if isinstance(r, float):
             return rho[0]
         return rho
