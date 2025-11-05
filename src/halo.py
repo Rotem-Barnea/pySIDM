@@ -577,7 +577,7 @@ class Halo:
             csv_table[col] = np.array(csv_table[col]).astype('O')
         return cast(table.QTable, table.hstack([fits_table, csv_table]))
 
-    def save(self, path: str | Path | None = None, two_steps: bool = True, keep_last_backup: bool = True, split_snapshots: bool = True) -> None:
+    def save(self, path: str | Path | None = None, two_steps: bool = True, keep_last_backup: bool = False, split_snapshots: bool = True) -> None:
         """Save the simulation state to a directory.
 
         Parameters:
