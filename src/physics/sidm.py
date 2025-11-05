@@ -12,6 +12,7 @@ class Params(TypedDict, total=False):
 
     max_radius_j: int
     max_allowed_rounds: int | None
+    record_underestimation: bool
     kappa: float
     sigma: Quantity[run_units.cross_section]
 
@@ -19,6 +20,7 @@ class Params(TypedDict, total=False):
 default_params: Params = {
     'max_radius_j': 10,
     'max_allowed_rounds': 100,
+    'record_underestimation': True,
     'kappa': 0.02,
     'sigma': Quantity(0, 'cm^2/gram').to(run_units.cross_section),
 }
@@ -283,7 +285,8 @@ def scatter(
     max_radius_j: int = default_params['max_radius_j'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
-) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64], int]:
+    record_underestimation: bool = default_params['record_underestimation'],
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64], int, int]:
     """Perform SIDM scatter events.
 
     Every time step the particle density is calculated, the overall scattering rate is estimated, and each particle is given `N` scattering rounds where in each round the scatter probability is at most `kappa`. Specifically:
@@ -308,16 +311,17 @@ def scatter(
         max_radius_j: Maximum index radius for partners for scattering.
         kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
+        record_underestimation: Whether to record the amount of rounds underestimated (due to `max_allowed_rounds`).
 
     Returns:
-        post scattering vx, vy, vz, indices of the particles that interacted, and the maximum number of rounds performed.
+        post scattering vx, vy, vz, indices of the particles that interacted, the maximum number of rounds performed, and the amount of rounds underestimated (due to `max_allowed_rounds`).
     """
     if max_allowed_rounds is None:
         max_allowed_rounds = -1
     _r, _vx, _vy, _vr, _m = np.array(r), np.array(vx).copy(), np.array(vy).copy(), np.array(vr).copy(), np.array(m)
     interacted: NDArray[np.int64] = np.empty(0, dtype=np.int64)
     if sigma == 0:
-        return _vx, _vy, _vr, interacted, 0
+        return _vx, _vy, _vr, interacted, 0, 0
     v_output = np.vstack([_vx, _vy, _vr]).T
     _sigma = sigma.value
     local_density = cast(NDArray[np.float64], physics.utils.local_density(_r, _m, max_radius_j, volume_kind='shell', mass_kind='single'))
@@ -330,10 +334,16 @@ def scatter(
         density_term=local_density,
     )
     scatter_rounds = fast_scatter_rounds(scatter_chance=scatter_chance, kappa=kappa, max_allowed_rounds=max_allowed_rounds)
+    max_scatter_rounds = scatter_rounds.max()
+    underestimation: int = (
+        fast_scatter_rounds(scatter_chance=scatter_chance, kappa=kappa, max_allowed_rounds=-1).max()
+        if record_underestimation and max_scatter_rounds == max_allowed_rounds
+        else 0
+    )
     round_dt = dt.value / scatter_rounds
     scatter_chance /= scatter_rounds
     interacted_particles = np.empty(0, dtype=np.int64)
-    for round in range(1, scatter_rounds.max() + 1):
+    for round in range(1, max_scatter_rounds + 1):
         mask = scatter_rounds >= round
         if len(interacted_particles) > 0:
             # Only update the relative velocities and scattering chance for particles that scattered in the past round or in the neighborhood of scattering particles (i.e. only particles that would have a change in their v_rel values, otherwise the probability is the same and we don't need to recalculate it)
@@ -351,4 +361,4 @@ def scatter(
         interacted_particles = pairs.ravel()
         interacted = np.hstack([interacted, interacted_particles])
         scatter_unique_pairs(v=v_output, pairs=pairs)
-    return *v_output.T, interacted, scatter_rounds.max()
+    return *v_output.T, interacted, max_scatter_rounds, underestimation

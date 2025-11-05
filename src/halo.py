@@ -38,7 +38,8 @@ class Halo:
         Tdyn: Quantity['time'] | None = None,
         Phi0: Quantity['energy'] | None = None,
         distributions: list[Distribution] = [],
-        scatter_rounds: list[int] = [],
+        scatter_rounds: deque[int] = deque(),
+        underestimated_rounds: deque[int] = deque(),
         scatter_track_index: deque[NDArray[np.int64]] = deque(),
         scatter_track_radius: deque[NDArray[np.float64]] = deque(),
         time: Quantity['time'] = 0 * run_units.time,
@@ -74,6 +75,7 @@ class Halo:
             distributions: List of distributions of the halo.
             n_interactions: Number of interactions the halo had.
             scatter_rounds: Number of scatter rounds the halo had every time step.
+            underestimated_rounds: Number of underestimated scatter rounds the halo had every time step (due to `max_allowed_rounds` in `physics.sidm.scatter()`).
             scatter_track_index: The interacting particles (particle index) at every time step.
             scatter_track_radius: The location of the interacting particles at every time step.
             time: Time of the halo.
@@ -119,6 +121,7 @@ class Halo:
         self.initial_particles = self.particles.copy()
         self.last_saved_time = last_saved_time
         self.scatter_rounds = scatter_rounds
+        self.underestimated_rounds = underestimated_rounds
         self.hard_save: bool = hard_save
         self.save_path: Path | str | None = save_path
         self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
@@ -196,6 +199,8 @@ class Halo:
         """Resets the halo to its initial state (no interactions, `time`=0, cleared snapshots, particles at initial positions)."""
         self.time = 0 * run_units.time
         self._particles = self._initial_particles.copy()
+        self.scatter_rounds = deque()
+        self.underestimated_rounds = deque()
         self.scatter_track_index = deque()
         self.scatter_track_radius = deque()
         self.snapshots = table.QTable()
@@ -465,22 +470,20 @@ class Halo:
         self.runtime_track_cleanup += [time.perf_counter() - t0]
         if self.is_save_round():
             self.save_snapshot(**save_kwargs)
-
         r, vx, vy, vr, m = self._particles[['r', 'vx', 'vy', 'vr', 'm']].values.T
-
         if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(0, run_units.cross_section):
             t0 = time.perf_counter()
             mask = self._particles['interacting'].values
-            (vx[mask], vy[mask], vr[mask], indices, scatter_rounds) = sidm.scatter(
+            (vx[mask], vy[mask], vr[mask], indices, scatter_rounds, underestimated_rounds) = sidm.scatter(
                 r=r[mask], vx=vx[mask], vy=vy[mask], vr=vr[mask], dt=self.dt, m=m[mask], **self.scatter_params
             )
             self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
             self.scatter_track_radius += [self.r[mask][indices]]
             self.scatter_rounds += [scatter_rounds]
+            self.underestimated_rounds += [underestimated_rounds]
             self.runtime_track_sidm += [time.perf_counter() - t0]
         t0 = time.perf_counter()
         r, vx, vy, vr = leapfrog.step(r=r, vx=vx, vy=vy, vr=vr, m=m, M=self.M, dt=self.dt, **self.dynamics_params)
-
         self._particles['r'] = r
         self._particles['vx'] = vx
         self._particles['vy'] = vy
@@ -552,6 +555,7 @@ class Halo:
             'background',
             'last_saved_time',
             'scatter_rounds',
+            'underestimated_rounds',
             'hard_save',
             'save_path',
             'Rmax',
