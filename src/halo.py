@@ -39,7 +39,8 @@ class Halo:
         Phi0: Quantity['energy'] | None = None,
         distributions: list[Distribution] = [],
         scatter_rounds: list[int] = [],
-        scatter_track: deque[NDArray[np.float64]] = deque(),
+        scatter_track_index: deque[NDArray[np.int64]] = deque(),
+        scatter_track_radius: deque[NDArray[np.float64]] = deque(),
         time: Quantity['time'] = 0 * run_units.time,
         background: Mass_Distribution | None = None,
         last_saved_time: Quantity['time'] = 0 * run_units.time,
@@ -73,7 +74,8 @@ class Halo:
             distributions: List of distributions of the halo.
             n_interactions: Number of interactions the halo had.
             scatter_rounds: Number of scatter rounds the halo had every time step.
-            scatter_track: The interacting particles (particle index) at every time step.
+            scatter_track_index: The interacting particles (particle index) at every time step.
+            scatter_track_radius: The location of the interacting particles at every time step.
             time: Time of the halo.
             background: Background mass distribution of the halo.
             last_saved_time: Last time a snapshot was saved.
@@ -111,7 +113,8 @@ class Halo:
         self.save_every_time: Quantity['time'] | None = save_every_time if save_every_time is None else save_every_time.to(run_units.time)
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
         self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
-        self.scatter_track = scatter_track
+        self.scatter_track_index = scatter_track_index
+        self.scatter_track_radius = scatter_track_radius
         self._initial_particles = self._particles.copy()
         self.initial_particles = self.particles.copy()
         self.last_saved_time = last_saved_time
@@ -193,7 +196,8 @@ class Halo:
         """Resets the halo to its initial state (no interactions, `time`=0, cleared snapshots, particles at initial positions)."""
         self.time = 0 * run_units.time
         self._particles = self._initial_particles.copy()
-        self.scatter_track = []
+        self.scatter_track_index = deque()
+        self.scatter_track_radius = deque()
         self.snapshots = table.QTable()
         self.runtime_track_sort = deque()
         self.runtime_track_cleanup = deque()
@@ -380,7 +384,7 @@ class Halo:
     @property
     def n_scatters(self) -> NDArray[np.int64]:
         """The number of scatters every scattering round."""
-        return np.array([len(x) / 2 for x in self.scatter_track], dtype=np.int64)
+        return np.array([len(x) / 2 for x in self.scatter_track_radius], dtype=np.int64)  # Replace to be scatter_track_index
 
     @property
     def n_particles(self) -> dict[str, int]:
@@ -470,7 +474,8 @@ class Halo:
             (vx[mask], vy[mask], vr[mask], indices, scatter_rounds) = sidm.scatter(
                 r=r[mask], vx=vx[mask], vy=vy[mask], vr=vr[mask], dt=self.dt, m=m[mask], **self.scatter_params
             )
-            self.scatter_track += [self.r[mask][indices]]
+            self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
+            self.scatter_track_radius += [self.r[mask][indices]]
             self.scatter_rounds += [scatter_rounds]
             self.runtime_track_sidm += [time.perf_counter() - t0]
         t0 = time.perf_counter()
@@ -542,7 +547,8 @@ class Halo:
             'save_every_time',
             'dynamics_params',
             'scatter_params',
-            'scatter_track',
+            'scatter_track_index',
+            'scatter_track_radius',
             'background',
             'last_saved_time',
             'scatter_rounds',
@@ -1293,7 +1299,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if title is not None:
             title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_scatters=self.n_scatters.sum())
         fig, ax = plot.setup_plot(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
-        sns.histplot(Quantity(np.hstack(self.scatter_track), run_units.length).to(length_units), ax=ax)
+        sns.histplot(Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units), ax=ax)
         return fig, ax
 
     def plot_scattering_density(
@@ -1329,7 +1335,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        r = np.hstack(self.scatter_track).to(length_units)
+        r = np.hstack(self.scatter_track_radius).to(length_units)
         r_bins = np.linspace(0, r.max(), num=num)
         dr = r_bins[1] - r_bins[0]
         density = Quantity(
@@ -1587,7 +1593,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             title = title.format(time=time_binning.to(title_time_unit).to_string(format='latex', formatter=time_format))
 
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
-        sns.lineplot(x=x, y=scatters, ax=ax, label=label)
+        sns.lineplot(x=x[:-1], y=scatters[:-1], ax=ax, label=label)
         if label is not None:
             ax.legend()
         return fig, ax
