@@ -48,7 +48,7 @@ if __name__ == '__main__':
         )
 
     halo.evolve(
-        until_t=Quantity(8, 'Gyr'),
+        until_t=Quantity(12, 'Gyr'),
         tqdm_kwargs={'mininterval': 60},
         save_kwargs={'two_steps': False, 'keep_last_backup': False},
     )
