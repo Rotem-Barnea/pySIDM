@@ -707,6 +707,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         indices: list[int] | None = None,
         color_palette: str | None = None,
         legend_loc: str | None = 'outside center right',
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the density progression over time.
@@ -724,6 +725,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             indices: The snapshot indices to plot. If `None` plots everything.
             color_palette: The color palette to use for the halos. If `None`, uses the default color palette.
             legend_loc: The location of the legend. If `None` uses the default location.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -760,6 +762,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             )
         if legend_loc:
             fig.legend(loc=legend_loc)
+
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_distribution(
@@ -781,6 +786,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig: Figure | None = None,
         ax: Axes | None = None,
         plt_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the distribution of a given key in the data.
@@ -803,6 +809,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig: The figure to plot on.
             ax: The axes to plot on.
             plt_kwargs: Additional keyword arguments to pass to the sns plotting function (`sns.histplot()` or `sns.kdeplot()`).
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
 
         Returns:
@@ -824,6 +831,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             sns.histplot(x, cumulative=cumulative, ax=ax, stat=stat, label=label, **plt_kwargs)
         if x_plot_range is not None:
             ax.set_xlim(*x_plot_range.to(x_units).value)
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_r_distribution(
@@ -835,6 +844,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         x_range: Quantity | None = None,
         hist_label: str | None = None,
         density_label: str | None = None,
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the radial distribution of the halo. Wraps `plot_distribution()` with additional options.
@@ -847,6 +857,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             x_range: The range of the x-axis.
             hist_label: The label for the histogram (legend).
             density_label: The label for the density distribution (legend).
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
 
         Returns:
@@ -855,7 +866,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig, ax = self.plot_distribution(key='r', data=data, cumulative=cumulative, x_units=x_units, x_range=x_range, label=hist_label, **kwargs)
         if add_density is not None:
             params: dict[str, Any] = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
-            return self.distributions[add_density].plot_radius_distribution(
+            fig, ax = self.distributions[add_density].plot_radius_distribution(
                 cumulative=cumulative,
                 length_units=x_units,
                 fig=fig,
@@ -863,6 +874,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 label=density_label,
                 **params,
             )
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_phase_space_evolution(
@@ -966,6 +979,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig: Figure | None = None,
         ax: Axes | None = None,
         line_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the number of particles in the inner core as a function of time.
@@ -985,6 +999,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig: Figure to use for the plot.
             ax: Axes to use for the plot.
             line_kwargs: Additional keyword arguments to pass to the lineplot function (`sns.lineplot()`).
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -1026,6 +1041,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             label=label,
             **line_kwargs,
         )
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_particle_evolution(
@@ -1234,6 +1251,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         ax: Axes | None = None,
         start_kwargs: dict[str, Any] = {},
         end_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the distribution comparison between the current state and the initial state.
@@ -1248,6 +1266,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             ax: Axes to use for the plot.
             start_kwargs: Additional keyword arguments to pass to the distribution plotting function (`self.plot_distribution()`), for the start distribution only.
             end_kwargs: Additional keyword arguments to pass to the distribution plotting function (`self.plot_distribution()`), for the end distribution only.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             **kwargs: Additional keyword arguments to pass to the distribution plotting function (`self.plot_distribution()`), for *both* distributions. Overwritten by start_kwargs/end_kwargs as needed.
 
         Returns:
@@ -1267,6 +1286,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             },
         )
         ax.legend()
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_scattering_location(
@@ -1279,6 +1300,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         figsize: tuple[int, int] = (12, 6),
         fig: Figure | None = None,
         ax: Axes | None = None,
+        save_kwargs: dict[str, Any] | None = None,
     ) -> tuple[Figure, Axes]:
         """Plot the histogram of scattering event locations.
 
@@ -1293,6 +1315,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             figsize: Size of the figure.
             fig: Figure to use for the plot.
             ax: Axes to use for the plot.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
 
         Returns:
             fig, ax.
@@ -1304,6 +1327,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_scatters=self.n_scatters.sum())
         fig, ax = plot.setup_plot(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
         sns.histplot(Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units), ax=ax)
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_scattering_density(
@@ -1317,6 +1342,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_format: str = '.1f',
         smooth_sigma: float = 5,
         smooth_interpolate_kind: str = 'linear',
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the location of scattering events location densities (number of events per bin volume).
@@ -1334,6 +1360,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_format: Format string for time.
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
             smooth_interpolate_kind: Interpolation kind for the density plot. Applied after the gaussian smoothing to further smooth the plot data.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -1357,6 +1384,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_scatters=self.n_scatters.sum())
         fig, ax = plot.setup_plot(**kwargs, ax_set={'yscale': 'log'}, **utils.drop_None(title=title, xlabel=xlabel))
         sns.lineplot(x=r_bins, y=smoothed_density, ax=ax)
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_local_density_by_range(
@@ -1370,6 +1399,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_units: UnitLike = 'Gyr',
         time_format: str = '.1f',
         smooth_sigma: float = 50,
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the local density profile of the halo as a function of the radius.
@@ -1384,6 +1414,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_units: Units to use for time.
             time_format: Format string for time.
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -1405,6 +1436,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         ylabel = utils.add_label_unit(ylabel, density_units)
         fig, ax = plot.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
         sns.lineplot(x=x, y=smoothed_local_density, ax=ax)
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_local_density_distribution(
@@ -1418,6 +1451,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         stat: str = 'density',
         cumulative: bool = False,
         hist_kwargs: Any = {},
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the local density distribution of the halo (histogram).
@@ -1432,6 +1466,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             stat: The type of statistic to plot. Gets passed to sns.histplot.
             cumulative: Whether to plot the cumulative distribution.
             hist_kwargs: Additional keyword arguments to pass to `sns.histogram()`.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -1446,6 +1481,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             )
         fig, ax = plot.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
         sns.histplot(self.local_density.to(density_units), log_scale=log_scale, stat=stat, cumulative=cumulative, **hist_kwargs)
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_trace(
@@ -1462,6 +1499,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         y_units: UnitLike | None = None,
         length_units: UnitLike = 'kpc',
         length_format: str = '.1f',
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the trace of a particle's property over time.
@@ -1479,6 +1517,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             y_units: Units for the y-axis.
             length_units: Units for the length.
             length_format: Format string for length.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -1508,6 +1547,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         title: str | None = 'Cumulative number of scattering events',
         label: str | None = None,
         ax_set: dict[str, Any] = {'yscale': 'log'},
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the cumulative number of scattering events over time.
@@ -1528,6 +1568,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         sns.lineplot(x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit), y=self.n_scatters.cumsum(), ax=ax, label=label)
         if label is not None:
             ax.legend()
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_cumulative_scattering_amount_per_particle_over_time(
@@ -1538,6 +1580,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         title: str | None = 'Mean cumulative number of scattering events per particle',
         label: str | None = None,
         per_dm_particle: bool = False,
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the cumulative number of scattering events over time.
@@ -1549,6 +1592,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             title: The title of the plot.
             label: Label for the plot (legend).
             per_dm_particle: If `True` plot the mean cumulative number of scattering events, i.e. devide by the number of dm particles.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -1563,6 +1607,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         )
         if label is not None:
             ax.legend()
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_binned_scattering_amount_over_time(
@@ -1575,6 +1621,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         label: str | None = None,
         time_format: str | None = None,
         title_time_unit: str | None = 'Myr',
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the number of scattering events over time, binned.
@@ -1584,6 +1631,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             label: Label for the plot (legend).
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -1600,13 +1648,21 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         sns.lineplot(x=x[:-1], y=scatters[:-1], ax=ax, label=label)
         if label is not None:
             ax.legend()
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
-    def plot_distributions_rho(self, markers_on_first_only: bool = False, **kwargs: Any) -> tuple[Figure, Axes]:
+    def plot_distributions_rho(
+        self,
+        markers_on_first_only: bool = False,
+        save_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
         """Plot the density profile (`rho`) of each of the provided distributions in the halo.
 
         Parameters:
             markers_on_first_only: If `True` only plot markers (`Rs` and `Rvir`) for the first density.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments are passed to every call to the plotting function.
 
         Returns:
@@ -1618,6 +1674,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 label=f'{distribution.label} ({distribution.title})', fig=fig, ax=ax, add_markers=(i == 0 or not markers_on_first_only), **kwargs
             )
         assert fig is not None and ax is not None
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
     def plot_distributions_over_time(
@@ -1625,6 +1683,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         times: Quantity['time'] = Quantity([0, 2, 10], 'Gyr'),
         labels: list[str] = ['start', 'max core', 'core collapse'],
         radius_bins: Quantity['length'] = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the density profiles of the halo over time.
@@ -1633,6 +1692,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             times (Quantity['time']): The times at which to plot the density profiles.
             labels (list[str]): The labels for the density profiles.
             radius_bins (Quantity['length']): The radius bins for the density profile calculations.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments are passed to every call to the plotting function.
 
         Returns:
@@ -1654,4 +1714,6 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                     **kwargs,
                 )
         assert fig is not None and ax is not None
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax

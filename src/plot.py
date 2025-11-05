@@ -89,8 +89,8 @@ def setup_plot(
         xlabel: The label of the x-axis.
         ylabel: The label of the y-axis.
         hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
-        vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         texts: List of texts to plot. Each element contains the keywords arguments passed to `ax.text()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
+        vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         kwargs: Additional keyword arguments to pass to `plt.subplots()`.
 
     Returns:
@@ -184,6 +184,7 @@ def plot_trace(
     y_units: UnitLike | None = None,
     length_units: UnitLike = 'kpc',
     length_format: str = '.1f',
+    save_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Plot the trace of a particle's property over time.
@@ -200,6 +201,7 @@ def plot_trace(
         y_units: Units for the y-axis.
         length_units: Units for the length.
         length_format: Format string for length.
+        save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
         kwargs: Additional keyword arguments to pass to the plot function (`setup_plot()`).
 
     Returns:
@@ -228,6 +230,8 @@ def plot_trace(
         label = label.format(particle_index=particle_index, r=particle['r'][0].to(length_units).to_string(format='latex', formatter=length_format))
     fig, ax = setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
     sns.lineplot(x=x, y=np.array(y), ax=ax, label=label)
+    if save_kwargs is not None:
+        save_plot(fig=fig, **save_kwargs)
     return fig, ax
 
 
@@ -260,6 +264,7 @@ def plot_2d(
     fig: Figure | None = None,
     ax: Axes | None = None,
     setup_kwargs: dict[str, Any] = {},
+    save_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Plot a 2d heatmap, such as a phase space distribution.
@@ -292,6 +297,7 @@ def plot_2d(
         fig: Figure to plot on.
         ax: Axes to plot on.
         setup_kwargs: Additional keyword arguments to pass to `setup_plot()`.
+        save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
         kwargs: Additional keyword arguments to pass to `plt.imshow()`.
 
     Returns:
@@ -383,7 +389,8 @@ def plot_2d(
         if text.get('transform', None) == 'transAxes':
             text['transform'] = ax.transAxes
         ax.text(**text)
-
+    if save_kwargs is not None:
+        save_plot(fig=fig, **save_kwargs)
     return fig, ax
 
 
@@ -421,6 +428,7 @@ def plot_density(
     label: str | None = None,
     cleanup_nonpositive: bool = True,
     smooth_sigma: float = 1,
+    save_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Plot the density distribution per unit volume.
@@ -439,6 +447,7 @@ def plot_density(
         label: label to add to the plot legend.
         cleanup_nonpositive: drop non-positive values from the plot, to avoid "pits" in the log plot.
         smooth_sigma: sigma for smoothing the density distribution.
+        save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
         kwargs: Additional keyword arguments to pass to `setup_plot()`.
 
 
@@ -465,6 +474,8 @@ def plot_density(
     sns.lineplot(x=x, y=density, ax=ax, label=label)
     if label is not None:
         ax.legend()
+    if save_kwargs is not None:
+        save_plot(fig=fig, **save_kwargs)
     return fig, ax
 
 
@@ -618,6 +629,7 @@ def plot_cumulative_scattering_amount_over_time(
     ylabel: str | None = 'Cumulative number of scattering events',
     label: str | None = None,
     data_time_units: UnitLike = 'Myr',
+    save_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Plot the cumulative number of scattering events over time.
@@ -629,6 +641,7 @@ def plot_cumulative_scattering_amount_over_time(
         ylabel: Label for the y-axis.
         label: Label for the plot (legend).
         data_time_units: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
         kwargs: Additional keyword arguments to pass to the plot function (`setup_plot()`).
 
     Returns:
@@ -640,6 +653,8 @@ def plot_cumulative_scattering_amount_over_time(
     sns.lineplot(x=time.to(time_unit).value, y=cumulative_scatters, ax=ax, label=label)
     if label is not None:
         ax.legend()
+    if save_kwargs is not None:
+        save_plot(fig=fig, **save_kwargs)
     return fig, ax
 
 
@@ -702,3 +717,18 @@ def save_images(images: list[Image.Image], save_path: str | Path, duration: int 
         None.
     """
     images[0].save(save_path, save_all=True, append_images=images[1:], duration=duration, loop=loop, **kwargs)
+
+
+def save_plot(fig: Figure, save_path: str | Path, bbox_inches: str = 'tight', **kwargs: Any) -> None:
+    """Save the figure.
+
+    Parameters:
+        fig: Figure to save.
+        save_path: Path to save the file to.
+        bbox_inches: see `plt.savefig()`. This just defines the default value.
+        kwargs: Additional keyword arguments to pass to `plt.savefig()`.
+
+    Returns:
+        None.
+    """
+    fig.savefig(save_path, bbox_inches=bbox_inches, **kwargs)
