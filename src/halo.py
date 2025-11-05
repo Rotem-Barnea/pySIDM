@@ -39,7 +39,7 @@ class Halo:
         Phi0: Quantity['energy'] | None = None,
         distributions: list[Distribution] = [],
         scatter_rounds: deque[int] = deque(),
-        underestimated_rounds: deque[int] = deque(),
+        scatter_rounds_underestimated: deque[int] = deque(),
         scatter_track_index: deque[NDArray[np.int64]] = deque(),
         scatter_track_radius: deque[NDArray[np.float64]] = deque(),
         time: Quantity['time'] = 0 * run_units.time,
@@ -75,7 +75,7 @@ class Halo:
             distributions: List of distributions of the halo.
             n_interactions: Number of interactions the halo had.
             scatter_rounds: Number of scatter rounds the halo had every time step.
-            underestimated_rounds: Number of underestimated scatter rounds the halo had every time step (due to `max_allowed_rounds` in `physics.sidm.scatter()`).
+            scatter_rounds_underestimated: Number of underestimated scatter rounds the halo had every time step (due to `max_allowed_rounds` in `physics.sidm.scatter()`).
             scatter_track_index: The interacting particles (particle index) at every time step.
             scatter_track_radius: The location of the interacting particles at every time step.
             time: Time of the halo.
@@ -121,7 +121,7 @@ class Halo:
         self.initial_particles = self.particles.copy()
         self.last_saved_time = last_saved_time
         self.scatter_rounds = scatter_rounds
-        self.underestimated_rounds = underestimated_rounds
+        self.scatter_rounds_underestimated = scatter_rounds_underestimated
         self.hard_save: bool = hard_save
         self.save_path: Path | str | None = save_path
         self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
@@ -200,7 +200,7 @@ class Halo:
         self.time = 0 * run_units.time
         self._particles = self._initial_particles.copy()
         self.scatter_rounds = deque()
-        self.underestimated_rounds = deque()
+        self.scatter_rounds_underestimated = deque()
         self.scatter_track_index = deque()
         self.scatter_track_radius = deque()
         self.snapshots = table.QTable()
@@ -474,13 +474,13 @@ class Halo:
         if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(0, run_units.cross_section):
             t0 = time.perf_counter()
             mask = self._particles['interacting'].values
-            (vx[mask], vy[mask], vr[mask], indices, scatter_rounds, underestimated_rounds) = sidm.scatter(
+            (vx[mask], vy[mask], vr[mask], indices, scatter_rounds, scatter_rounds_underestimated) = sidm.scatter(
                 r=r[mask], vx=vx[mask], vy=vy[mask], vr=vr[mask], dt=self.dt, m=m[mask], **self.scatter_params
             )
             self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
             self.scatter_track_radius += [self.r[mask][indices]]
             self.scatter_rounds += [scatter_rounds]
-            self.underestimated_rounds += [underestimated_rounds]
+            self.scatter_rounds_underestimated += [scatter_rounds_underestimated]
             self.runtime_track_sidm += [time.perf_counter() - t0]
         t0 = time.perf_counter()
         r, vx, vy, vr = leapfrog.step(r=r, vx=vx, vy=vy, vr=vr, m=m, M=self.M, dt=self.dt, **self.dynamics_params)
@@ -555,7 +555,7 @@ class Halo:
             'background',
             'last_saved_time',
             'scatter_rounds',
-            'underestimated_rounds',
+            'scatter_rounds_underestimated',
             'hard_save',
             'save_path',
             'Rmax',
@@ -587,7 +587,7 @@ class Halo:
             csv_table[col] = np.array(csv_table[col]).astype('O')
         return cast(table.QTable, table.hstack([fits_table, csv_table]))
 
-    def save(self, path: str | Path | None = None, two_steps: bool = True, keep_last_backup: bool = False, split_snapshots: bool = True) -> None:
+    def save(self, path: str | Path | None = None, two_steps: bool = False, keep_last_backup: bool = False, split_snapshots: bool = True) -> None:
         """Save the simulation state to a directory.
 
         Parameters:
@@ -1652,6 +1652,54 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
 
+    def plot_scatter_rounds_over_time(
+        self,
+        rounds: bool = True,
+        total_required: bool = True,
+        underestimations: bool = False,
+        time_unit: UnitLike = 'Gyr',
+        xlabel: str | None = 'Time',
+        ylabel: str | None = 'Number of scattering subdivisions per time step',
+        title: str | None = 'Scattering subdivisions and underestimation over time',
+        label_rounds: str | None = 'Rounds performed',
+        label_total_required: str | None = 'Total amount required',
+        label_underestimations: str | None = 'Underestimations',
+        save_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the number of scattering rounds per `dt` time step, and the number of underestimations.
+
+        Parameters:
+            rounds: Plot the number of scattering rounds performed per `dt` time step.
+            total_required: Plot the number of required scattering rounds per `dt` time step (regardless of what actually happened).
+            underestimations: Plot the scattering rounds underestimated per `dt` time step ([required] - [actually happened]).
+            time_unit: Units for the x-axis.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            title: The title of the plot.
+            label_rounds: Label for the rounds plot (legend).
+            label_total_required: Label for the total_required plot (legend).
+            label_underestimations: Label for the underestimation plot (legend).
+            ax_set: Additional keyword arguments to pass to `Axes.set()`.
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+
+        Returns:
+            fig, ax.
+        """
+        fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
+        x = (np.arange(len(self.n_scatters)) * self.dt).to(time_unit)
+        if rounds:
+            sns.lineplot(x=x, y=np.array(self.scatter_rounds), ax=ax, label=label_rounds)
+        if total_required:
+            sns.lineplot(x=x, y=np.array(self.scatter_rounds) + np.array(self.scatter_rounds_underestimated), ax=ax, label=label_total_required)
+        if underestimations:
+            sns.lineplot(x=x, y=np.array(self.scatter_rounds_underestimated), ax=ax, label=label_underestimations)
+        if label_rounds is not None or label_total_required is not None or label_underestimations is not None:
+            ax.legend()
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
+        return fig, ax
+
     def plot_distributions_rho(
         self,
         markers_on_first_only: bool = False,
@@ -1683,6 +1731,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         times: Quantity['time'] = Quantity([0, 2, 10], 'Gyr'),
         labels: list[str] = ['start', 'max core', 'core collapse'],
         radius_bins: Quantity['length'] = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
+        limit_radius_by_Rvir: bool = True,
+        distributions: list[int] | None = None,
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -1692,6 +1742,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             times (Quantity['time']): The times at which to plot the density profiles.
             labels (list[str]): The labels for the density profiles.
             radius_bins (Quantity['length']): The radius bins for the density profile calculations.
+            limit_radius_by_Rvir (bool): Whether to limit the radius bins by the virial radius.
+            distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments are passed to every call to the plotting function.
 
@@ -1702,13 +1754,15 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         unique_times = np.unique(cast(NDArray[np.float64], data['time']))
         real_times = unique_times[np.argmin(np.abs(unique_times - np.expand_dims(times, 1)), axis=1)]
         fig, ax = None, None
-        for name, particle_type, unit_mass in zip(['Baryonic matter', 'DM'], ['baryon', 'dm'], np.unique(self.m)):
+        for i, distribution in enumerate(self.distributions):
+            if distributions is not None and i not in distributions:
+                continue
             for label, t in zip(labels, real_times):
                 fig, ax = plot.plot_density(
-                    cast(Quantity, data[(data['time'] == t) * (data['particle_type'] == particle_type)]['r']),
-                    unit_mass=unit_mass,
-                    bins=radius_bins,
-                    label=f'{name} {label}',
+                    cast(Quantity, data[(data['time'] == t) * (data['particle_type'] == distribution.particle_type)]['r']),
+                    unit_mass=distribution.Mtot / self.n_particles[distribution.particle_type],
+                    bins=radius_bins if not limit_radius_by_Rvir else cast(Quantity, radius_bins[radius_bins <= distribution.Rvir]),
+                    label=f'{distribution.label} {label}',
                     fig=fig,
                     ax=ax,
                     **kwargs,
