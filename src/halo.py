@@ -519,7 +519,7 @@ class Halo:
             else:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
         for _ in tqdm(range(n_steps), start_time=self.time, dt=self.dt, **tqdm_kwargs):
-            self.step()
+            self.step(save_kwargs=save_kwargs)
             if np.sign(t_after_core_collapse) >= 0 and self.n_scatters.sum() > self.scatters_to_collapse * self.n_particles['dm']:
                 if self.time > self.core_collapse_time + t_after_core_collapse:
                     print(f'Core collapse detected at time {self.time}')
