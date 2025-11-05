@@ -1545,7 +1545,12 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig, ax.
         """
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
-        sns.lineplot(x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit), y=self.n_scatters, ax=ax, label=label)
+        sns.lineplot(
+            x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit),
+            y=self.n_scatters.cumsum() / self.n_particles['dm'],
+            ax=ax,
+            label=label,
+        )
         if label is not None:
             ax.legend()
         return fig, ax
