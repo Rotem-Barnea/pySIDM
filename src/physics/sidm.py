@@ -1,10 +1,12 @@
+from typing import TypedDict, cast
+
 import numpy as np
 import pandas as pd
 from numba import njit, prange
-from typing import TypedDict, cast
 from numpy.typing import NDArray
 from astropy.units import Quantity
-from .. import utils, run_units, physics
+
+from .. import utils, physics, run_units
 
 
 class Params(TypedDict, total=False):
@@ -132,7 +134,7 @@ def fast_scatter_chance(
         v_rel: relative velocities of neighboring particles. An array of shape `(n_particles, max_radius_j)`, where each row holds the norm of the relative velocity (the 3-vector difference). For particles too close to the edge (less than max_radius_j places from the end), the overflow cells hold 0.
         dt: Time step for each particle, adjusted by `1/number_of_rounds` to allow parallelized calculation for particles with a different number of rounds.
         sigma: Scattering cross-section.
-        density_term: Density term of particles, in the form `m/(2*pi*r^2*dr)`.
+        density_term: Density term of particles, in the form `m/(4s*pi*r^2*dr)`.
 
     Returns:
         Scattering chance for each particle (shape `(n_particles,)`)
