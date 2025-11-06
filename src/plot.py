@@ -1,25 +1,26 @@
+from typing import Any, Literal, cast
 from pathlib import Path
-from numba.misc.coverage_support import Callable
+from collections.abc import Iterable
+
 import numpy as np
-import pandas as pd
 import scipy
+import pandas as pd
 import seaborn as sns
-from astropy import table
-from astropy.units import Quantity, Unit
-from astropy.units.typing import UnitLike
-from matplotlib import pyplot as plt
-from matplotlib import colors
-from matplotlib.figure import Figure
-from matplotlib.axes import Axes
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.transforms import BboxTransformTo
 from PIL import Image
-import matplotlib.ticker as mtick
+from astropy import table
+from matplotlib import colors, ticker
+from matplotlib import pyplot as plt
+from numpy.typing import NDArray
+from astropy.units import Unit, Quantity
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from astropy.units.typing import UnitLike
+from matplotlib.transforms import BboxTransformTo
+from numba.misc.coverage_support import Callable
+from matplotlib.backends.backend_agg import FigureCanvasAgg
+
 from . import utils, run_units
 from .tqdm import tqdm
-from numpy.typing import NDArray
-from typing import Any, Literal, cast
-from collections.abc import Iterable
 
 
 def pretty_ax_text(
@@ -66,6 +67,8 @@ def setup_plot(
     minorticks: bool = False,
     figsize: tuple[int, int] | None = (6, 5),
     ax_set: dict[str, str] | None = None,
+    x_axis_percent_formatter: dict[str, Any] | None = None,
+    y_axis_percent_formatter: dict[str, Any] | None = None,
     title: str | None = None,
     xlabel: str | None = None,
     ylabel: str | None = None,
@@ -85,6 +88,8 @@ def setup_plot(
         minorticks: Whether to add the grid for the minor ticks.
         figsize: The figure size to create. Ignored if `fig` / `ax` is provided.
         ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
+        x_axis_percent_formatter: Format the x-axis as a percentage and pass the arguments to the formatter (`matplotlib.ticker.PercentFormatter(**x_axis_percent_formatter)`). If `None` ignores.
+        y_axis_percent_formatter: Format the y-axis as a percentage and pass the arguments to the formatter (`matplotlib.ticker.PercentFormatter(**y_axis_percent_formatter)`). If `None` ignores.
         title: The title of the plot.
         xlabel: The label of the x-axis.
         ylabel: The label of the y-axis.
@@ -126,6 +131,11 @@ def setup_plot(
         if text.get('transform', None) == 'transAxes':
             text['transform'] = ax.transAxes
         ax.text(**text)
+
+    if x_axis_percent_formatter is not None:
+        ax.xaxis.set_major_formatter(ticker.PercentFormatter(**x_axis_percent_formatter))
+    if y_axis_percent_formatter is not None:
+        ax.yaxis.set_major_formatter(ticker.PercentFormatter(**y_axis_percent_formatter))
 
     return fig, ax
 
@@ -244,10 +254,11 @@ def plot_2d(
     y_units: UnitLike = run_units.velocity,
     cbar_units: UnitLike = '',
     transparent_value: float | None = None,
+    transparent_range: tuple[float, float] | None = None,
     x_nbins: int | None = 6,
     y_nbins: int | None = 6,
-    x_tick_format: str = '%.0f',
-    y_tick_format: str = '%.0f',
+    x_tick_format: str = '{x:.0f}',
+    y_tick_format: str = '{x:.0f}',
     x_log: bool = False,
     y_log: bool = False,
     title: str | None = None,
@@ -255,9 +266,11 @@ def plot_2d(
     ylabel: str | None = None,
     cbar_label: str | None = None,
     cbar_label_autosuffix: bool = True,
-    grid_row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
+    cbar_format: str | None = None,
+    cbar_log_numticks: int | None = None,
     log_scale: bool = False,
     percentile_clip_scale: tuple[float, float] | None = None,
+    grid_row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
     hlines: list[dict[str, Any]] = [],  # TODO - deprecate
     vlines: list[dict[str, Any]] = [],  # TODO - deprecate
     texts: list[dict[str, Any]] = [],  # TODO - deprecate
@@ -278,6 +291,7 @@ def plot_2d(
         y_units: Units to use for the y-axis.
         cbar_units: Units to use for the value of each grid cell.
         transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
+        transparent_range: Range of values to turn transparent (i.e. plot as `NaN`). If `None` ignores.
         x_nbins: Number of bins to use for the x-axis.
         y_nbins: Number of bins to use for the y-axis.
         x_tick_format: Format string for the x-axis ticks.
@@ -289,8 +303,11 @@ def plot_2d(
         ylabel: Label for the y-axis.
         cbar_label: Label for the colorbar.
         cbar_label_autosuffix: Add a prefix and suffix based on the `row_normalization` selected.
-        grid_row_normalization: Normalization applied to the grid row values, used for the cbar label prefix and suffix.
+        cbar_format: Format string for the colorbar.
+        cbar_log_numticks: Number of ticks for the colorbar when using a log scale. If `None` ignores.
         log_scale: Whether to use a log scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `colors.LogNorm()`.
+        percentile_clip_scale: Whether to use a percentile clip scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `colors.PercentileNorm()`.
+        grid_row_normalization: Normalization applied to the grid row values, used for the cbar label prefix and suffix.
         hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         texts: List of texts to plot. Each element contains the keywords arguments passed to `ax.text()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
@@ -333,6 +350,8 @@ def plot_2d(
 
     if transparent_value is not None:
         grid[grid.value == transparent_value] = np.nan
+    if transparent_range is not None:
+        grid[(grid.value >= transparent_range[0]) * (grid.value <= transparent_range[1])] = np.nan
 
     im = ax.imshow(grid.value, origin='lower', aspect='auto', extent=extent_value, **kwargs)
     cbar = fig.colorbar(im, ax=ax)
@@ -353,15 +372,22 @@ def plot_2d(
     if cbar_label:
         cbar.set_label(cbar_label)
 
+    if cbar_log_numticks is not None:
+        cbar.locator = ticker.LogLocator(numticks=cbar_log_numticks)
+        cbar.update_ticks()
+    if cbar_format is not None:
+        cbar.formatter = ticker.StrMethodFormatter(cbar_format)
+        cbar.update_ticks()
+
     if x_nbins is not None:
         if x_log:
-            ax.xaxis.set_major_locator(mtick.LogLocator(base=10, numticks=x_nbins))
-            ax.xaxis.set_major_formatter(mtick.LogFormatterSciNotation(base=10))
-            ax.xaxis.set_minor_locator(mtick.LogLocator(base=10, subs=list(np.arange(2, 10)), numticks=999))
+            ax.xaxis.set_major_locator(ticker.LogLocator(base=10, numticks=x_nbins))
+            ax.xaxis.set_major_formatter(ticker.LogFormatterSciNotation(base=10))
+            ax.xaxis.set_minor_locator(ticker.LogLocator(base=10, subs=list(np.arange(2, 10)), numticks=999))
             ax.set_xscale('log')
         else:
-            ax.xaxis.set_major_locator(mtick.MaxNLocator(nbins=x_nbins))
-            ax.xaxis.set_major_formatter(mtick.FormatStrFormatter(x_tick_format))
+            ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_nbins))
+            ax.xaxis.set_major_formatter(ticker.StrMethodFormatter(x_tick_format))
         ax.xaxis.tick_bottom()
         for lab in ax.get_xticklabels():
             lab.set_rotation(0)
@@ -369,13 +395,13 @@ def plot_2d(
 
     if y_nbins is not None:
         if y_log:
-            ax.yaxis.set_major_locator(mtick.LogLocator(base=10, numticks=y_nbins))
-            ax.yaxis.set_major_formatter(mtick.LogFormatterSciNotation(base=10))
-            ax.yaxis.set_minor_locator(mtick.LogLocator(base=10, subs=list(np.arange(2, 10)), numticks=999))
+            ax.yaxis.set_major_locator(ticker.LogLocator(base=10, numticks=y_nbins))
+            ax.yaxis.set_major_formatter(ticker.LogFormatterSciNotation(base=10))
+            ax.yaxis.set_minor_locator(ticker.LogLocator(base=10, subs=list(np.arange(2, 10)), numticks=999))
             ax.set_yscale('log')
         else:
-            ax.yaxis.set_major_locator(mtick.MaxNLocator(nbins=y_nbins))
-            ax.yaxis.set_major_formatter(mtick.FormatStrFormatter(y_tick_format))
+            ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=y_nbins))
+            ax.yaxis.set_major_formatter(ticker.StrMethodFormatter(y_tick_format))
 
     for line in hlines:
         if line.get('transform', None) == 'transAxes':

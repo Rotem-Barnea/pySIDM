@@ -1,28 +1,30 @@
-import itertools
-import shutil
 import time
+import pickle
+import shutil
+import itertools
+from typing import Any, Self, Literal, cast
+from pathlib import Path
 from datetime import datetime
 from collections import deque
+
 import numpy as np
+import scipy
 import pandas as pd
 import seaborn as sns
-from pathlib import Path
-import pickle
-import scipy
-from matplotlib.figure import Figure
-from matplotlib.axes import Axes
 from PIL import Image
-from numpy.typing import NDArray
-from typing import Any, Self, cast, Literal
 from astropy import table
-from astropy.units import Quantity, Unit, def_unit
+from numpy.typing import NDArray
+from astropy.units import Unit, Quantity, def_unit
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
-from .distribution.distribution import Distribution
-from .background import Mass_Distribution
-from . import utils, run_units, physics, plot
-from .physics import sidm, leapfrog
-from .types import ParticleType
+
+from . import plot, utils, physics, run_units
 from .tqdm import tqdm
+from .types import ParticleType
+from .physics import sidm, leapfrog
+from .background import Mass_Distribution
+from .distribution.distribution import Distribution
 
 
 class Halo:
@@ -389,7 +391,7 @@ class Halo:
     @property
     def n_scatters(self) -> NDArray[np.int64]:
         """The number of scatters every scattering round."""
-        return np.array([len(x) / 2 for x in self.scatter_track_radius], dtype=np.int64)  # Replace to be scatter_track_index
+        return np.array([len(x) / 2 for x in self.scatter_track_index], dtype=np.int64)
 
     @property
     def n_particles(self) -> dict[str, int]:
@@ -970,9 +972,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         radius: Quantity['length'] = Quantity(0.2, 'kpc'),
         filter_particle_type: ParticleType | None = None,
         time_units: UnitLike = 'Tdyn',
-        xlabel: str | None = 'time',
-        ylabel: str | None = 'particles',
-        title: str | None = 'particles in inner core ({radius})',
+        xlabel: str | None = 'Time',
+        ylabel: str | None = 'Particles',
+        title: str | None = 'Particles in inner core ({radius})',
         aggregation_type: Literal['amount', 'percent'] = 'amount',
         title_radius_format: str = '.1f',
         label: str | None = None,
@@ -1051,12 +1053,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         include_now: bool = True,
         filter_particle_type: ParticleType | None = None,
         radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
-        time_range: Quantity = Quantity([2, 17], 'Gyr'),
+        time_range: Quantity | None = None,
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = 'Particles',
+        cmap: str = 'seismic',
         row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -1073,6 +1076,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel: Label for the radius axis.
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
+            cmap: The colormap to use for the plot.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
 
@@ -1101,6 +1105,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             ylabel=ylabel,
             cbar_label=cbar_label,
             grid_row_normalization=row_normalization,
+            cmap=cmap,
             **kwargs,
         )
 
@@ -1110,13 +1115,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         include_now: bool = True,
         filter_particle_type: ParticleType | None = None,
         radius_bins: Quantity = Quantity(np.linspace(1e-1, 5, 100), 'kpc'),
-        time_range: Quantity = Quantity([2, 17], 'Gyr'),
+        time_range: Quantity | None = None,
         specific_energy_units: UnitLike = 'km^2/second^2',
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
-        cbar_label: str | None = r'$\propto$Temperature (velocity std)',
+        cbar_label: str | None = r'$\propto$Temperature (velocity variance)',
         row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
         cmap: str = 'jet',
         **kwargs: Any,
@@ -1175,7 +1180,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         include_now: bool = True,
         filter_particle_type: ParticleType | None = None,
         radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
-        time_range: Quantity = Quantity([2, 17], 'Gyr'),
+        time_range: Quantity | None = None,
         v_axis: Literal['vx', 'vy', 'vr'] = 'vr',
         heat_units: UnitLike = '1/Myr^3',
         length_units: UnitLike = 'kpc',
@@ -1188,7 +1193,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         setup_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        """Plot the temperature evolution of the halo. Wraps `prep_2d_data()`.
+        """Plot the heat flux evolution of the halo. Wraps `prep_2d_data()`.
 
         Parameters:
             include_start: Whether to include the initial particle distribution in the plot.
@@ -1236,6 +1241,80 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             grid_row_normalization=row_normalization,
             cbar_label_autosuffix=True if row_normalization is not None else False,
             cmap=cmap,
+            setup_kwargs=setup_kwargs,
+            **kwargs,
+        )
+
+    def plot_scattering_location_evolution(
+        self,
+        radius_bins: Quantity = Quantity(np.linspace(1e-3, 1, 100), 'kpc'),
+        time_range: Quantity | None = None,
+        time_bin_size: Quantity | None = Quantity(100, 'Myr'),
+        length_units: UnitLike = 'kpc',
+        time_units: UnitLike = 'Tdyn',
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = 'Time',
+        cbar_label: str | None = 'Number of scattering events per {time}',
+        cbar_label_time_units: UnitLike = 'Myr',
+        cbar_label_time_format: str = '.1f',
+        row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
+        cmap: str = 'jet',
+        x_tick_format: str = '{x:.1f}',
+        transparent_range: tuple[float, float] | None = (0, 4000),
+        setup_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the scattering location evolution of the halo. Wraps `prep_2d_data()`.
+
+        Parameters:
+            radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
+            time_range: Range of times to consider (filters the data).
+            time_bin_size: The size of the time bins.
+            length_units: Units to use for the radius axis.
+            time_units: Units to use for the time axis.
+            xlabel: Label for the radius axis.
+            ylabel: Label for the time axis.
+            cbar_label: Label for the colorbar.
+            cbar_label_time_units: Units to use for time.
+            cbar_label_time_format: Format string for time.
+            row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
+            cmap: The colormap to use for the plot.
+            x_tick_format: Format string for the x-axis ticks.
+            transparent_range: Range of values to turn transparent (i.e. plot as `NaN`). If `None` ignores.
+            setup_kwargs: Additional keyword arguments to pass to `utils.setup_plot()`.
+            kwargs: Additional keyword arguments to pass to the plot function (`utils.plot_2d()`).
+
+        Returns:
+            fig, ax.
+        """
+        time_units = self.fill_time_unit(time_units)
+
+        time_array = np.hstack([[i] * len(x) for i, x in enumerate(self.scatter_track_radius)]) * self.dt.to(time_units)
+        if time_bin_size is not None:
+            n_bins = int(time_array.max() / time_bin_size)
+            time_array = (np.linspace(0, 1, len(time_array)) // (1 / n_bins)) * time_array.max() / (n_bins - 1)
+
+        if cbar_label is not None:
+            cbar_label = cbar_label.format(
+                time=np.unique(time_array).diff()[0].to(cbar_label_time_units).to_string(format='latex', formatter=cbar_label_time_format),
+            )
+
+        data = table.QTable({'time': time_array, 'r': Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units)})
+        grid, extent = plot.aggregate_evolution_data(data=data, radius_bins=radius_bins, time_range=time_range, row_normalization=row_normalization)
+
+        return plot.plot_2d(
+            grid=grid,
+            extent=extent,
+            x_units=length_units,
+            y_units=time_units,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            cbar_label=cbar_label,
+            grid_row_normalization=row_normalization,
+            cbar_label_autosuffix=True if row_normalization is not None else False,
+            cmap=cmap,
+            transparent_range=transparent_range,
+            x_tick_format=x_tick_format,
             setup_kwargs=setup_kwargs,
             **kwargs,
         )
@@ -1326,7 +1405,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if title is not None:
             title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_scatters=self.n_scatters.sum())
         fig, ax = plot.setup_plot(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
-        sns.histplot(Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units), ax=ax)
+        sns.histplot(Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units), ax=ax, log=True)
         if save_kwargs is not None:
             plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
@@ -1386,6 +1465,63 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         sns.lineplot(x=r_bins, y=smoothed_density, ax=ax)
         if save_kwargs is not None:
             plot.save_plot(fig=fig, **save_kwargs)
+        return fig, ax
+
+    def plot_scattering_amount_distribution(
+        self,
+        bins: list[int] | NDArray[np.int64] = [100, 400, 2000, 5000],
+        xlabel: str | None = 'Number of scattering per particle',
+        ylabel: str | None = 'Fraction of scattering DM particles',
+        title: str | None = 'Per particle scattering amount distribution',
+        minorticks: bool = True,
+        ax_set: dict[str, Any] = {'xscale': 'log'},
+        plot_labels: bool = True,
+        bar_kwargs: dict[str, Any] = {'align': 'center', 'edgecolor': 'black', 'alpha': 0.7},
+        save_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the distribution of the scattering particles by the number of scatterings (fraction per bin).
+
+        Parameters:
+            bins: The bin edges to use for the number of scatterings (the dividers between bins, the start and end will be added automatically).
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            title: Title for the plot.
+            minorticks: Whether to add the grid for the minor ticks.
+            ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
+            plot_labels: Whether to add text bubbles with the y-value above the bins,
+            bar_kwargs: Keyword arguments to pass to `Axes.bar()`.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+
+        Returns:
+            fig, ax.
+        """
+
+        fig, ax = plot.setup_plot(
+            xlabel=xlabel,
+            ylabel=ylabel,
+            title=title,
+            minorticks=minorticks,
+            ax_set=ax_set,
+            y_axis_percent_formatter={'xmax': 1},
+            **kwargs,
+        )
+
+        indices, counts = np.unique(np.hstack(self.scatter_track_index), return_counts=True)
+        bins = np.hstack([1, np.array(bins), indices.max() + 1])
+        heights = []
+        bin_centers = []
+        for low, high in zip(bins[:-1], bins[1:]):
+            heights += [((counts >= low) * (counts < high)).mean()]
+            bin_centers += [(low + high) / 2]
+        widths = [bins[i + 1] - bins[i] for i in range(len(bins) - 1)]
+        ax.bar(bin_centers, heights, width=widths, **bar_kwargs)
+
+        if plot_labels:
+            for bin_center, height in zip(bin_centers, heights):
+                ax.text(s=f'{height:.0%}', **plot.pretty_ax_text(x=bin_center, y=height + 0.01, verticalalignment='bottom'))
+
         return fig, ax
 
     def plot_local_density_by_range(
@@ -1693,7 +1829,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig, ax.
         """
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
-        x = (np.arange(len(self.n_scatters)) * self.dt).to(time_unit)
+        x = (np.arange(len(self.scatter_rounds)) * self.dt).to(time_unit)
         if total_required:
             sns.lineplot(
                 x=x,
@@ -1705,7 +1841,11 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             sns.lineplot(x=x, y=np.array(self.scatter_rounds).clip(max=clip_max_rounds), ax=ax, label=label_rounds)
         if underestimations:
             sns.lineplot(x=x, y=np.array(self.scatter_rounds_underestimated).clip(max=clip_max_underestimations), ax=ax, label=label_underestimations)
-        if label_rounds is not None or label_total_required is not None or label_underestimations is not None:
+        if (
+            (rounds and label_rounds is not None)
+            or (total_required and label_total_required is not None)
+            or (underestimations and label_underestimations is not None)
+        ):
             ax.legend()
         if save_kwargs is not None:
             plot.save_plot(fig=fig, **save_kwargs)
@@ -1739,7 +1879,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
     def plot_distributions_over_time(
         self,
-        times: Quantity['time'] = Quantity([0, 2, 10], 'Gyr'),
+        times: Quantity['time'] = Quantity([0, 1, 11.3], 'Gyr'),
         labels: list[str] = ['start', 'max core', 'core collapse'],
         radius_bins: Quantity['length'] = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
         limit_radius_by_Rvir: bool = True,
