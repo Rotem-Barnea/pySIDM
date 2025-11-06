@@ -1664,6 +1664,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         label_rounds: str | None = 'Rounds performed',
         label_total_required: str | None = 'Total amount required',
         label_underestimations: str | None = 'Underestimations',
+        clip_max_rounds: float | None = None,
+        clip_max_total_required: float | None = None,
+        clip_max_underestimations: float | None = None,
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -1677,9 +1680,12 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: The title of the plot.
-            label_rounds: Label for the rounds plot (legend).
-            label_total_required: Label for the total_required plot (legend).
-            label_underestimations: Label for the underestimation plot (legend).
+            label_rounds: Label for the `rounds` plot (legend).
+            label_total_required: Label for the `total_required` plot (legend).
+            label_underestimations: Label for the `underestimation` plot (legend).
+            clip_max_rounds: Maximum value to clip the `rounds` plot.
+            clip_max_total_required: Maximum value to clip the `total_required` plot.
+            clip_max_underestimations: Maximum value to clip the `underestimations` plot.
             ax_set: Additional keyword arguments to pass to `Axes.set()`.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
@@ -1688,12 +1694,17 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
         x = (np.arange(len(self.n_scatters)) * self.dt).to(time_unit)
-        if rounds:
-            sns.lineplot(x=x, y=np.array(self.scatter_rounds), ax=ax, label=label_rounds)
         if total_required:
-            sns.lineplot(x=x, y=np.array(self.scatter_rounds) + np.array(self.scatter_rounds_underestimated), ax=ax, label=label_total_required)
+            sns.lineplot(
+                x=x,
+                y=(np.array(self.scatter_rounds) + np.array(self.scatter_rounds_underestimated)).clip(max=clip_max_total_required),
+                ax=ax,
+                label=label_total_required,
+            )
+        if rounds:
+            sns.lineplot(x=x, y=np.array(self.scatter_rounds).clip(max=clip_max_rounds), ax=ax, label=label_rounds)
         if underestimations:
-            sns.lineplot(x=x, y=np.array(self.scatter_rounds_underestimated), ax=ax, label=label_underestimations)
+            sns.lineplot(x=x, y=np.array(self.scatter_rounds_underestimated).clip(max=clip_max_underestimations), ax=ax, label=label_underestimations)
         if label_rounds is not None or label_total_required is not None or label_underestimations is not None:
             ax.legend()
         if save_kwargs is not None:
