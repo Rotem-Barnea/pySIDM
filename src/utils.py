@@ -1,11 +1,13 @@
+from typing import Any, Callable, cast
+
 import numpy as np
 import pandas as pd
 from numba import njit, prange
-from numpy.typing import NDArray
-from typing import Callable, Any, cast
 from astropy import table
-from astropy.units import Quantity, Unit
+from numpy.typing import NDArray
+from astropy.units import Unit, Quantity
 from astropy.units.typing import UnitLike
+
 from .types import FloatOrArray
 
 

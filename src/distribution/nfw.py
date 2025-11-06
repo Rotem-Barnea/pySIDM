@@ -1,9 +1,11 @@
+from typing import Any
+
 import numpy as np
 from numba import njit
-from typing import Any
 from astropy.units import Quantity
-from .distribution import Distribution
+
 from ..types import FloatOrArray
+from .distribution import Distribution
 
 
 class NFW(Distribution):

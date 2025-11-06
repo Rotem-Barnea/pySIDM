@@ -1,12 +1,13 @@
+from typing import Any, Unpack, TypedDict, NotRequired
 from pathlib import Path
-from typing import NotRequired, TypedDict, Unpack, Any
+
 import numpy as np
+import regex
 import pandas as pd
 from tqdm import tqdm
-from numpy.typing import NDArray
-import regex
-from astropy.units import Quantity
 from astropy import table
+from numpy.typing import NDArray
+from astropy.units import Quantity
 
 
 class File_params(TypedDict):

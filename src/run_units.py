@@ -1,5 +1,6 @@
 from typing import cast
-from astropy.units import UnitBase, Unit
+
+from astropy.units import Unit, UnitBase
 
 ## Base work units
 length: UnitBase = cast(UnitBase, Unit('kpc'))

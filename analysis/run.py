@@ -5,10 +5,10 @@ if __name__ == '__main__':
 
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+    from src.halo import Halo
     from astropy.units import Quantity
     from src.distribution.nfw import NFW
     from src.distribution.hernquist import Hernquist
-    from src.halo import Halo
 
     dm_rho_s = Quantity(2.73e7, 'Msun/kpc^3')
     Rs = Quantity(1.18, 'kpc')

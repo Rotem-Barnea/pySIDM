@@ -1,15 +1,17 @@
+from typing import Any, cast
+
 import numpy as np
 import scipy
 import seaborn as sns
-from matplotlib.figure import Figure
-from matplotlib.axes import Axes
 from numba import njit, prange
-from numpy.typing import NDArray
-from typing import cast, Any
 from astropy import constants
-from astropy.units import Quantity, Unit, def_unit
+from numpy.typing import NDArray
+from astropy.units import Unit, Quantity, def_unit
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
-from .. import utils, run_units, plot
+
+from .. import plot, utils, run_units
 from ..types import FloatOrArray, ParticleType
 
 

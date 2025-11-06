@@ -1,6 +1,7 @@
+from typing import Literal, TypeVar
+
 import numpy as np
 import pandas as pd
-from typing import TypeVar, Literal
 from numpy.typing import NDArray
 from astropy.units import Quantity
 

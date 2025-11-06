@@ -1,12 +1,14 @@
+import warnings
+from typing import TypedDict
+
 import numpy as np
 import pandas as pd
 from numba import njit, prange
-from numpy.typing import NDArray
-from typing import TypedDict
 from astropy import constants
+from numpy.typing import NDArray
 from astropy.units import Quantity
+
 from .. import run_units
-import warnings
 
 G = constants.G.to(run_units.G_units).value
 

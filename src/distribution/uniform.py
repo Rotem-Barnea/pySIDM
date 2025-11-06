@@ -1,6 +1,8 @@
-from numba import njit
-import numpy as np
 from typing import Any
+
+import numpy as np
+from numba import njit
+
 from ..types import FloatOrArray
 from .distribution import Distribution
 

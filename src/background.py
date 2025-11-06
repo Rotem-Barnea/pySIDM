@@ -1,8 +1,10 @@
+from typing import Any, Self, Unpack, cast
+
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from typing import Self, Unpack, cast, Any
 from astropy.units import Quantity
+
 from . import nsphere
 from .spatial_approximation import Lattice
 

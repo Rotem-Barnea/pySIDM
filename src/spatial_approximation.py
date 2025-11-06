@@ -1,10 +1,12 @@
+from typing import Any, Self, cast
+
 import numpy as np
-from . import utils
 from numba import njit, prange
-from .types import FloatOrArray
 from numpy.typing import NDArray
+
+from . import utils
+from .types import FloatOrArray
 from .distribution.distribution import Distribution
-from typing import Any, cast, Self
 
 
 class Lattice:
