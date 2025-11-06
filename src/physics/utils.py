@@ -1,10 +1,12 @@
+from typing import Literal, cast
+
 import numpy as np
 import scipy
-from typing import Literal, cast
 from astropy import constants
-from astropy.units import Quantity, Unit
-from ..types import QuantityOrArray
+from astropy.units import Unit, Quantity
+
 from .. import run_units
+from ..types import QuantityOrArray
 
 
 def M(
@@ -75,7 +77,7 @@ def local_density(
         volume = 4 / 3 * np.pi * (x_end**3 - x**3)
     else:
         volume = 4 * np.pi * x**2 * (x_end - x)
-    density = mass[:-1] / volume[:-1]
+    density = mass[:-1] / volume[:-1]  # The final element has volume=0, this just circumvents this and uses the value from the second-to-last
     density = np.hstack([density, density[-1]])
     if isinstance(m, Quantity) and isinstance(r, Quantity):
         return Quantity(density, m.unit / cast(Unit, r.unit) ** 3)
