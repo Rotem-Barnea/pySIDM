@@ -24,7 +24,7 @@ if __name__ == '__main__':
     dm_n_particles = 1e5
     b_n_particles = 1e5
     dt = dm_distribution.Tdyn / 1000
-    save_every_time = 30 * dm_distribution.Tdyn
+    save_every_time = 10 * dm_distribution.Tdyn
     hard_save = True
     save_path = Path.home() / 'SIDM/pySIDM/run results' / 'full test run 1'
     # save_path = Path(os.environ['SAVE_PATH']) / 'SIDM/pySIDM/run results' / 'full test run 1'
