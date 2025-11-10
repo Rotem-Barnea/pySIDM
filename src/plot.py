@@ -72,6 +72,8 @@ def setup_plot(
     title: str | None = None,
     xlabel: str | None = None,
     ylabel: str | None = None,
+    xlim: tuple[float, float] | None = None,
+    ylim: tuple[float, float] | None = None,
     hlines: list[dict[str, Any]] = [],
     vlines: list[dict[str, Any]] = [],
     texts: list[dict[str, Any]] = [],
@@ -93,6 +95,8 @@ def setup_plot(
         title: The title of the plot.
         xlabel: The label of the x-axis.
         ylabel: The label of the y-axis.
+        xlim: The limits of the x-axis. If `None` ignores.
+        ylim: The limits of the y-axis. If `None` ignores.
         hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         texts: List of texts to plot. Each element contains the keywords arguments passed to `ax.text()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
@@ -136,6 +140,11 @@ def setup_plot(
         ax.xaxis.set_major_formatter(ticker.PercentFormatter(**x_axis_percent_formatter))
     if y_axis_percent_formatter is not None:
         ax.yaxis.set_major_formatter(ticker.PercentFormatter(**y_axis_percent_formatter))
+
+    if xlim is not None:
+        ax.set_xlim(xlim)
+    if ylim is not None:
+        ax.set_ylim(ylim)
 
     return fig, ax
 
@@ -257,8 +266,8 @@ def plot_2d(
     transparent_range: tuple[float, float] | None = None,
     x_nbins: int | None = 6,
     y_nbins: int | None = 6,
-    x_tick_format: str = '{x:.0f}',
-    y_tick_format: str = '{x:.0f}',
+    x_tick_format: str = '.0f',
+    y_tick_format: str = '.0f',
     x_log: bool = False,
     y_log: bool = False,
     title: str | None = None,
@@ -322,7 +331,7 @@ def plot_2d(
     """
     if extent is None:
         assert x_range is not None and y_range is not None, 'x_range and y_range must be provided if extent is None'
-        extent = (x_range.to(x_units).min(), x_range.to(x_units).max(), y_range.to(y_units).min(), y_range.to(y_units).max())
+        extent = cast(tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_range.to(x_units), y_range.to(y_units)))
     extent_value = (
         float(extent[0].to(x_units).value),
         float(extent[1].to(x_units).value),
@@ -387,7 +396,7 @@ def plot_2d(
             ax.set_xscale('log')
         else:
             ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_nbins))
-            ax.xaxis.set_major_formatter(ticker.StrMethodFormatter(x_tick_format))
+            ax.xaxis.set_major_formatter(ticker.StrMethodFormatter(f'{{x:{x_tick_format}}}'))
         ax.xaxis.tick_bottom()
         for lab in ax.get_xticklabels():
             lab.set_rotation(0)
@@ -401,7 +410,7 @@ def plot_2d(
             ax.set_yscale('log')
         else:
             ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=y_nbins))
-            ax.yaxis.set_major_formatter(ticker.StrMethodFormatter(y_tick_format))
+            ax.yaxis.set_major_formatter(ticker.StrMethodFormatter(f'{{x:{y_tick_format}}}'))
 
     for line in hlines:
         if line.get('transform', None) == 'transAxes':
@@ -455,6 +464,7 @@ def plot_density(
     cleanup_nonpositive: bool = True,
     smooth_sigma: float = 1,
     save_kwargs: dict[str, Any] | None = None,
+    line_kwargs: dict[str, Any] = {},
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Plot the density distribution per unit volume.
@@ -474,6 +484,7 @@ def plot_density(
         cleanup_nonpositive: drop non-positive values from the plot, to avoid "pits" in the log plot.
         smooth_sigma: sigma for smoothing the density distribution.
         save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
+        line_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
         kwargs: Additional keyword arguments to pass to `setup_plot()`.
 
 
@@ -497,7 +508,7 @@ def plot_density(
         density = density[density > 0]
     if smooth_sigma > 0:
         density = scipy.ndimage.gaussian_filter1d(density, sigma=smooth_sigma)
-    sns.lineplot(x=x, y=density, ax=ax, label=label)
+    sns.lineplot(x=x, y=density, ax=ax, label=label, **line_kwargs)
     if label is not None:
         ax.legend()
     if save_kwargs is not None:
@@ -702,7 +713,7 @@ def to_images(
         A list of PIL images.
     """
     images = []
-    for element in tqdm(iterator):
+    for element in tqdm(iterator, **tqdm_kwargs):
         fig, _ = plot_fn(element)
         if tight_layout:
             fig.tight_layout(**tight_layout)

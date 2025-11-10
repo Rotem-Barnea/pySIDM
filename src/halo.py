@@ -419,6 +419,10 @@ class Halo:
             columns=['sort', 'cleanup', 'sidm', 'leapfrog', 'full step', 'real timestep'],
         )
 
+    def unit_mass(self, distribution: Distribution) -> Quantity['mass']:
+        """Return the unit mass of the given distribution."""
+        return distribution.Mtot / self.n_particles[distribution.particle_type]
+
     #####################
     ##Dynamic evolution
     #####################
@@ -1259,8 +1263,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         cbar_label_time_format: str = '.1f',
         row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
         cmap: str = 'jet',
-        x_tick_format: str = '{x:.1f}',
-        transparent_range: tuple[float, float] | None = (0, 4000),
+        x_tick_format: str = '.1f',
+        transparent_range: tuple[float, float] | None = (0, 100),
         setup_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -1292,7 +1296,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_array = np.hstack([[i] * len(x) for i, x in enumerate(self.scatter_track_radius)]) * self.dt.to(time_units)
         if time_bin_size is not None:
             n_bins = int(time_array.max() / time_bin_size)
-            time_array = (np.linspace(0, 1, len(time_array)) // (1 / n_bins)) * time_array.max() / (n_bins - 1)
+            time_array = (time_array // time_bin_size) / n_bins * time_array.max()
 
         if cbar_label is not None:
             cbar_label = cbar_label.format(
@@ -1515,7 +1519,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         for low, high in zip(bins[:-1], bins[1:]):
             heights += [((counts >= low) * (counts < high)).mean()]
             bin_centers += [(low + high) / 2]
-        widths = [bins[i + 1] - bins[i] for i in range(len(bins) - 1)]
+        widths = np.diff(bins, 1)
         ax.bar(bin_centers, heights, width=widths, **bar_kwargs)
 
         if plot_labels:
@@ -1890,10 +1894,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """Plot the density profiles of the halo over time.
 
         Parameters:
-            times (Quantity['time']): The times at which to plot the density profiles.
-            labels (list[str]): The labels for the density profiles.
-            radius_bins (Quantity['length']): The radius bins for the density profile calculations.
-            limit_radius_by_Rvir (bool): Whether to limit the radius bins by the virial radius.
+            times: The times at which to plot the density profiles.
+            labels: The labels for the density profiles.
+            radius_bins: The radius bins for the density profile calculations.
+            limit_radius_by_Rvir: Whether to limit the radius bins by the virial radius.
             distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments are passed to every call to the plotting function.
@@ -1911,7 +1915,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             for label, t in zip(labels, real_times):
                 fig, ax = plot.plot_density(
                     cast(Quantity, data[(data['time'] == t) * (data['particle_type'] == distribution.particle_type)]['r']),
-                    unit_mass=distribution.Mtot / self.n_particles[distribution.particle_type],
+                    unit_mass=self.unit_mass(distribution),
                     bins=radius_bins if not limit_radius_by_Rvir else cast(Quantity, radius_bins[radius_bins <= distribution.Rvir]),
                     label=f'{distribution.label} {label}',
                     fig=fig,
@@ -1922,3 +1926,75 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if save_kwargs is not None:
             plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
+
+    def plot_distributions_over_time_animation(
+        self,
+        radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
+        limit_radius_by_Rvir: bool = True,
+        distributions: list[int] | None = None,
+        xlim: Quantity['length'] | NDArray[np.float64] | None | Literal['bins'] = 'bins',
+        ylim: Quantity['mass density'] | NDArray[np.float64] | None = Quantity([1e3, 1e11], 'Msun/kpc^3'),
+        label_units: UnitLike = 'Gyr',
+        label_format: str = '.1f',
+        density_guidelines_kwargs: dict[str, Any] | None = {'times': Quantity([0, 1, 12], 'Gyr'), 'line_kwargs': {'linestyle': '--'}},
+        save_kwargs: dict[str, Any] = {},
+    ) -> None:
+        """Plot the density profiles of the halo as animations over time.
+
+        Parameters:
+            radius_bins: The radius bins for the density profile calculations.
+            limit_radius_by_Rvir: Whether to limit the radius bins by the virial radius.
+            distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions.
+            xlim: Consistent limits of the x-axis throughout the animation. If `None` ignores. If 'bins', uses the radius bins as the x-axis limits.
+            ylim: Consistent limits of the y-axis throughout the animation. If `None` ignores.
+            label_units: Units for the time label.
+            label_format: String format for the time label.
+            density_guidelines_kwargs: Keyword arguments to pass to `plot.plot_distributions_over_time()` for plotting the density at fixed timestamps throughout the animation, serving as guidelines (i.e. initial distribution, max core, final distribution, etc.). If `None` doesn't plot the guidelines.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`.
+
+        Returns:
+            fig, ax.
+        """
+
+        data = self.get_particle_states()
+        save_path = Path(save_kwargs.pop('save_path'))
+
+        for i, distribution in enumerate(self.distributions):
+            bins = cast(Quantity, radius_bins if not limit_radius_by_Rvir else radius_bins[radius_bins <= distribution.Rvir])
+            if isinstance(xlim, str) and xlim == 'bins':
+                xlim = bins
+            if xlim is not None:
+                xlim = np.array(utils.to_extent(xlim, force_array=True))
+            if ylim is not None:
+                ylim = np.array(utils.to_extent(ylim, force_array=True))
+            if distributions is not None and i not in distributions:
+                continue
+            plot.save_images(
+                images=plot.to_images(
+                    iterator=data[data['particle_type'] == distribution.particle_type].group_by('time').groups,
+                    plot_fn=lambda x: plot.plot_density(
+                        x['r'],
+                        unit_mass=self.unit_mass(distribution),
+                        bins=bins,
+                        label=f'{distribution.label} at {x["time"][0].to(label_units):{label_format}}',
+                        xlim=xlim,
+                        ylim=ylim,
+                        fig=(
+                            guidelines := self.plot_distributions_over_time(
+                                radius_bins=radius_bins,
+                                limit_radius_by_Rvir=limit_radius_by_Rvir,
+                                distributions=[i],
+                                **density_guidelines_kwargs,
+                                xlim=xlim,
+                                ylim=ylim,
+                            )
+                            if density_guidelines_kwargs is not None
+                            else [None, None]
+                        )[0],
+                        ax=guidelines[1],
+                    ),
+                    tqdm_kwargs={'desc': distribution.label},
+                ),
+                save_path=save_path.with_stem(f'{distribution.label} {save_path.stem}'),
+                **save_kwargs,
+            )

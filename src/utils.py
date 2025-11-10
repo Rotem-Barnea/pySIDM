@@ -287,3 +287,24 @@ def expand_mask_back(mask: NDArray[np.bool_], n: int) -> NDArray[np.bool_]:
     """
     kernel = _EXPAND_KERNEL_10 if n == 10 else backfill_kernel(n)
     return np.convolve(mask.astype(int), kernel, mode='same') > 0
+
+
+def to_extent(*args: NDArray[np.float64] | Quantity, force_array: bool = False) -> tuple[float, ...] | tuple[Quantity, ...]:
+    """Convert the input arrays to a tuple extent of the shape (min, min, min, ..., max, max, max, ...).
+
+    Args:
+        *args: The input arrays to convert.
+        force_array: Whether to force the output to be an array if Quantity.
+
+    Returns:
+        A tuple of the extent.
+    """
+    mins = []
+    maxs = []
+    for arg in args:
+        mins += [arg.min()]
+        maxs += [arg.max()]
+    output = mins + maxs
+    if force_array:
+        output = [float(o.value) if isinstance(o, Quantity) else o for o in output]
+    return tuple(output)
