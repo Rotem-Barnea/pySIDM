@@ -1932,8 +1932,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
         limit_radius_by_Rvir: bool = True,
         distributions: list[int] | None = None,
-        xlim: Quantity['length'] | NDArray[np.float64] | None | Literal['bins'] = 'bins',
-        ylim: Quantity['mass density'] | NDArray[np.float64] | None = Quantity([1e3, 1e11], 'Msun/kpc^3'),
+        xlim: list[Quantity['length'] | None | Literal['bins']] = ['bins', 'bins'],
+        ylim: list[Quantity['mass density'] | None] = [Quantity([1e3, 1e11], 'Msun/kpc^3'), Quantity([1e-1, 1e7], 'Msun/kpc^3')],
         label_units: UnitLike = 'Gyr',
         label_format: str = '.1f',
         density_guidelines_kwargs: dict[str, Any] | None = {'times': Quantity([0, 1, 12], 'Gyr'), 'line_kwargs': {'linestyle': '--'}},
@@ -1945,8 +1945,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             radius_bins: The radius bins for the density profile calculations.
             limit_radius_by_Rvir: Whether to limit the radius bins by the virial radius.
             distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions.
-            xlim: Consistent limits of the x-axis throughout the animation. If `None` ignores. If 'bins', uses the radius bins as the x-axis limits.
-            ylim: Consistent limits of the y-axis throughout the animation. If `None` ignores.
+            xlim: List matching `distributions`. Consistent limits of the x-axis throughout the animation. If `None` ignores. If 'bins', uses the radius bins as the x-axis limits.
+            ylim: List matching `distributions`. Consistent limits of the y-axis throughout the animation. If `None` ignores.
             label_units: Units for the time label.
             label_format: String format for the time label.
             density_guidelines_kwargs: Keyword arguments to pass to `plot.plot_distributions_over_time()` for plotting the density at fixed timestamps throughout the animation, serving as guidelines (i.e. initial distribution, max core, final distribution, etc.). If `None` doesn't plot the guidelines.
@@ -1959,14 +1959,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data = self.get_particle_states()
         save_path = Path(save_kwargs.pop('save_path'))
 
-        for i, distribution in enumerate(self.distributions):
+        for i, (distribution, xlim_, ylim_) in enumerate(zip(self.distributions, xlim, ylim)):
             bins = cast(Quantity, radius_bins if not limit_radius_by_Rvir else radius_bins[radius_bins <= distribution.Rvir])
-            if isinstance(xlim, str) and xlim == 'bins':
-                xlim = bins
-            if xlim is not None:
-                xlim = np.array(utils.to_extent(xlim, force_array=True))
-            if ylim is not None:
-                ylim = np.array(utils.to_extent(ylim, force_array=True))
+            if isinstance(xlim_, str) and xlim_ == 'bins':
+                xlim_ = bins
+            if xlim_ is not None:
+                xlim_ = np.array(utils.to_extent(xlim_, force_array=True))
+            if ylim_ is not None:
+                ylim_ = np.array(utils.to_extent(ylim_, force_array=True))
             if distributions is not None and i not in distributions:
                 continue
             plot.save_images(
@@ -1977,16 +1977,16 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                         unit_mass=self.unit_mass(distribution),
                         bins=bins,
                         label=f'{distribution.label} at {x["time"][0].to(label_units):{label_format}}',
-                        xlim=xlim,
-                        ylim=ylim,
+                        xlim=xlim_,
+                        ylim=ylim_,
                         fig=(
                             guidelines := self.plot_distributions_over_time(
                                 radius_bins=radius_bins,
                                 limit_radius_by_Rvir=limit_radius_by_Rvir,
                                 distributions=[i],
                                 **density_guidelines_kwargs,
-                                xlim=xlim,
-                                ylim=ylim,
+                                xlim=xlim_,
+                                ylim=ylim_,
                             )
                             if density_guidelines_kwargs is not None
                             else [None, None]
