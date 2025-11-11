@@ -1,3 +1,3 @@
-from . import nfw, uniform, distribution
+from . import nfw, cored, uniform, distribution
 
-__all__ = ['distribution', 'nfw', 'uniform']
+__all__ = ['distribution', 'nfw', 'uniform', 'cored']

@@ -290,7 +290,7 @@ def expand_mask_back(mask: NDArray[np.bool_], n: int) -> NDArray[np.bool_]:
 
 
 def to_extent(*args: NDArray[np.float64] | Quantity, force_array: bool = False) -> tuple[float, ...] | tuple[Quantity, ...]:
-    """Convert the input arrays to a tuple extent of the shape (min, min, min, ..., max, max, max, ...).
+    """Convert the input arrays to a tuple extent of the shape (min, max, min, max, ...).
 
     Args:
         *args: The input arrays to convert.
@@ -299,12 +299,9 @@ def to_extent(*args: NDArray[np.float64] | Quantity, force_array: bool = False) 
     Returns:
         A tuple of the extent.
     """
-    mins = []
-    maxs = []
+    output = []
     for arg in args:
-        mins += [arg.min()]
-        maxs += [arg.max()]
-    output = mins + maxs
+        output += [arg.min(), arg.max()]
     if force_array:
         output = [float(o.value) if isinstance(o, Quantity) else o for o in output]
     return tuple(output)

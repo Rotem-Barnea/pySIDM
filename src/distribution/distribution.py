@@ -23,7 +23,7 @@ class Distribution:
         Rmin: Quantity['length'] = Quantity(1e-4, 'kpc'),
         Rmax: Quantity['length'] | None = None,
         Rs: Quantity['length'] | None = None,
-        c: Quantity['length'] | None = None,
+        c: float | None = None,
         Rvir: Quantity['length'] | None = None,
         Mtot: Quantity['mass'] | None = None,
         rho_s: Quantity['mass density'] | None = None,
@@ -54,7 +54,7 @@ class Distribution:
 
         assert sum([Rs is not None, Rvir is not None, c is not None]) == 2, 'Exactly two of Rs, Rvir, and c must be specified'
         if Rs is not None and Rvir is not None:
-            c = (Rvir / Rs).to('')
+            c = float(Rvir / Rs)
         elif Rs is not None and c is not None:
             Rvir = Quantity(c * Rs.to(run_units.length))
         elif Rvir is not None and c is not None:

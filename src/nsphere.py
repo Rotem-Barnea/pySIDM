@@ -130,7 +130,9 @@ def prepare_for_plotting(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame
     data['vp'] = data['L'] / data['R']
     data['v_norm'] = np.sqrt(data['vp'] ** 2 + data['Vrad'] ** 2)
     data['T'] = 1 / 2 * data['v_norm'] ** 2
-    data['particle_index'] = np.hstack([np.arange(100000)] * 501)
+    data['particle_index'] = 0
+    for _, group in data.groupby('time'):
+        data.loc[group.index, 'particle_index'] = np.arange(len(group))
     data = data.rename(columns={'R': 'r', 'Vrad': 'vr'})
     initial_data = data[data['time'] == data['time'].min()].copy().sort_values('r')
     unit_mass = Quantity(initial_data['mass'].diff(1).iloc[-1], 'Msun')
