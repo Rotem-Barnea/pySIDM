@@ -293,7 +293,7 @@ class Halo:
             if drop_indices.any():
                 if presorted:
                     end = drop_indices.argmax()
-                    self._particles = self._particles.iloc[:end]
+                    self._particles = self._particles.iloc[:end].copy()
                 else:
                     self._particles.drop(index=drop_indices[drop_indices].index, inplace=True)
 
