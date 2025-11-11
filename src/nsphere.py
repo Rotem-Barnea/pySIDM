@@ -145,6 +145,7 @@ def read_log(
     columns: list[str] = ['time', 'cumulative_scatters'],
     append_zero: bool = False,
 ) -> pd.DataFrame:
+    """Read the NSphere log file and return a DataFrame."""
     results = []
     with open(filepath) as f:
         for line in f.readlines():
