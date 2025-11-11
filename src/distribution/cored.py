@@ -8,6 +8,7 @@ Constant-density core with ρ(r→0) = ρ₀ and asymptotic falloff ρ ∝ r⁻�
 from typing import Any
 
 from numba import njit
+from astropy.units import Quantity
 
 from ..types import FloatOrArray
 from .distribution import Distribution
@@ -25,13 +26,15 @@ class Cored(Distribution):
         particle_type: Particle type ('dm' or 'baryon')
     """
 
-    def __init__(self, c: float = 85, **kwargs: Any):
+    def __init__(self, rc: Quantity['length'], r_max_factor: float = 85, **kwargs: Any):
         # Rs: core radius rc
         # c: cutoff parameter (r_max = c × rc)
         # Mtot: total halo mass
         # rho_s: central density ρ₀ (normalized from M_total)
 
-        super().__init__(c=c, **kwargs)
+        kwargs['Rs'] = rc
+        kwargs['c'] = r_max_factor
+        super().__init__(**kwargs)
         self.title = 'Cored'
 
         # Physical parameters
