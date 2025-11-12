@@ -1,6 +1,5 @@
 from typing import Any
 
-import numpy as np
 from numba import njit
 
 from ..types import FloatOrArray
@@ -30,7 +29,4 @@ class Hernquist(Distribution):
         Returns:
             The density at the given radius.
         """
-        rho = rho_s / ((r / Rs) * (1 + (r / Rs)) ** 3) / np.exp((r / Rvir) ** 2)
-        if isinstance(r, float):
-            return rho[0]
-        return rho
+        return rho_s / ((r / Rs) * (1 + (r / Rs)) ** 3) / (1 + (r / Rvir) ** 4)

@@ -31,10 +31,7 @@ class NFW(Distribution):
         Returns:
             The density at the given radius.
         """
-        rho = rho_s / ((r / Rs) * (1 + (r / Rs)) ** 2) / np.exp((r / Rvir) ** 2)
-        if isinstance(r, float):
-            return rho[0]
-        return rho
+        return rho_s / ((r / Rs) * (1 + (r / Rs)) ** 2) / (1 + (r / Rvir) ** 4)
 
     def calculate_theoretical_M(self, r: Quantity['length']) -> Quantity['mass']:
         """Calculate the enclosed mass based on the theoretical density profile (without truncation)."""
