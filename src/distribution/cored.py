@@ -26,14 +26,18 @@ class Cored(Distribution):
         particle_type: Particle type ('dm' or 'baryon')
     """
 
-    def __init__(self, rc: Quantity['length'], r_max_factor: float = 85, **kwargs: Any):
+    def __init__(self, rc: Quantity['length'] | None = None, r_max_factor: float | None = None, c: float = 85, **kwargs: Any):
         # Rs: core radius rc
         # c: cutoff parameter (r_max = c × rc)
         # Mtot: total halo mass
         # rho_s: central density ρ₀ (normalized from M_total)
 
-        kwargs['Rs'] = rc
-        kwargs['c'] = r_max_factor
+        if rc is not None:
+            kwargs['Rs'] = rc
+        if r_max_factor is not None:
+            kwargs['c'] = r_max_factor
+        else:
+            kwargs['c'] = c
         super().__init__(**kwargs)
         self.title = 'Cored'
 
