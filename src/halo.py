@@ -11,6 +11,7 @@ import numpy as np
 import scipy
 import pandas as pd
 import seaborn as sns
+import matplotlib.pyplot as plt
 from PIL import Image
 from astropy import table
 from numpy.typing import NDArray
@@ -125,7 +126,7 @@ class Halo:
         self.scatter_rounds = scatter_rounds
         self.scatter_rounds_underestimated = scatter_rounds_underestimated
         self.hard_save: bool = hard_save
-        self.save_path: Path | str | None = save_path
+        self.save_path: Path | str | None = Path(save_path) if isinstance(save_path, str) else save_path
         self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
         self.scatters_to_collapse: int = scatters_to_collapse
         self.cleanup_nullish_particles = cleanup_nullish_particles
@@ -545,6 +546,13 @@ class Halo:
     ##Save/Load
     #####################
 
+    @property
+    def results_path(self) -> Path:
+        """Return the path to the results directory."""
+        if self.save_path is None:
+            raise ValueError('`save_path` is not set')
+        return self.save_path.parents[1] / 'results' / self.save_path.stem
+
     @staticmethod
     def payload_keys() -> list[str]:
         """Return the keys of the payload dictionary, used for saving and loading halos. A `@staticmethod` and not a `@property` to allow getting it from an uninitialized cls during `@classmethod`."""
@@ -929,45 +937,105 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         self,
         data: table.QTable,
         filter_particle_type: ParticleType | None = None,
-        radius_bins: Quantity['length'] = Quantity(np.linspace(1e-2, 50, 200), 'kpc'),
+        filter_interacting: bool | None = None,
+        mask: NDArray[np.bool_] | None = None,
+        radius_bins: Quantity['length'] = Quantity(np.linspace(1e-2, 35, 200), 'kpc'),
         velocity_bins: Quantity['velocity'] = Quantity(np.linspace(0, 60, 200), 'km/second'),
         cmap: str = 'jet',
         transparent_value: float | None = 0,
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = 'Velocity',
         length_units: UnitLike = 'kpc',
         velocity_units: UnitLike = 'km/second',
+        return_grid: bool = False,
         **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
+    ) -> tuple[Figure, Axes] | tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['velocity'], Quantity['velocity']]]:
         """Plot the phase space distribution of the data.
 
         Parameters:
             data: The data to plot.
             filter_particle_type: Whether to filter to only plot the specified particle type.
+            filter_interacting: Whether to filter to only plot interacting/non-interacting particles based on `self.scatter_track_index`. If `None` ignores.
+            mask: Any additional mask to apply to the data. Must match the shape of the `data` (pre any other filtration).
             radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
             velocity_bins: The bins for the velocity axis. Also used to define the velocity range to consider.
             cmap: The colormap to use for the plot.
             transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
+            xlabel: The label of the x-axis.
+            ylabel: The label of the y-axis.
             length_units: Units to use for the radius axis.
             velocity_units: Units to use for the velocity axis.
+            return_grid: Return the grid+extent variables instead of plotting.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
 
         Returns:
             fig, ax.
         """
 
+        if mask is not None:
+            data = cast(table.QTable, data[mask]).copy()
         if filter_particle_type is not None:
             data = cast(table.QTable, data[data['particle_type'] == filter_particle_type]).copy()
+        if filter_interacting is not None:
+            indices = np.unique(np.hstack(self.scatter_track_index))
+            interacting_mask = pd.Series(False, index=np.array(data['particle_index']))
+            interacting_mask.loc[interacting_mask.index.isin(indices)] = True
+            interacting_mask = np.array(interacting_mask)
+            data = cast(table.QTable, data[interacting_mask == filter_interacting]).copy()
+
         grid, extent = plot.aggregate_phase_space_data(data=data, radius_bins=radius_bins, velocity_bins=velocity_bins)
+        if return_grid:
+            return grid, extent
         return plot.plot_2d(
             grid=grid,
             extent=extent,
-            xlabel='Radius',
-            ylabel='Velocity',
+            xlabel=xlabel,
+            ylabel=ylabel,
             x_units=length_units,
             y_units=velocity_units,
             cmap=cmap,
             transparent_value=transparent_value,
             **kwargs,
         )
+
+    def plot_phase_space_by_scattering_amount(
+        self,
+        data: table.QTable,
+        bins: list[int] | NDArray[np.int64] = [10, 50, 100, 200, 400, 1000, 2000],
+        **kwargs: Any,
+    ) -> None:
+        """Plot the phase space distribution of the data.
+
+        Parameters:
+            data: The data to plot.
+            bins: The bin edges to use for the number of scatterings (the dividers between bins, the start and end will be added automatically).
+            kwargs: Additional keyword arguments to pass to the plot function (`self.plot_phase_space()`).
+
+        Returns:
+            fig, ax.
+        """
+
+        indices, counts = np.unique(np.hstack(self.scatter_track_index), return_counts=True)
+        bins = np.hstack([0, 1, np.array(bins), indices.max() + 1])
+
+        for low, high in tqdm(list(zip(bins[:-1], bins[1:]))):
+            mask = pd.Series(False, index=np.array(data['particle_index']))
+            if low == 0:
+                mask.loc[mask.index.isin(indices)] = True
+                mask = ~mask
+                title = "Initial phase space distribution for particles that didn't scatter"
+            else:
+                mask.loc[mask.index.isin(indices[(counts >= low) * (counts < high)])] = True
+                title = f'Initial phase space distribution for particles\nthat scattred between {low} and {high} nubmer of times'
+            self.plot_phase_space(
+                data,
+                filter_particle_type='dm',
+                mask=np.array(mask),
+                title=title,
+                save_kwargs={'save_path': self.results_path / f'Phase space DM [{low},{high}].png'},
+                **kwargs,
+            )
+            plt.close()
 
     def plot_inner_core_density(
         self,
@@ -1473,7 +1541,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
     def plot_scattering_amount_distribution(
         self,
-        bins: list[int] | NDArray[np.int64] = [100, 400, 2000, 5000],
+        bins: list[int] | NDArray[np.int64] = [10, 50, 100, 200, 400, 1000, 2000],
         xlabel: str | None = 'Number of scattering per particle',
         ylabel: str | None = 'Fraction of scattering DM particles',
         title: str | None = 'Per particle scattering amount distribution',
@@ -1937,6 +2005,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         label_units: UnitLike = 'Gyr',
         label_format: str = '.1f',
         density_guidelines_kwargs: dict[str, Any] | None = {'times': Quantity([0, 1, 12], 'Gyr'), 'line_kwargs': {'linestyle': '--'}},
+        multiplicity_guidelines: int | None = 10,
         save_kwargs: dict[str, Any] = {},
     ) -> None:
         """Plot the density profiles of the halo as animations over time.
@@ -1950,6 +2019,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             label_units: Units for the time label.
             label_format: String format for the time label.
             density_guidelines_kwargs: Keyword arguments to pass to `plot.plot_distributions_over_time()` for plotting the density at fixed timestamps throughout the animation, serving as guidelines (i.e. initial distribution, max core, final distribution, etc.). If `None` doesn't plot the guidelines.
+            multiplicity_guidelines: Number of frames to print for when the animation reaches the guidelines. If `None` ignores.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`.
 
         Returns:
@@ -1969,6 +2039,16 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 ylim_ = np.array(utils.to_extent(ylim_, force_array=True))
             if distributions is not None and i not in distributions:
                 continue
+
+            if density_guidelines_kwargs is not None:
+                unique_times = np.unique(cast(NDArray[np.float64], data[data['particle_type'] == distribution.particle_type]['time']))
+                multiplicity_table = table.QTable({'time': unique_times, 'factor': np.ones(len(unique_times), dtype=np.int64)})
+                for t in density_guidelines_kwargs['times']:
+                    multiplicity_table['factor'][np.abs(multiplicity_table['time'] - t).argmin()] = multiplicity_guidelines
+                multiplicity = np.array(multiplicity_table['factor'], dtype=np.int64)
+            else:
+                multiplicity = None
+
             plot.save_images(
                 images=plot.to_images(
                     iterator=data[data['particle_type'] == distribution.particle_type].group_by('time').groups,
@@ -1993,8 +2073,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                         )[0],
                         ax=guidelines[1],
                     ),
+                    multiplicity=multiplicity,
                     tqdm_kwargs={'desc': distribution.label},
                 ),
-                save_path=save_path.with_stem(f'{distribution.label} {save_path.stem}'),
+                save_path=save_path.with_stem(f'{save_path.stem} {distribution.label}'),
                 **save_kwargs,
             )

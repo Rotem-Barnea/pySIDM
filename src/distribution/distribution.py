@@ -511,8 +511,8 @@ class Distribution:
 
     def plot_phase_space(
         self,
-        r_range: Quantity['length'] = Quantity(np.linspace(1e-2, 50, 200), 'kpc'),
-        v_range: Quantity['velocity'] = Quantity(np.linspace(0, 100, 200), 'km/second'),
+        r_range: Quantity['length'] = Quantity(np.linspace(1e-2, 35, 200), 'kpc'),
+        v_range: Quantity['velocity'] = Quantity(np.linspace(0, 60, 200), 'km/second'),
         velocity_units: UnitLike = 'km/second',
         cmap: str = 'jet',
         transparent_value: float | None = 0,

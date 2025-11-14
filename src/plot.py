@@ -699,6 +699,7 @@ def to_images(
     iterator: Iterable[Any],
     plot_fn: Callable[[Any], tuple[Figure, Axes]],
     tight_layout: dict[str, Any] | None = {'pad': 1.5},
+    multiplicity: list[int] | NDArray[np.int64] | None = None,
     tqdm_kwargs: dict[str, Any] = {},
 ) -> list[Image.Image]:
     """Applies a plotting function over an iterator and produce a set of PIL images.
@@ -707,20 +708,22 @@ def to_images(
         iterator: An iterable object containing the data to be plotted.
         plot_fn: A function that takes an element from the iterator and returns a tuple of `Figure` and `Axes`.
         tight_layout: A dictionary of arguments to be passed to the `tight_layout` method of the `Figure` object.
+        multiplicity: Inflate the number of frames by the input amount, to allow different duration to different frames. If `None` ignore.
         tqdm_kwargs: Additional keyword arguments to be passed to the `tqdm` function.
 
     Returns:
         A list of PIL images.
     """
     images = []
-    for element in tqdm(iterator, **tqdm_kwargs):
+    for i, element in enumerate(tqdm(iterator, **tqdm_kwargs)):
         fig, _ = plot_fn(element)
         if tight_layout:
             fig.tight_layout(**tight_layout)
         canvas = FigureCanvasAgg(fig)
         canvas.draw()
         raw_data, size = canvas.print_to_buffer()
-        images += [Image.frombytes('RGBA', size=size, data=raw_data).convert('RGB')]
+        multiplicity_factor = 1 if multiplicity is None else multiplicity[i]
+        images += [Image.frombytes('RGBA', size=size, data=raw_data).convert('RGB')] * multiplicity_factor
         plt.close()
     return images
 
@@ -768,4 +771,5 @@ def save_plot(fig: Figure, save_path: str | Path, bbox_inches: str = 'tight', **
     Returns:
         None.
     """
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, bbox_inches=bbox_inches, **kwargs)
