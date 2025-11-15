@@ -756,6 +756,7 @@ def save_images(images: list[Image.Image], save_path: str | Path, duration: int 
     Returns:
         None.
     """
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     images[0].save(save_path, save_all=True, append_images=images[1:], duration=duration, loop=loop, **kwargs)
 
 
