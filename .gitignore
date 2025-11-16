@@ -1,8 +1,5 @@
 __pycache__
 **/.ipynb_checkpoints/**
-**/run results/**/*.csv
-**/run results/**/*.pkl
-**/run results/**/*.fits
 **/run results/*
 **/*.ipynb
 **/.DS_Store
