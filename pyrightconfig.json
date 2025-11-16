@@ -1,0 +1,22 @@
+{
+  "reportUnannotatedClassAttribute": false,
+  "reportMissingTypeStubs": false,
+  "reportUntypedFunctionDecorator": false,
+  "reportUnknownVariableType": false,
+  "reportImportCycles": false,
+  "reportExplicitAny": false,
+  "reportAny": false,
+  "reportCallInDefaultInitializer": false,
+  "reportUnknownMemberType": false,
+  "reportUnusedCallResult": false,
+  "reportImplicitOverride": false,
+  "reportUnusedParameter": false,
+  "reportConstantRedefinition": false,
+  "reportAttributeAccessIssue": false,
+  "reportUnknownArgumentType": false,
+  "reportUnknownLambdaType": false,
+  "reportImplicitRelativeImport": false,
+  "exclude": ["**/*.ipynb", "**/__pycache__"],
+  "include": ["pySIDM/src"],
+  "venv": "SIDM_env"
+}
