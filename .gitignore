@@ -4,3 +4,4 @@ run results/**/*.csv
 run results/**/*.pkl
 run results/**/*.fits
 **/*.ipynb
+**/.DS_Store
