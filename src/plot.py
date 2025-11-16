@@ -613,6 +613,55 @@ def aggregate_evolution_data(
     return cast(Quantity, grid_quantity), extent
 
 
+def aggregate_2d_data(
+    data: table.QTable | pd.DataFrame,
+    x_key: str,
+    y_key: str,
+    x_bins: Quantity,
+    y_bins: Quantity,
+    row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
+    data_x_units: UnitLike = '',
+    data_y_units: UnitLike = '',
+) -> tuple[Quantity, tuple[Quantity, Quantity, Quantity, Quantity]]:
+    """Prepares data to be plotted in a 2d heatmap plot, like a phase space plot.
+
+    Parameters:
+        data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns given in `x_key` and `y_key`.
+        x_key: The key for the x-axis data.
+        y_key: The key for the y-axis data.
+        x_bins: The bins for the x-axis. Also used to define the x-axis range to consider.
+        y_bins: The bins for the y-axis. Also used to define the y-range to consider.
+        row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
+        data_x_units: The units for the x-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_y_units: The units for the y-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+
+    Returns:
+        data, extent.
+    """
+    keep_columns = [x_key, y_key]
+    if isinstance(data, pd.DataFrame):
+        sub = table.QTable(data[keep_columns], units=[data_x_units, data_y_units])
+    else:
+        sub = data[keep_columns]
+        data_x_units = data[x_key].unit
+        data_y_units = data[y_key].unit
+
+    x_bins = x_bins.to(data_x_units)
+    y_bins = y_bins.to(data_y_units)
+    grid = np.histogram2d(cast(NDArray[np.float64], sub[x_key]), cast(NDArray[np.float64], sub[y_key]), (x_bins, y_bins))[0].T
+
+    if row_normalization == 'max':
+        grid /= grid.max(1, keepdims=True)
+    elif type(row_normalization) is float:
+        grid /= np.quantile(grid, row_normalization, axis=1, keepdims=True)
+    elif row_normalization == 'sum':
+        grid /= grid.sum(1, keepdims=True)
+    elif row_normalization == 'integral':
+        grid /= np.expand_dims(np.trapezoid(y=grid, x=np.matlib.repmat(x_bins[:-1], len(grid), 1), axis=1), 1)
+
+    return Quantity(grid, ''), cast(tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_bins, y_bins))
+
+
 def aggregate_phase_space_data(
     data: table.QTable | pd.DataFrame,
     radius_bins: Quantity['length'] = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
@@ -634,28 +683,16 @@ def aggregate_phase_space_data(
     Returns:
         data, extent.
     """
-    keep_columns = ['r', 'v_norm']
-    if isinstance(data, pd.DataFrame):
-        sub = table.QTable(data[keep_columns], units=[data_length_units, data_velocity_units])
-    else:
-        sub = data[keep_columns]
-        data_velocity_units = data['v_norm'].unit
-        data_length_units = data['r'].unit
-
-    radius_bins = radius_bins.to(data_length_units)
-    velocity_bins = velocity_bins.to(data_velocity_units)
-    grid = np.histogram2d(cast(NDArray[np.float64], sub['r']), cast(NDArray[np.float64], sub['v_norm']), (radius_bins, velocity_bins))[0].T
-
-    if row_normalization == 'max':
-        grid /= grid.max(1, keepdims=True)
-    elif type(row_normalization) is float:
-        grid /= np.quantile(grid, row_normalization, axis=1, keepdims=True)
-    elif row_normalization == 'sum':
-        grid /= grid.sum(1, keepdims=True)
-    elif row_normalization == 'integral':
-        grid /= np.expand_dims(np.trapezoid(y=grid, x=np.matlib.repmat(radius_bins[:-1], len(grid), 1), axis=1), 1)
-
-    return Quantity(grid, ''), (radius_bins.min(), radius_bins.max(), velocity_bins.min(), velocity_bins.max())
+    return aggregate_2d_data(
+        data=data,
+        x_key='r',
+        y_key='v_norm',
+        x_bins=radius_bins,
+        y_bins=velocity_bins,
+        row_normalization=row_normalization,
+        data_x_units=data_length_units,
+        data_y_units=data_velocity_units,
+    )
 
 
 def plot_cumulative_scattering_amount_over_time(
