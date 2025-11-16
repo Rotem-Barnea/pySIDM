@@ -27,7 +27,7 @@ if __name__ == '__main__':
     save_every_time = 10 * dm_distribution.Tdyn
     hard_save = True
     # save_path = Path.home() / 'SIDM/pySIDM/run results' / 'full test run 1'
-    save_path = Path(os.environ['SAVE_PATH']) / 'SIDM/pySIDM/run results' / 'full test run 1'
+    save_path = Path(os.environ['SAVE_PATH']) / 'run results' / 'full test run 1'
 
     if save_path.exists():
         print('Loaded existing halo (continuing run)')
