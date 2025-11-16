@@ -17,6 +17,6 @@
   "reportUnknownLambdaType": false,
   "reportImplicitRelativeImport": false,
   "exclude": ["**/*.ipynb", "**/__pycache__"],
-  "include": ["pySIDM/src"],
+  "include": ["src"],
   "venv": "SIDM_env"
 }
