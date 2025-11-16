@@ -480,7 +480,7 @@ class Halo:
         r, vx, vy, vr, m = self._particles[['r', 'vx', 'vy', 'vr', 'm']].values.T
         if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(0, run_units.cross_section):
             t0 = time.perf_counter()
-            mask = self._particles['interacting'].values
+            mask = cast(NDArray[np.bool_], self._particles['interacting'].values)
             (vx[mask], vy[mask], vr[mask], indices, scatter_rounds, scatter_rounds_underestimated) = sidm.scatter(
                 r=r[mask], vx=vx[mask], vy=vy[mask], vr=vr[mask], dt=self.dt, m=m[mask], **self.scatter_params
             )
@@ -1903,16 +1903,24 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
         x = (np.arange(len(self.scatter_rounds)) * self.dt).to(time_unit)
         if total_required:
+            y = np.array(self.scatter_rounds) + np.array(self.scatter_rounds_underestimated)
             sns.lineplot(
                 x=x,
-                y=(np.array(self.scatter_rounds) + np.array(self.scatter_rounds_underestimated)).clip(max=clip_max_total_required),
+                y=y if clip_max_total_required is None else y.clip(max=clip_max_total_required),
                 ax=ax,
                 label=label_total_required,
             )
         if rounds:
-            sns.lineplot(x=x, y=np.array(self.scatter_rounds).clip(max=clip_max_rounds), ax=ax, label=label_rounds)
+            y = np.array(self.scatter_rounds)
+            sns.lineplot(x=x, y=y if clip_max_rounds is None else y.clip(max=clip_max_rounds), ax=ax, label=label_rounds)
         if underestimations:
-            sns.lineplot(x=x, y=np.array(self.scatter_rounds_underestimated).clip(max=clip_max_underestimations), ax=ax, label=label_underestimations)
+            y = np.array(self.scatter_rounds_underestimated)
+            sns.lineplot(
+                x=x,
+                y=y if clip_max_underestimations is None else y.clip(max=clip_max_underestimations),
+                ax=ax,
+                label=label_underestimations,
+            )
         if (
             (rounds and label_rounds is not None)
             or (total_required and label_total_required is not None)

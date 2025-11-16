@@ -2,8 +2,9 @@ from typing import Any, Self, Unpack, cast
 
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
 from astropy.units import Quantity
+
+from tqdm import tqdm
 
 from . import nsphere
 from .spatial_approximation import Lattice
@@ -47,7 +48,7 @@ class Mass_Distribution:
         lattice = Lattice(n_posts=10000, start=data.ravel().min() * 0.9, end=data.ravel().max() * 1.1, log=True)
         M = np.vstack([lattice.values_on_lattice_point_cumsum(lattice(d)) for d in data]) * Mtot / data.shape[1]
         time = Quantity(files.time.tolist())
-        return cls(lattice, M, time, load_kwargs={**kwargs})
+        return cls(lattice, cast(Quantity, M), time, load_kwargs={**kwargs})
 
     def at_time(self, t: Quantity['time']) -> Quantity['mass']:
         """Calculate the enclosed mass array at a given time.

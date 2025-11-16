@@ -4,10 +4,11 @@ from pathlib import Path
 import numpy as np
 import regex
 import pandas as pd
-from tqdm import tqdm
 from astropy import table
 from numpy.typing import NDArray
 from astropy.units import Quantity
+
+from tqdm import tqdm
 
 
 class File_params(TypedDict):

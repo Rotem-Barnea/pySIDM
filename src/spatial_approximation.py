@@ -55,8 +55,8 @@ class Lattice:
     def posts(self) -> NDArray[np.float64]:
         """Calculate the posts of the lattice (i.e. `np.linspace` or `np.geomspace`)."""
         if self.log:
-            return np.geomspace(self.start, self.end, self.n_posts)
-        return np.linspace(self.start, self.end, self.n_posts)
+            return np.geomspace(self.start, self.end, self.n_posts, dtype=np.float64)
+        return np.linspace(self.start, self.end, self.n_posts, dtype=np.float64)
 
     @property
     def post_volume(self) -> NDArray[np.float64]:

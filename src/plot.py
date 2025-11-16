@@ -392,7 +392,7 @@ def plot_2d(
         if x_log:
             ax.xaxis.set_major_locator(ticker.LogLocator(base=10, numticks=x_nbins))
             ax.xaxis.set_major_formatter(ticker.LogFormatterSciNotation(base=10))
-            ax.xaxis.set_minor_locator(ticker.LogLocator(base=10, subs=list(np.arange(2, 10)), numticks=999))
+            ax.xaxis.set_minor_locator(ticker.LogLocator(base=10, subs=list(np.arange(2, 10, dtype=float)), numticks=999))
             ax.set_xscale('log')
         else:
             ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_nbins))
@@ -406,7 +406,7 @@ def plot_2d(
         if y_log:
             ax.yaxis.set_major_locator(ticker.LogLocator(base=10, numticks=y_nbins))
             ax.yaxis.set_major_formatter(ticker.LogFormatterSciNotation(base=10))
-            ax.yaxis.set_minor_locator(ticker.LogLocator(base=10, subs=list(np.arange(2, 10)), numticks=999))
+            ax.yaxis.set_minor_locator(ticker.LogLocator(base=10, subs=list(np.arange(2, 10, dtype=float)), numticks=999))
             ax.set_yscale('log')
         else:
             ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=y_nbins))
@@ -653,7 +653,7 @@ def aggregate_phase_space_data(
     elif row_normalization == 'sum':
         grid /= grid.sum(1, keepdims=True)
     elif row_normalization == 'integral':
-        grid /= cast(NDArray[np.float64], np.expand_dims(np.trapezoid(y=grid, x=np.matlib.repmat(radius_bins[:-1], len(grid), 1), axis=1), 1))
+        grid /= np.expand_dims(np.trapezoid(y=grid, x=np.matlib.repmat(radius_bins[:-1], len(grid), 1), axis=1), 1)
 
     return Quantity(grid, ''), (radius_bins.min(), radius_bins.max(), velocity_bins.min(), velocity_bins.max())
 
