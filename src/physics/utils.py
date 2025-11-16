@@ -78,6 +78,8 @@ def local_density(
     else:
         volume = 4 * np.pi * x**2 * (x_end - x)
     density = mass[:-1] / volume[:-1]  # The final element has volume=0, this just circumvents this and uses the value from the second-to-last
+    if (volume[:-1] == 0).any():
+        raise ValueError('Volume cannot be zero')
     density = np.hstack([density, density[-1]])
     if isinstance(m, Quantity) and isinstance(r, Quantity):
         return Quantity(density, m.unit / cast(Unit, r.unit) ** 3)
