@@ -115,7 +115,9 @@ class Halo:
         self.Phi0: Quantity['energy'] = Phi0 if Phi0 is not None else physics.utils.Phi(self.r, self.M, self.m)[-1]
         self.snapshots: table.QTable = snapshots
         self.save_every_n_steps = save_every_n_steps
-        self.save_every_time: Quantity['time'] | None = save_every_time if save_every_time is None else save_every_time.to(run_units.time)
+        self.save_every_time: Quantity['time'] | None = (
+            save_every_time if save_every_time is None else save_every_time.to(run_units.time)
+        )
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
         self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
         self.scatter_track_index = scatter_track_index
@@ -153,8 +155,9 @@ class Halo:
         r, v, particle_type, m = [], [], [], []
         Distribution.merge_distribution_grids(distributions)
         for distribution, n in zip(distributions, n_particles):
-            r_sub = distribution.roll_r(int(n)).to(run_units.length)
-            v_sub = distribution.roll_v_3d(r_sub).to(run_units.velocity)
+            r_sub, v_sub = distribution.roll_joint_phase_space(n)
+            # r_sub = distribution.roll_r(int(n)).to(run_units.length)
+            # v_sub = distribution.roll_v_3d(r_sub).to(run_units.velocity)
             r += [r_sub]
             v += [v_sub]
             particle_type += [[distribution.particle_type] * int(n)]
@@ -478,11 +481,26 @@ class Halo:
         if self.is_save_round():
             self.save_snapshot(**save_kwargs)
         r, vx, vy, vr, m = self._particles[['r', 'vx', 'vy', 'vr', 'm']].values.T
-        if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(0, run_units.cross_section):
+        if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(
+            0, run_units.cross_section
+        ):
             t0 = time.perf_counter()
             mask = cast(NDArray[np.bool_], self._particles['interacting'].values)
-            (vx[mask], vy[mask], vr[mask], indices, scatter_rounds, scatter_rounds_underestimated) = sidm.scatter(
-                r=r[mask], vx=vx[mask], vy=vy[mask], vr=vr[mask], dt=self.dt, m=m[mask], **self.scatter_params
+            (
+                vx[mask],
+                vy[mask],
+                vr[mask],
+                indices,
+                scatter_rounds,
+                scatter_rounds_underestimated,
+            ) = sidm.scatter(
+                r=r[mask],
+                vx=vx[mask],
+                vy=vy[mask],
+                vr=vr[mask],
+                dt=self.dt,
+                m=m[mask],
+                **self.scatter_params,
             )
             self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
             self.scatter_track_radius += [self.r[mask][indices]]
@@ -535,7 +553,10 @@ class Halo:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
         for _ in tqdm(range(n_steps), start_time=self.time, dt=self.dt, **tqdm_kwargs):
             self.step(save_kwargs=save_kwargs)
-            if np.sign(t_after_core_collapse) >= 0 and self.n_scatters.sum() > self.scatters_to_collapse * self.n_particles['dm']:
+            if (
+                np.sign(t_after_core_collapse) >= 0
+                and self.n_scatters.sum() > self.scatters_to_collapse * self.n_particles['dm']
+            ):
                 if self.time > self.core_collapse_time + t_after_core_collapse:
                     print(f'Core collapse detected at time {self.time}')
                     break
@@ -587,8 +608,12 @@ class Halo:
     @staticmethod
     def save_table(data: table.QTable, path: str | Path, **kwargs: Any) -> None:
         """Save a QTable to a file, splitting the strings from the Quantity data, and saving into `{}_strings.csv` and `{}.fits`."""
-        data[[column for column in data.colnames if data[column].dtype != np.dtype('O')]].write(path.with_name(f'{path.stem}.fits'), **kwargs)
-        data[[column for column in data.colnames if data[column].dtype == np.dtype('O')]].write(path.with_name(f'strings_{path.stem}.csv'), **kwargs)
+        data[[column for column in data.colnames if data[column].dtype != np.dtype('O')]].write(
+            path.with_name(f'{path.stem}.fits'), **kwargs
+        )
+        data[[column for column in data.colnames if data[column].dtype == np.dtype('O')]].write(
+            path.with_name(f'strings_{path.stem}.csv'), **kwargs
+        )
 
     @staticmethod
     def load_table(path: str | Path) -> table.QTable:
@@ -601,7 +626,13 @@ class Halo:
             csv_table[col] = np.array(csv_table[col]).astype('O')
         return cast(table.QTable, table.hstack([fits_table, csv_table]))
 
-    def save(self, path: str | Path | None = None, two_steps: bool = False, keep_last_backup: bool = False, split_snapshots: bool = True) -> None:
+    def save(
+        self,
+        path: str | Path | None = None,
+        two_steps: bool = False,
+        keep_last_backup: bool = False,
+        split_snapshots: bool = True,
+    ) -> None:
         """Save the simulation state to a directory.
 
         Parameters:
@@ -652,7 +683,10 @@ class Halo:
         tables = {}
 
         if (path / 'split_snapshots').exists():
-            tables['snapshots'] = cast(table.QTable, table.vstack([cls.load_table(file) for file in (path / 'split_snapshots').glob('*.fits')]))
+            tables['snapshots'] = cast(
+                table.QTable,
+                table.vstack([cls.load_table(file) for file in (path / 'split_snapshots').glob('*.fits')]),
+            )
         else:
             tables['snapshots'] = cls.load_table(path / 'snapshots.fits')
 
@@ -759,7 +793,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         colors = sns.color_palette(color_palette, len(indices)) if color_palette is not None else None
 
         time_units = self.fill_time_unit(time_units)
-        fig, ax = plot.setup_plot(**utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_units)), **kwargs)
+        fig, ax = plot.setup_plot(
+            **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_units)), **kwargs
+        )
         clip = tuple(x_clip.to(x_units).value) if x_clip is not None else None
         for i, group in enumerate(data.group_by('time').groups):
             if i not in indices:
@@ -837,7 +873,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             x = x[(x > x_range[0]) * (x < x_range[1])]
         if absolute:
             x = np.abs(x)
-        params = {**plot.default_plot_text(key, x_units=x_units), **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel)}
+        params = {
+            **plot.default_plot_text(key, x_units=x_units),
+            **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel),
+        }
         fig, ax = plot.setup_plot(fig, ax, **params, **kwargs)
         if plot_type == 'kde':
             sns.kdeplot(x, cumulative=cumulative, ax=ax, label=label, **plt_kwargs)
@@ -877,9 +916,21 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        fig, ax = self.plot_distribution(key='r', data=data, cumulative=cumulative, x_units=x_units, x_range=x_range, label=hist_label, **kwargs)
+        fig, ax = self.plot_distribution(
+            key='r',
+            data=data,
+            cumulative=cumulative,
+            x_units=x_units,
+            x_range=x_range,
+            label=hist_label,
+            **kwargs,
+        )
         if add_density is not None:
-            params: dict[str, Any] = {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])} if x_range is not None else {}
+            params: dict[str, Any] = (
+                {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])}
+                if x_range is not None
+                else {}
+            )
             fig, ax = self.distributions[add_density].plot_radius_distribution(
                 cumulative=cumulative,
                 length_units=x_units,
@@ -924,7 +975,12 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             data=data,
             plot_fn=lambda x: self.plot_phase_space(
                 data=x,
-                texts=[{'s': f'{x["time"][0].to("Gyr"):.2f}', **plot.pretty_ax_text(x=0.05, y=0.95, transform='transAxes')}],
+                texts=[
+                    {
+                        's': f'{x["time"][0].to("Gyr"):.2f}',
+                        **plot.pretty_ax_text(x=0.05, y=0.95, transform='transAxes'),
+                    }
+                ],
                 **frame_plot_kwargs,
             ),
             **kwargs,
@@ -939,17 +995,22 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         filter_particle_type: ParticleType | None = None,
         filter_interacting: bool | None = None,
         mask: NDArray[np.bool_] | None = None,
-        radius_bins: Quantity['length'] = Quantity(np.linspace(1e-2, 35, 200), 'kpc'),
-        velocity_bins: Quantity['velocity'] = Quantity(np.linspace(0, 60, 200), 'km/second'),
+        x_bins: Quantity['length'] = Quantity(np.linspace(1e-2, 35, 200), 'kpc'),
+        y_bins: Quantity['velocity'] = Quantity(np.linspace(0, 60, 200), 'km/second'),
+        x_key: str = 'r',
+        y_key: str = 'v_norm',
+        x_adjust_bins_edges_to_data: bool = False,
+        y_adjust_bins_edges_to_data: bool = False,
         cmap: str = 'jet',
         transparent_value: float | None = 0,
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Velocity',
-        length_units: UnitLike = 'kpc',
-        velocity_units: UnitLike = 'km/second',
+        x_units: UnitLike = 'kpc',
+        y_units: UnitLike = 'km/second',
         return_grid: bool = False,
+        adjust_data_to_EL: bool = False,
         **kwargs: Any,
-    ) -> tuple[Figure, Axes] | tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['velocity'], Quantity['velocity']]]:
+    ) -> tuple[Figure, Axes] | tuple[Quantity, tuple[Quantity, Quantity, Quantity, Quantity]]:
         """Plot the phase space distribution of the data.
 
         Parameters:
@@ -957,15 +1018,20 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             filter_particle_type: Whether to filter to only plot the specified particle type.
             filter_interacting: Whether to filter to only plot interacting/non-interacting particles based on `self.scatter_track_index`. If `None` ignores.
             mask: Any additional mask to apply to the data. Must match the shape of the `data` (pre any other filtration).
-            radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
-            velocity_bins: The bins for the velocity axis. Also used to define the velocity range to consider.
+            x_bins: The bins for the x-axis (mainly - radius). Also used to define the range to consider.
+            y_bins: The bins for the y-axis (mainly - velocity). Also used to define the range to consider.
+            x_adjust_bins_edges_to_data: Overwrite `x_bins` edges to match the data range.
+            y_adjust_bins_edges_to_data: Overwrite `y_bins` edges to match the data range.
+            x_key: The key for the x-axis in `data` (mainly - radius).
+            y_key: The key for the y-axis in `data` (mainly - velocity).
             cmap: The colormap to use for the plot.
             transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
             xlabel: The label of the x-axis.
             ylabel: The label of the y-axis.
-            length_units: Units to use for the radius axis.
-            velocity_units: Units to use for the velocity axis.
+            x_units: Units to use for the x-axis.
+            y_units: Units to use for the y-axis.
             return_grid: Return the grid+extent variables instead of plotting.
+            adjust_data_to_EL: Adds a specific angular momentum column to the data (`data['L'] = data['r'] * data['vp']`) and transforms the energy to specific energy.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
 
         Returns:
@@ -983,7 +1049,21 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             interacting_mask = np.array(interacting_mask)
             data = cast(table.QTable, data[interacting_mask == filter_interacting]).copy()
 
-        grid, extent = plot.aggregate_phase_space_data(data=data, radius_bins=radius_bins, velocity_bins=velocity_bins)
+        if adjust_data_to_EL:
+            data['L'] = data['r'] * cast(Quantity, data['vp'])
+            data['E'] = data['E'] / cast(Quantity, data['m'])
+
+        grid, extent = plot.aggregate_2d_data(
+            data=data,
+            x_key=x_key,
+            y_key=y_key,
+            x_bins=x_bins,
+            y_bins=y_bins,
+            x_adjust_bins_edges_to_data=x_adjust_bins_edges_to_data,
+            y_adjust_bins_edges_to_data=y_adjust_bins_edges_to_data,
+            data_x_units=x_units,
+            data_y_units=y_units,
+        )
         if return_grid:
             return grid, extent
         return plot.plot_2d(
@@ -991,8 +1071,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             extent=extent,
             xlabel=xlabel,
             ylabel=ylabel,
-            x_units=length_units,
-            y_units=velocity_units,
+            x_units=x_units,
+            y_units=y_units,
             cmap=cmap,
             transparent_value=transparent_value,
             **kwargs,
@@ -1002,6 +1082,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         self,
         data: table.QTable,
         bins: list[int] | NDArray[np.int64] = [10, 50, 100, 200, 400, 1000, 2000],
+        save_basename: str = 'Phase space DM',
         **kwargs: Any,
     ) -> None:
         """Plot the phase space distribution of the data.
@@ -1032,7 +1113,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 filter_particle_type='dm',
                 mask=np.array(mask),
                 title=title,
-                save_kwargs={'save_path': self.results_path / f'Phase space DM [{low},{high}].png'},
+                save_kwargs={'save_path': self.results_path / f'{save_basename} [{low},{high}].png'},
                 **kwargs,
             )
             plt.close()
@@ -1107,7 +1188,12 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if ylabel is not None:
             ylabel = f'{prefix}{ylabel}'
 
-        fig, ax = plot.setup_plot(fig, ax, **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, time_units), ylabel=ylabel), **kwargs)
+        fig, ax = plot.setup_plot(
+            fig,
+            ax,
+            **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, time_units), ylabel=ylabel),
+            **kwargs,
+        )
         sns.lineplot(
             x=np.array(Quantity(agg_data['time'], data_time_units).to(time_units)),
             y=agg_data['in_radius'],
@@ -1368,11 +1454,24 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
         if cbar_label is not None:
             cbar_label = cbar_label.format(
-                time=np.unique(time_array).diff()[0].to(cbar_label_time_units).to_string(format='latex', formatter=cbar_label_time_format),
+                time=np.unique(time_array)
+                .diff()[0]
+                .to(cbar_label_time_units)
+                .to_string(format='latex', formatter=cbar_label_time_format),
             )
 
-        data = table.QTable({'time': time_array, 'r': Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units)})
-        grid, extent = plot.aggregate_evolution_data(data=data, radius_bins=radius_bins, time_range=time_range, row_normalization=row_normalization)
+        data = table.QTable(
+            {
+                'time': time_array,
+                'r': Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units),
+            }
+        )
+        grid, extent = plot.aggregate_evolution_data(
+            data=data,
+            radius_bins=radius_bins,
+            time_range=time_range,
+            row_normalization=row_normalization,
+        )
 
         return plot.plot_2d(
             grid=grid,
@@ -1424,7 +1523,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             fig, ax.
         """
         time_units = self.fill_time_unit(time_units)
-        fig, ax = self.plot_distribution(key=key, data=self.initial_particles, fig=fig, ax=ax, label=label_start, **{**kwargs, **start_kwargs})
+        fig, ax = self.plot_distribution(
+            key=key,
+            data=self.initial_particles,
+            fig=fig,
+            ax=ax,
+            label=label_start,
+            **{**kwargs, **start_kwargs},
+        )
         fig, ax = self.plot_distribution(
             key=key,
             data=self.particles,
@@ -1475,9 +1581,18 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         xlabel = utils.add_label_unit(xlabel, length_units)
         time_units = self.fill_time_unit(time_units)
         if title is not None:
-            title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_scatters=self.n_scatters.sum())
-        fig, ax = plot.setup_plot(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
-        sns.histplot(Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units), ax=ax, log=True)
+            title = title.format(
+                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
+                n_scatters=self.n_scatters.sum(),
+            )
+        fig, ax = plot.setup_plot(
+            fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel)
+        )
+        sns.histplot(
+            Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units),
+            ax=ax,
+            log=True,
+        )
         if save_kwargs is not None:
             plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
@@ -1521,18 +1636,26 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         r_bins = np.linspace(0, r.max(), num=num)
         dr = r_bins[1] - r_bins[0]
         density = Quantity(
-            [((r >= low) * (r < high)).sum() / (4 * np.pi * dr * ((low + high) / 2) ** 2) for low, high in zip(r_bins[:-1], r_bins[1:])]
+            [
+                ((r >= low) * (r < high)).sum() / (4 * np.pi * dr * ((low + high) / 2) ** 2)
+                for low, high in zip(r_bins[:-1], r_bins[1:])
+            ]
         )
         r_bins = r_bins[:-1]
         density_units = str(density.unit)
-        interpolated_density = scipy.interpolate.interp1d(r_bins[density != 0], density[density != 0], kind=smooth_interpolate_kind)(r_bins)
+        interpolated_density = scipy.interpolate.interp1d(
+            r_bins[density != 0], density[density != 0], kind=smooth_interpolate_kind
+        )(r_bins)
         smoothed_density = scipy.ndimage.gaussian_filter1d(interpolated_density, sigma=smooth_sigma)
 
         xlabel = utils.add_label_unit(xlabel, length_units)
         ylabel = utils.add_label_unit(ylabel, density_units)
         time_units = self.fill_time_unit(time_units)
         if title is not None:
-            title = title.format(time=self.time.to(time_units).to_string(format='latex', formatter=time_format), n_scatters=self.n_scatters.sum())
+            title = title.format(
+                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
+                n_scatters=self.n_scatters.sum(),
+            )
         fig, ax = plot.setup_plot(**kwargs, ax_set={'yscale': 'log'}, **utils.drop_None(title=title, xlabel=xlabel))
         sns.lineplot(x=r_bins, y=smoothed_density, ax=ax)
         if save_kwargs is not None:
@@ -1592,7 +1715,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
         if plot_labels:
             for bin_center, height in zip(bin_centers, heights):
-                ax.text(s=f'{height:.0%}', **plot.pretty_ax_text(x=bin_center, y=height + 0.01, verticalalignment='bottom'))
+                ax.text(
+                    s=f'{height:.0%}',
+                    **plot.pretty_ax_text(x=bin_center, y=height + 0.01, verticalalignment='bottom'),
+                )
 
         return fig, ax
 
@@ -1631,7 +1757,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         x = self.r
         time_units = self.fill_time_unit(time_units)
         local_density = self.local_density.to(density_units)
-        smoothed_local_density = scipy.ndimage.gaussian_filter1d(local_density, sigma=smooth_sigma) if smooth_sigma > 0 else local_density
+        smoothed_local_density = (
+            scipy.ndimage.gaussian_filter1d(local_density, sigma=smooth_sigma) if smooth_sigma > 0 else local_density
+        )
         if x_range is not None:
             smoothed_local_density = smoothed_local_density[(x > x_range[0]) * (x < x_range[1])]
             x = x[(x > x_range[0]) * (x < x_range[1])]
@@ -1688,7 +1816,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
             )
         fig, ax = plot.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
-        sns.histplot(self.local_density.to(density_units), log_scale=log_scale, stat=stat, cumulative=cumulative, **hist_kwargs)
+        sns.histplot(
+            self.local_density.to(density_units),
+            log_scale=log_scale,
+            stat=stat,
+            cumulative=cumulative,
+            **hist_kwargs,
+        )
         if save_kwargs is not None:
             plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
@@ -1733,7 +1867,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """
         return plot.plot_trace(
             key=key,
-            data=data if data is not None else table.QTable(table.vstack([self.initial_particles, self.snapshots, self.particles])).copy(),
+            data=data
+            if data is not None
+            else table.QTable(table.vstack([self.initial_particles, self.snapshots, self.particles])).copy(),
             particle_index=particle_index,
             relative=relative,
             xlabel=xlabel,
@@ -1772,8 +1908,19 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, ax_set=ax_set, **kwargs)
-        sns.lineplot(x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit), y=self.n_scatters.cumsum(), ax=ax, label=label)
+        fig, ax = plot.setup_plot(
+            xlabel=utils.add_label_unit(xlabel, time_unit),
+            ylabel=ylabel,
+            title=title,
+            ax_set=ax_set,
+            **kwargs,
+        )
+        sns.lineplot(
+            x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit),
+            y=self.n_scatters.cumsum(),
+            ax=ax,
+            label=label,
+        )
         if label is not None:
             ax.legend()
         if save_kwargs is not None:
@@ -1912,7 +2059,12 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             )
         if rounds:
             y = np.array(self.scatter_rounds)
-            sns.lineplot(x=x, y=y if clip_max_rounds is None else y.clip(max=clip_max_rounds), ax=ax, label=label_rounds)
+            sns.lineplot(
+                x=x,
+                y=y if clip_max_rounds is None else y.clip(max=clip_max_rounds),
+                ax=ax,
+                label=label_rounds,
+            )
         if underestimations:
             y = np.array(self.scatter_rounds_underestimated)
             sns.lineplot(
@@ -1950,7 +2102,11 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig, ax = None, None
         for i, distribution in enumerate(self.distributions):
             fig, ax = distribution.plot_rho(
-                label=f'{distribution.label} ({distribution.title})', fig=fig, ax=ax, add_markers=(i == 0 or not markers_on_first_only), **kwargs
+                label=f'{distribution.label} ({distribution.title})',
+                fig=fig,
+                ax=ax,
+                add_markers=(i == 0 or not markers_on_first_only),
+                **kwargs,
             )
         assert fig is not None and ax is not None
         if save_kwargs is not None:
@@ -1990,9 +2146,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 continue
             for label, t in zip(labels, real_times):
                 fig, ax = plot.plot_density(
-                    cast(Quantity, data[(data['time'] == t) * (data['particle_type'] == distribution.particle_type)]['r']),
+                    cast(
+                        Quantity,
+                        data[(data['time'] == t) * (data['particle_type'] == distribution.particle_type)]['r'],
+                    ),
                     unit_mass=self.unit_mass(distribution),
-                    bins=radius_bins if not limit_radius_by_Rvir else cast(Quantity, radius_bins[radius_bins <= distribution.Rvir]),
+                    bins=radius_bins
+                    if not limit_radius_by_Rvir
+                    else cast(Quantity, radius_bins[radius_bins <= distribution.Rvir]),
                     label=f'{distribution.label} {label}',
                     fig=fig,
                     ax=ax,
@@ -2009,10 +2170,16 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         limit_radius_by_Rvir: bool = True,
         distributions: list[int] | None = None,
         xlim: list[Quantity['length'] | None | Literal['bins']] = ['bins', 'bins'],
-        ylim: list[Quantity['mass density'] | None] = [Quantity([1e3, 1e11], 'Msun/kpc^3'), Quantity([1e-1, 1e7], 'Msun/kpc^3')],
+        ylim: list[Quantity['mass density'] | None] = [
+            Quantity([1e3, 1e11], 'Msun/kpc^3'),
+            Quantity([1e-1, 1e7], 'Msun/kpc^3'),
+        ],
         label_units: UnitLike = 'Gyr',
         label_format: str = '.1f',
-        density_guidelines_kwargs: dict[str, Any] | None = {'times': Quantity([0, 1, 12], 'Gyr'), 'line_kwargs': {'linestyle': '--'}},
+        density_guidelines_kwargs: dict[str, Any] | None = {
+            'times': Quantity([0, 1, 12], 'Gyr'),
+            'line_kwargs': {'linestyle': '--'},
+        },
         multiplicity_guidelines: int | None = 10,
         save_kwargs: dict[str, Any] = {},
     ) -> None:
@@ -2038,7 +2205,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         save_path = Path(save_kwargs.pop('save_path'))
 
         for i, (distribution, xlim_, ylim_) in enumerate(zip(self.distributions, xlim, ylim)):
-            bins = cast(Quantity, radius_bins if not limit_radius_by_Rvir else radius_bins[radius_bins <= distribution.Rvir])
+            bins = cast(
+                Quantity,
+                radius_bins if not limit_radius_by_Rvir else radius_bins[radius_bins <= distribution.Rvir],
+            )
             if isinstance(xlim_, str) and xlim_ == 'bins':
                 xlim_ = bins
             if xlim_ is not None:
@@ -2049,10 +2219,19 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 continue
 
             if density_guidelines_kwargs is not None:
-                unique_times = np.unique(cast(NDArray[np.float64], data[data['particle_type'] == distribution.particle_type]['time']))
-                multiplicity_table = table.QTable({'time': unique_times, 'factor': np.ones(len(unique_times), dtype=np.int64)})
+                unique_times = np.unique(
+                    cast(
+                        NDArray[np.float64],
+                        data[data['particle_type'] == distribution.particle_type]['time'],
+                    )
+                )
+                multiplicity_table = table.QTable(
+                    {'time': unique_times, 'factor': np.ones(len(unique_times), dtype=np.int64)}
+                )
                 for t in density_guidelines_kwargs['times']:
-                    multiplicity_table['factor'][np.abs(multiplicity_table['time'] - t).argmin()] = multiplicity_guidelines
+                    multiplicity_table['factor'][np.abs(multiplicity_table['time'] - t).argmin()] = (
+                        multiplicity_guidelines
+                    )
                 multiplicity = np.array(multiplicity_table['factor'], dtype=np.int64)
             else:
                 multiplicity = None

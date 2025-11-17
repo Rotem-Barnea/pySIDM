@@ -52,7 +52,9 @@ class Distribution:
             General mass distribution object.
         """
 
-        assert sum([Rs is not None, Rvir is not None, c is not None]) == 2, 'Exactly two of Rs, Rvir, and c must be specified'
+        assert sum([Rs is not None, Rvir is not None, c is not None]) == 2, (
+            'Exactly two of Rs, Rvir, and c must be specified'
+        )
         if Rs is not None and Rvir is not None:
             c = float(Rvir / Rs)
         elif Rs is not None and c is not None:
@@ -130,7 +132,9 @@ class Distribution:
         """Calculate the dynamic time of the profile, returning it as a `Unit` object (memoized)."""
         if 'Tdyn' not in self.memoization:
             self.memoization['Tdyn'] = def_unit(
-                'Tdyn', np.sqrt(self.Rs**3 / (constants.G * self.Mtot)).to(run_units.time), doc=f'{self.title} dynamic time'
+                'Tdyn',
+                np.sqrt(self.Rs**3 / (constants.G * self.Mtot)).to(run_units.time),
+                doc=f'{self.title} dynamic time',
             )
         return self.memoization['Tdyn']
 
@@ -149,7 +153,9 @@ class Distribution:
     def linspace_grid(self) -> Quantity['length']:
         """Calculate the  `internal linear grid` (memoized)."""
         if 'linspace_grid' not in self.memoization:
-            self.memoization['linspace_grid'] = cast(Quantity, np.linspace(start=self.Rmin, stop=self.Rmax, num=self.space_steps))
+            self.memoization['linspace_grid'] = cast(
+                Quantity, np.linspace(start=self.Rmin, stop=self.Rmax, num=self.space_steps)
+            )
         return self.memoization['linspace_grid']
 
     @staticmethod
@@ -172,7 +178,10 @@ class Distribution:
 
     def rho(self, r: Quantity['length']) -> Quantity['mass density']:
         """Calculate the density (`rho`) at a given radius."""
-        return Quantity(self.calculate_rho(r.to(run_units.length).value, self.rho_s.value, self.Rs.value, self.Rvir.value), run_units.density)
+        return Quantity(
+            self.calculate_rho(r.to(run_units.length).value, self.rho_s.value, self.Rs.value, self.Rvir.value),
+            run_units.density,
+        )
 
     @property
     def rho_grid(self) -> Quantity['mass density']:
@@ -206,7 +215,9 @@ class Distribution:
     def d2rho_dr2_grid(self) -> Quantity:
         """Calculate the second order derivative of the density (`rho`) at the  `internal logarithmic grid` (memoized)."""
         if 'd2rho_dr2_grid' not in self.memoization:
-            self.memoization['d2rho_dr2_grid'] = Quantity((self.rho_grid_2h - 2 * self.rho_grid_h + self.rho_grid) / self.h**2)
+            self.memoization['d2rho_dr2_grid'] = Quantity(
+                (self.rho_grid_2h - 2 * self.rho_grid_h + self.rho_grid) / self.h**2
+            )
         return self.memoization['d2rho_dr2_grid']
 
     def rho_r2(self, r: Quantity['length']) -> Quantity['linear density']:
@@ -268,7 +279,11 @@ class Distribution:
         """Mass probability density function (pdf) interpolated at a given radius (memoized)."""
         if 'pdf' not in self.memoization:
             self.memoization['pdf'] = scipy.interpolate.interp1d(
-                self.geomspace_grid.value, self.mass_pdf(self.geomspace_grid), kind='cubic', bounds_error=False, fill_value=(0, 1)
+                self.geomspace_grid.value,
+                self.mass_pdf(self.geomspace_grid),
+                kind='cubic',
+                bounds_error=False,
+                fill_value=(0, 1),
             )
         return self.memoization['pdf'](r.to(run_units.length).value)
 
@@ -276,14 +291,20 @@ class Distribution:
         """Mass cumulative probability density function (cdf) interpolated at a given radius `r` (memoized)."""
         if 'cdf' not in self.memoization:
             self.memoization['cdf'] = scipy.interpolate.interp1d(
-                self.geomspace_grid.value, self.mass_cdf(self.geomspace_grid), kind='cubic', bounds_error=False, fill_value=(0, 1)
+                self.geomspace_grid.value,
+                self.mass_cdf(self.geomspace_grid),
+                kind='cubic',
+                bounds_error=False,
+                fill_value=(0, 1),
             )
         return self.memoization['cdf'](r.to(run_units.length).value)
 
     def quantile_function(self, p: FloatOrArray) -> Quantity['length']:
         """Mass quantile function (inversed cdf) interpolated at a given radius `r` (memoized)."""
         if 'quantile_function' not in self.memoization:
-            rs, cdf = utils.joint_clean([self.geomspace_grid.value, self.mass_cdf(self.geomspace_grid)], ['rs', 'cdf'], 'cdf')
+            rs, cdf = utils.joint_clean(
+                [self.geomspace_grid.value, self.mass_cdf(self.geomspace_grid)], ['rs', 'cdf'], 'cdf'
+            )
             self.memoization['quantile_function'] = scipy.interpolate.interp1d(
                 cdf, rs, kind='cubic', bounds_error=False, fill_value=(self.Rmin.value, self.Rmax.value)
             )
@@ -337,7 +358,9 @@ class Distribution:
     def d2Psi_dr2_grid(self) -> Quantity:
         """Calculate the second order derivative of the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized)."""
         if 'd2Psi_dr2_grid' not in self.memoization:
-            self.memoization['d2Psi_dr2_grid'] = Quantity((self.Psi_grid_2h - 2 * self.Psi_grid_h + self.Psi_grid) / self.h**2)
+            self.memoization['d2Psi_dr2_grid'] = Quantity(
+                (self.Psi_grid_2h - 2 * self.Psi_grid_h + self.Psi_grid) / self.h**2
+            )
         return self.memoization['d2Psi_dr2_grid']
 
     @property
@@ -379,14 +402,17 @@ class Distribution:
         """
         if 'd2rho_dPsi2_grid' not in self.memoization:
             self.memoization['d2rho_dPsi2_grid'] = Quantity(
-                self.d2rho_dr2_grid / self.dPsi_dr_grid**2 - self.drho_dr_grid / self.dPsi_dr_grid**3 * self.d2Psi_dr2_grid
+                self.d2rho_dr2_grid / self.dPsi_dr_grid**2
+                - self.drho_dr_grid / self.dPsi_dr_grid**3 * self.d2Psi_dr2_grid
             )
         return self.memoization['d2rho_dPsi2_grid']
 
     def d2rho_dPsi2(self, Psi: Quantity['specific energy']) -> Quantity:
         """Interpolate the second order derivative of the density with respect to the relative gravitational potential (`Psi`) based on the  `internal logarithmic grid` (memoized)."""
         if 'd2rho_dPsi2' not in self.memoization:
-            self.memoization['d2rho_dPsi2'] = scipy.interpolate.interp1d(self.Psi_grid, self.d2rho_dPsi2_grid, bounds_error=False, fill_value=0)
+            self.memoization['d2rho_dPsi2'] = scipy.interpolate.interp1d(
+                self.Psi_grid, self.d2rho_dPsi2_grid, bounds_error=False, fill_value=0
+            )
         return Quantity(self.memoization['d2rho_dPsi2'](Psi.to(self.Psi_grid.unit)), self.d2rho_dPsi2_grid.unit)
 
     def calculate_f(self, E: Quantity, num: int = 10000) -> Quantity:
@@ -412,13 +438,17 @@ class Distribution:
     def f(self, E: Quantity['specific energy']) -> Quantity:
         """Interpolate the distribution function (`f`) based on the `internal energy grid` (memoized)."""
         if 'f' not in self.memoization:
-            self.memoization['f'] = scipy.interpolate.interp1d(self.E_grid, self.f_grid, bounds_error=False, fill_value=0)
+            self.memoization['f'] = scipy.interpolate.interp1d(
+                self.E_grid, self.f_grid, bounds_error=False, fill_value=0
+            )
         return Quantity(self.memoization['f'](E.to(self.E_grid.unit)), self.f_grid.unit)
 
     def Psi_interpolate(self, r: Quantity['length']) -> Quantity['specific energy']:
         """Interpolate the relative gravitational potential (`Psi`) based on the  `internal logarithmic grid` (memoized)."""
         if 'Psi_interpolate' not in self.memoization:
-            self.memoization['Psi_interpolate'] = scipy.interpolate.interp1d(self.geomspace_grid, self.Psi_grid, bounds_error=False, fill_value=0)
+            self.memoization['Psi_interpolate'] = scipy.interpolate.interp1d(
+                self.geomspace_grid, self.Psi_grid, bounds_error=False, fill_value=0
+            )
         return Quantity(self.memoization['Psi_interpolate'](r.to(self.geomspace_grid.unit)), self.Psi_grid.unit)
 
     def E(self, r: Quantity['length'], v: Quantity['velocity']) -> Quantity['specific energy']:
@@ -451,7 +481,9 @@ class Distribution:
 
     @staticmethod
     @njit(parallel=True)
-    def roll_v_fast(Psi: NDArray[np.float64], E_grid: NDArray[np.float64], f_grid: NDArray[np.float64], num: int = 100000) -> NDArray[np.float64]:
+    def roll_v_fast(
+        Psi: NDArray[np.float64], E_grid: NDArray[np.float64], f_grid: NDArray[np.float64], num: int = 100000
+    ) -> NDArray[np.float64]:
         """Sample particle velocity from the distribution function. Internal njit accelerated function. Prioritize using `roll_v()`."""
         output = np.empty_like(Psi)
         for particle in prange(len(Psi)):
@@ -507,6 +539,59 @@ class Distribution:
         theta = np.acos(np.random.rand(n_particles) * 2 - 1)
         return theta
 
+    def roll_joint_phase_space(
+        self,
+        n_particles: int | float,
+        radius_min_value: Quantity['length'] = Quantity(1e-4, 'kpc'),
+        radius_max_value: Quantity['length'] | None = None,
+        velocity_min_value: Quantity['velocity'] = Quantity(0, 'km/second'),
+        velocity_max_value: Quantity['velocity'] = Quantity(100, 'km/second'),
+        radius_resolution: int = 10000,
+        velocity_resolution: int = 10000,
+        radius_range: Quantity['length'] | None = None,
+        velocity_range: Quantity['velocity'] | None = None,
+    ) -> tuple[Quantity['length'], Quantity['velocity']]:
+        """Sample particles from the joint phase space distribution:
+            - The distribution function `f` is transformed into a joint pdf proportional to `r^2*v^2*f(r, v)`.
+            - The joint pdf is discretized on a grid of radius and velocity bins. If not provided directly (`radius_range`, `velocity_range`), a linear grid is constructed based on the rest of the parameters.
+            - The discretized distribution is flattened and sampled from using `np.random.choice` with probability weights set by the bin value.
+            - Angles for the velocity split are sampled by `utils.split_3d()`.
+
+        Parameters:
+            n_particles: Number of particles to sample.
+            radius_min_value: Minimum radius value to consider for the phase space distribution.
+            radius_max_value: Maximum radius value to consider for the phase space distribution. If `None` use the `Rmax` value of the distribution. Regardless, this value is capped by `Rmax` even if provided.
+            velocity_min_value: Minimum velocity norm value to consider for the phase space distribution.
+            velocity_max_value: Maximum velocity norm value to consider for the phase space distribution.
+            radius_resolution: Resolution of the radius grid.
+            velocity_resolution: Resolution of the velocity grid.
+            radius_range: Radius bins to use. If provided override the `radius_min_value`, `radius_max_value`, and `radius_resolution` parameters. If `None` ignores.
+            velocity_range: Velocity bins to use. If provided override the `velocity_min_value`, `velocity_max_value`, and `velocity_resolution` parameters. If `None` ignores.
+
+        Returns:
+            A tuple of two vectors:
+                Sampled radius values for each particle, shaped `(num_particles,)`
+                Corresponding 3d velocities for each particle, shaped `(num_particles,3)`.
+        """
+        if radius_range is None:
+            if radius_max_value is None:
+                radius_max_value = self.Rmax
+            else:
+                radius_max_value = cast(Quantity, np.min(radius_max_value, self.Rmax))
+            radius_range = Quantity(np.linspace(radius_min_value, radius_max_value, radius_resolution))
+        if velocity_range is None:
+            velocity_range = Quantity(np.linspace(velocity_min_value, velocity_max_value, velocity_resolution))
+
+        r_grid, v_grid = cast(tuple[Quantity, Quantity], np.meshgrid(radius_range, velocity_range))
+        grid = np.array(16 * np.pi * r_grid**2 * v_grid**2 * self.f(self.E(r_grid, v_grid)))
+        grid /= grid.sum()
+        flat_grid = grid.ravel()
+        indices = np.unravel_index(
+            np.random.choice(a=flat_grid.size, size=int(n_particles), p=flat_grid),
+            grid.shape,
+        )
+        return cast(Quantity, r_grid[indices]), cast(Quantity, np.vstack(utils.split_3d(v_grid[indices])).T)
+
     ##Plots
 
     def plot_phase_space(
@@ -531,17 +616,29 @@ class Distribution:
         Returns:
             fig, ax.
         """
-        r, v = cast(tuple[Quantity['length'], Quantity['velocity']], np.meshgrid(r_range, v_range))
+        r, v = cast(tuple[Quantity, Quantity], np.meshgrid(r_range, v_range))
         f = self.f(self.E(r, v))
         grid = 16 * np.pi * r**2 * v**2 * f
         fig, ax = plot.plot_phase_space(
-            grid, r_range, v_range, velocity_units=velocity_units, cmap=cmap, transparent_value=transparent_value, **kwargs
+            grid,
+            r_range,
+            v_range,
+            velocity_units=velocity_units,
+            cmap=cmap,
+            transparent_value=transparent_value,
+            **kwargs,
         )
         return fig, ax
 
     def add_plot_R_markers(self, ax: Axes, ymax: float, x_units: UnitLike = 'kpc') -> Axes:
         """Add markers for the scale radius and virial radius to the plot."""
-        ax.vlines(x=[self.Rs.to(x_units).value, self.Rvir.to(x_units).value], ymin=0, ymax=ymax, linestyles='dashed', colors='black')
+        ax.vlines(
+            x=[self.Rs.to(x_units).value, self.Rvir.to(x_units).value],
+            ymin=0,
+            ymax=ymax,
+            linestyles='dashed',
+            colors='black',
+        )
         ax.text(x=self.Rs.to(x_units).value, y=ymax, s='Rs')
         ax.text(x=self.Rvir.to(x_units).value, y=ymax, s='Rvir')
         return ax
@@ -625,7 +722,9 @@ class Distribution:
             fig, ax.
         """
         title = 'Particle cumulative range distribution (cdf)' if cumulative else 'Particle range distribution (pdf)'
-        fig, ax = plot.setup_plot(fig, ax, title=title, xlabel=utils.add_label_unit('Radius', length_units), ylabel='Density')
+        fig, ax = plot.setup_plot(
+            fig, ax, title=title, xlabel=utils.add_label_unit('Radius', length_units), ylabel='Density'
+        )
 
         if r_start is None:
             r_start = self.Rmin
@@ -665,7 +764,15 @@ class Distribution:
 
         xlabel = utils.add_label_unit(xlabel, energy_units)
         ylabel = utils.add_label_unit(ylabel, y_units)
-        fig, ax = plot.setup_plot(fig, ax, minorticks=True, ax_set={'xscale': 'log', 'yscale': 'log'}, xlabel=xlabel, ylabel=ylabel, title=title)
+        fig, ax = plot.setup_plot(
+            fig,
+            ax,
+            minorticks=True,
+            ax_set={'xscale': 'log', 'yscale': 'log'},
+            xlabel=xlabel,
+            ylabel=ylabel,
+            title=title,
+        )
         sns.lineplot(x=np.array(self.Psi_grid.to(energy_units)), y=np.array(self.drho_dPsi_grid.to(y_units)), ax=ax)
         return fig, ax
 
@@ -697,6 +804,14 @@ class Distribution:
 
         xlabel = utils.add_label_unit(xlabel, energy_units)
         ylabel = utils.add_label_unit(ylabel, f_units)
-        fig, ax = plot.setup_plot(fig, ax, minorticks=True, ax_set={'xscale': 'log', 'yscale': 'log'}, xlabel=xlabel, ylabel=ylabel, title=title)
+        fig, ax = plot.setup_plot(
+            fig,
+            ax,
+            minorticks=True,
+            ax_set={'xscale': 'log', 'yscale': 'log'},
+            xlabel=xlabel,
+            ylabel=ylabel,
+            title=title,
+        )
         sns.lineplot(x=np.array(E.to(energy_units)), y=np.array(self.f(E).to(f_units)), ax=ax)
         return fig, ax

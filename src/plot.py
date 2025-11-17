@@ -244,9 +244,15 @@ def plot_trace(
         ylabel = f'${key}$'
     ylabel = utils.add_label_unit(ylabel, y_units)
     if title is not None:
-        title = title.format(particle_index=particle_index, r=particle['r'][0].to(length_units).to_string(format='latex', formatter=length_format))
+        title = title.format(
+            particle_index=particle_index,
+            r=particle['r'][0].to(length_units).to_string(format='latex', formatter=length_format),
+        )
     if label is not None:
-        label = label.format(particle_index=particle_index, r=particle['r'][0].to(length_units).to_string(format='latex', formatter=length_format))
+        label = label.format(
+            particle_index=particle_index,
+            r=particle['r'][0].to(length_units).to_string(format='latex', formatter=length_format),
+        )
     fig, ax = setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
     sns.lineplot(x=x, y=np.array(y), ax=ax, label=label)
     if save_kwargs is not None:
@@ -331,7 +337,9 @@ def plot_2d(
     """
     if extent is None:
         assert x_range is not None and y_range is not None, 'x_range and y_range must be provided if extent is None'
-        extent = cast(tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_range.to(x_units), y_range.to(y_units)))
+        extent = cast(
+            tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_range.to(x_units), y_range.to(y_units))
+        )
     extent_value = (
         float(extent[0].to(x_units).value),
         float(extent[1].to(x_units).value),
@@ -392,7 +400,9 @@ def plot_2d(
         if x_log:
             ax.xaxis.set_major_locator(ticker.LogLocator(base=10, numticks=x_nbins))
             ax.xaxis.set_major_formatter(ticker.LogFormatterSciNotation(base=10))
-            ax.xaxis.set_minor_locator(ticker.LogLocator(base=10, subs=list(np.arange(2, 10, dtype=float)), numticks=999))
+            ax.xaxis.set_minor_locator(
+                ticker.LogLocator(base=10, subs=list(np.arange(2, 10, dtype=float)), numticks=999)
+            )
             ax.set_xscale('log')
         else:
             ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_nbins))
@@ -406,7 +416,9 @@ def plot_2d(
         if y_log:
             ax.yaxis.set_major_locator(ticker.LogLocator(base=10, numticks=y_nbins))
             ax.yaxis.set_major_formatter(ticker.LogFormatterSciNotation(base=10))
-            ax.yaxis.set_minor_locator(ticker.LogLocator(base=10, subs=list(np.arange(2, 10, dtype=float)), numticks=999))
+            ax.yaxis.set_minor_locator(
+                ticker.LogLocator(base=10, subs=list(np.arange(2, 10, dtype=float)), numticks=999)
+            )
             ax.set_yscale('log')
         else:
             ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=y_nbins))
@@ -499,7 +511,9 @@ def plot_density(
     fig, ax = setup_plot(
         ax_set=ax_set,
         minorticks=minorticks,
-        **default_plot_text('r', xlabel=xlabel, ylabel=ylabel, title=title, x_units=length_units, y_units=density_units),
+        **default_plot_text(
+            'r', xlabel=xlabel, ylabel=ylabel, title=title, x_units=length_units, y_units=density_units
+        ),
         **kwargs,
     )
     x = np.array(bin_centers)
@@ -573,13 +587,24 @@ def aggregate_evolution_data(
 
     for i, (_, group) in enumerate(sub.groupby('time')):
         if output_type == 'temperature':
-            group_bins = pd.cut(Quantity(group['r'], data_length_units).to(radius_bins.unit).value, bins=radius_bins.value)
+            group_bins = pd.cut(
+                Quantity(group['r'], data_length_units).to(radius_bins.unit).value, bins=radius_bins.value
+            )
             grid[i] = group.groupby(group_bins, observed=False)[['vx', 'vy', 'vr']].var().sum(axis=1)
         elif output_type == 'specific heat flux':
-            group_bins = pd.cut(Quantity(group['r'], data_length_units).to(radius_bins.unit).value, bins=radius_bins.value)
-            centralized_group = group.groupby(group_bins, observed=False)[['vx', 'vy', 'vr']].apply(lambda q: q - q.mean())
+            group_bins = pd.cut(
+                Quantity(group['r'], data_length_units).to(radius_bins.unit).value, bins=radius_bins.value
+            )
+            centralized_group = group.groupby(group_bins, observed=False)[['vx', 'vy', 'vr']].apply(
+                lambda q: q - q.mean()
+            )
             velocity_term = centralized_group * np.vstack((centralized_group**2).sum(axis=1))
-            grid[i] = 1 / 2 * np.array(velocity_term.reset_index().groupby('level_0', observed=False)[v_axis].sum()) / r_bin_volume
+            grid[i] = (
+                1
+                / 2
+                * np.array(velocity_term.reset_index().groupby('level_0', observed=False)[v_axis].sum())
+                / r_bin_volume
+            )
         else:
             counts, _ = np.histogram(Quantity(group['r'], data_length_units), bins=radius_bins)
             if output_type == 'density':
@@ -592,7 +617,9 @@ def aggregate_evolution_data(
     elif output_type == 'temperature':
         grid_units = data_specific_energy_units
     elif output_type == 'specific heat flux':
-        grid_units = Unit(str(data_specific_energy_units)) / (Unit(str(data_length_units)) ** 2 * Unit(str(data_time_units)))
+        grid_units = Unit(str(data_specific_energy_units)) / (
+            Unit(str(data_length_units)) ** 2 * Unit(str(data_time_units))
+        )
     else:
         grid_units = ''
 
@@ -607,9 +634,16 @@ def aggregate_evolution_data(
     elif row_normalization == 'sum':
         grid_quantity /= grid_quantity.sum(1, keepdims=True)
     elif row_normalization == 'integral':
-        grid_quantity /= np.expand_dims(np.trapezoid(y=grid, x=np.matlib.repmat(radius_bins[:-1], len(grid), 1), axis=1), 1)
+        grid_quantity /= np.expand_dims(
+            np.trapezoid(y=grid, x=np.matlib.repmat(radius_bins[:-1], len(grid), 1), axis=1), 1
+        )
 
-    extent = (radius_bins.min(), radius_bins.max(), Quantity(sub['time'].min(), data_time_units), Quantity(sub['time'].max(), data_time_units))
+    extent = (
+        radius_bins.min(),
+        radius_bins.max(),
+        Quantity(sub['time'].min(), data_time_units),
+        Quantity(sub['time'].max(), data_time_units),
+    )
     return cast(Quantity, grid_quantity), extent
 
 
@@ -619,6 +653,8 @@ def aggregate_2d_data(
     y_key: str,
     x_bins: Quantity,
     y_bins: Quantity,
+    x_adjust_bins_edges_to_data: bool = False,
+    y_adjust_bins_edges_to_data: bool = False,
     row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
     data_x_units: UnitLike = '',
     data_y_units: UnitLike = '',
@@ -631,6 +667,8 @@ def aggregate_2d_data(
         y_key: The key for the y-axis data.
         x_bins: The bins for the x-axis. Also used to define the x-axis range to consider.
         y_bins: The bins for the y-axis. Also used to define the y-range to consider.
+        x_adjust_bins_edges_to_data: Overwrite `x_bins` edges to match the data range.
+        y_adjust_bins_edges_to_data: Overwrite `y_bins` edges to match the data range.
         row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
         data_x_units: The units for the x-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
         data_y_units: The units for the y-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
@@ -638,17 +676,23 @@ def aggregate_2d_data(
     Returns:
         data, extent.
     """
-    keep_columns = [x_key, y_key]
     if isinstance(data, pd.DataFrame):
-        sub = table.QTable(data[keep_columns], units=[data_x_units, data_y_units])
+        sub = table.QTable(data[[x_key, y_key]], units=[data_x_units, data_y_units])
     else:
-        sub = data[keep_columns]
+        sub = data[[x_key, y_key]]
         data_x_units = data[x_key].unit
         data_y_units = data[y_key].unit
 
+    if x_adjust_bins_edges_to_data:
+        x_bins = np.linspace(sub[x_key].min(), sub[x_key].max(), len(x_bins))
+    if y_adjust_bins_edges_to_data:
+        y_bins = np.linspace(sub[y_key].min(), sub[y_key].max(), len(y_bins))
+
     x_bins = x_bins.to(data_x_units)
     y_bins = y_bins.to(data_y_units)
-    grid = np.histogram2d(cast(NDArray[np.float64], sub[x_key]), cast(NDArray[np.float64], sub[y_key]), (x_bins, y_bins))[0].T
+    grid = np.histogram2d(
+        cast(NDArray[np.float64], sub[x_key]), cast(NDArray[np.float64], sub[y_key]), (x_bins, y_bins)
+    )[0].T
 
     if row_normalization == 'max':
         grid /= grid.max(1, keepdims=True)
@@ -780,7 +824,9 @@ def evolution_to_images(data: table.QTable, **kwargs: Any) -> list[Image.Image]:
     return to_images(iterator=data.group_by('time').groups, tqdm_kwargs=tqdm_kwargs, **kwargs)
 
 
-def save_images(images: list[Image.Image], save_path: str | Path, duration: int = 200, loop: int = 0, **kwargs: Any) -> None:
+def save_images(
+    images: list[Image.Image], save_path: str | Path, duration: int = 200, loop: int = 0, **kwargs: Any
+) -> None:
     """Save a list of images as a GIF.
 
     Parameters:
