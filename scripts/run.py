@@ -5,8 +5,9 @@ if __name__ == '__main__':
 
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-    from src.halo import Halo
     from astropy.units import Quantity
+
+    from src.halo import Halo
     from src.distribution.nfw import NFW
     from src.distribution.hernquist import Hernquist
 
@@ -26,8 +27,9 @@ if __name__ == '__main__':
     dt = dm_distribution.Tdyn / 1000
     save_every_time = 10 * dm_distribution.Tdyn
     hard_save = True
-    # save_path = Path.home() / 'SIDM/pySIDM/run results' / 'full test run 1'
     save_path = Path(os.environ['SAVE_PATH']) / 'run results' / 'full test run 1'
+    cleanup_nullish_particles = False
+    cleanup_particles_by_radius = False
 
     if save_path.exists():
         print('Loaded existing halo (continuing run)')

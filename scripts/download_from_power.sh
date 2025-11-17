@@ -2,8 +2,8 @@
 USER="rotembarnea"
 REMOTE_HOST="slurmlogin.tau.ac.il"
 # REMOTE_HOST="rotembarnea@hpcsl.tau.ac.il"
-REMOTE_BASE="~/SIDM/pySIDM/run results/full test run 1"
-# REMOTE_BASE="/storage/power/general/SIDM/pySIDM/run results/full test run 1"
+# REMOTE_BASE="~/SIDM/pySIDM/run results/full test run 1"
+REMOTE_BASE="/scratch200/rotembarnea/SIDM/pySIDM/run results/full test run 1"
 LOCAL_BASE="$HOME/Documents/SIDM/pySIDM/run results/"
 
 REMOTE_END=$(basename "$REMOTE_BASE")
