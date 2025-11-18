@@ -2287,6 +2287,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data: table.QTable | None = None,
         include_start: bool = True,
         include_now: bool = False,
+        no_scatter_value: float = 0,
         x_bins: Quantity = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
         scatter_bins: Quantity = Quantity(np.geomspace(1, 6000, 100), ''),
         x_key: str = 'r',
@@ -2317,6 +2318,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             data: The data to plot. If `None` the data will be loaded from the halo snapshots.
             include_start: Whether to include the initial particle distribution in the data. Ignored if `data` is provided.
             include_now: Whether to include the current particle distribution in the data. Ignored if `data` is provided.
+            no_scatter_value: Value to use for particles with no scattering events.
             x_bins: Bins for the x-axis.
             scatter_bins: Bins for the scatter axis.
             x_key: The key to use for the x-axis.
@@ -2353,7 +2355,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             on='particle_index',
             how='left',
         )
-        sub['n_scatters'] = sub['n_scatters'].fillna(0)
+        sub['n_scatters'] = sub['n_scatters'].fillna(no_scatter_value)
         data['n_scatters'] = Quantity(sub['n_scatters'], '')
 
         if title is not None:
