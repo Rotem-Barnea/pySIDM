@@ -2284,12 +2284,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
     def plot_scatter_distribution_at_time(
         self,
         time: Quantity,
+        data: table.QTable | None = None,
         include_start: bool = True,
         include_now: bool = False,
         x_bins: Quantity = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
         scatter_bins: Quantity = Quantity(np.geomspace(1, 6000, 100), ''),
         x_key: str = 'r',
-        data_x_units: UnitLike = 'kpc',
+        x_units: UnitLike = 'kpc',
         cmap: str = 'jet',
         cbar_log_scale: bool = True,
         transparent_value: float | None = 0,
@@ -2313,12 +2314,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
         Parameters:
             time: The time to slice the snapshots (nearest).
-            include_start: Whether to include the initial particle distribution in the data.
-            include_now: Whether to include the current particle distribution in the data.
+            data: The data to plot. If `None` the data will be loaded from the halo snapshots.
+            include_start: Whether to include the initial particle distribution in the data. Ignored if `data` is provided.
+            include_now: Whether to include the current particle distribution in the data. Ignored if `data` is provided.
             x_bins: Bins for the x-axis.
             scatter_bins: Bins for the scatter axis.
             x_key: The key to use for the x-axis.
-            data_x_units: The units for the x-column in the data.
+            x_units: The units for the x-column in the data.
             cmap: The colormap to use for the plot.
             cbar_log_scale: Wheather to plot the cbar in a log scale.
             transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
@@ -2339,8 +2341,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Returns:
             fig, ax.
         """
-        data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
-        data = utils.slice_closest(utils.slice_closest(data, value=time), value='dm', key='particle_type')
+        if data is None:
+            data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
+            data = utils.slice_closest(utils.slice_closest(data, value=time), value='dm', key='particle_type')
         sub = pd.merge(
             data.to_pandas(),
             pd.DataFrame(
@@ -2367,6 +2370,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             x_range=x_bins,
             y_range=scatter_bins,
             cmap=cmap,
+            x_units=x_units,
             y_units='',
             log_scale=cbar_log_scale,
             transparent_value=transparent_value,
