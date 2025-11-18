@@ -1120,7 +1120,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 title = f'Initial phase space distribution for particles\nthat scattred between {low} and {high} nubmer of times'
             if data is None:
                 self.plot_phase_space_evolution(
-                    save_path=self.results_path / f'{save_basename} [{low},{high}].png',
+                    save_path=self.results_path / f'{save_basename} [{low},{high}].gif',
                     filter_particle_type='dm',
                     frame_plot_kwargs={**kwargs, 'filter_indices': np.array(mask[mask].index), 'title': title},
                 )
