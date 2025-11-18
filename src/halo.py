@@ -2130,10 +2130,15 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
     def plot_distributions_over_time(
         self,
         times: Quantity['time'] = Quantity([0, 1, 11.3], 'Gyr'),
+        data: table.QTable | None = None,
+        include_start: bool = True,
+        include_now: bool = False,
         labels: list[str] = ['start', 'max core', 'core collapse'],
         radius_bins: Quantity['length'] = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
         limit_radius_by_Rvir: bool = True,
         distributions: list[int] | None = None,
+        fig: Figure | None = None,
+        ax: Axes | None = None,
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -2141,34 +2146,38 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
         Parameters:
             times: The times at which to plot the density profiles.
+            data: The data to plot. If `None` the data will be loaded from the halo snapshots.
+            include_start: Whether to include the initial particle distribution in the data. Ignored if `data` is provided.
+            include_now: Whether to include the current particle distribution in the data. Ignored if `data` is provided.
             labels: The labels for the density profiles.
             radius_bins: The radius bins for the density profile calculations.
             limit_radius_by_Rvir: Whether to limit the radius bins by the virial radius.
             distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions.
+            fig: The figure to plot on.
+            ax: The axes to plot on.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments are passed to every call to the plotting function.
 
         Returns:
             fig, ax.
         """
-        data = self.get_particle_states()
-        unique_times = np.unique(cast(NDArray[np.float64], data['time']))
-        real_times = unique_times[np.argmin(np.abs(unique_times - np.expand_dims(times, 1)), axis=1)]
-        fig, ax = None, None
+        if data is None:
+            data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
+        fig, ax = plot.setup_plot(fig=fig, ax=ax)
+        add_distribution_label = distributions is None or len(distributions) > 1
+
         for i, distribution in enumerate(self.distributions):
             if distributions is not None and i not in distributions:
                 continue
-            for label, t in zip(labels, real_times):
+            for label, t in zip(labels, times):
+                sub = utils.slice_closest(utils.slice_closest(data, value=t), value='dm', key='particle_type')
                 fig, ax = plot.plot_density(
-                    cast(
-                        Quantity,
-                        data[(data['time'] == t) * (data['particle_type'] == distribution.particle_type)]['r'],
-                    ),
+                    cast(Quantity, sub['r']),
                     unit_mass=self.unit_mass(distribution),
                     bins=radius_bins
                     if not limit_radius_by_Rvir
                     else cast(Quantity, radius_bins[radius_bins <= distribution.Rvir]),
-                    label=f'{distribution.label} {label}',
+                    label=f'{distribution.label} {label}' if add_distribution_label else label,
                     fig=fig,
                     ax=ax,
                     **kwargs,

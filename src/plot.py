@@ -77,6 +77,7 @@ def setup_plot(
     hlines: list[dict[str, Any]] = [],
     vlines: list[dict[str, Any]] = [],
     texts: list[dict[str, Any]] = [],
+    early_quit: bool = True,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Setup a plot with optional grid, minor ticks, and axis settings.
@@ -100,12 +101,13 @@ def setup_plot(
         hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         texts: List of texts to plot. Each element contains the keywords arguments passed to `ax.text()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
+        early_quit: If `True`, quits if `fig` and `ax` are provided (and thus doesn't update the labels etc.).
         kwargs: Additional keyword arguments to pass to `plt.subplots()`.
 
     Returns:
         fig, ax.
     """
-    if fig is not None and ax is not None:
+    if fig is not None and ax is not None and early_quit:
         return fig, ax
     if fig is None or ax is None:
         fig, ax = plt.subplots(figsize=figsize, **kwargs)
@@ -489,6 +491,7 @@ def plot_density(
     label: str | None = None,
     cleanup_nonpositive: bool = True,
     smooth_sigma: float = 1,
+    add_J: bool = False,
     save_kwargs: dict[str, Any] | None = None,
     line_kwargs: dict[str, Any] = {},
     **kwargs: Any,
@@ -509,6 +512,7 @@ def plot_density(
         label: label to add to the plot legend.
         cleanup_nonpositive: drop non-positive values from the plot, to avoid "pits" in the log plot.
         smooth_sigma: sigma for smoothing the density distribution.
+        add_J: Multiply the density by the spherical jacobian (4*pi*r^2).
         save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
         line_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
         kwargs: Additional keyword arguments to pass to `setup_plot()`.
@@ -519,9 +523,16 @@ def plot_density(
     """
     counts, bin_edges = np.histogram(data, bins=bins)
     histogram_bins = Quantity(list(map(Quantity, zip(bin_edges, bin_edges[1:])))).to(length_units)
-    bin_centers = histogram_bins.mean(1)
+    bin_centers = cast(Quantity, histogram_bins.mean(1))
     volume = 4 / 3 * np.pi * (histogram_bins[:, 1] ** 3 - histogram_bins[:, 0] ** 3)
-    density = (counts / volume * unit_mass).to(density_units)
+
+    density = counts / volume * unit_mass
+    if add_J:
+        density *= 4 * np.pi * bin_centers**2
+        density_units = Unit(cast(str, density_units)) * cast(Unit, bin_centers.unit) ** 2
+        if ylabel is not None:
+            ylabel = rf'{ylabel} $\cdot 4\pi r^2$'
+    density = density.to(density_units)
     fig, ax = setup_plot(
         ax_set=ax_set,
         minorticks=minorticks,
