@@ -995,6 +995,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         filter_particle_type: ParticleType | None = None,
         filter_interacting: bool | None = None,
         mask: NDArray[np.bool_] | None = None,
+        filter_indices: NDArray[np.int64] | list[int] | None = None,
         x_bins: Quantity['length'] = Quantity(np.linspace(1e-2, 35, 200), 'kpc'),
         y_bins: Quantity['velocity'] = Quantity(np.linspace(0, 60, 200), 'km/second'),
         x_key: str = 'r',
@@ -1017,6 +1018,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             data: The data to plot.
             filter_particle_type: Whether to filter to only plot the specified particle type.
             filter_interacting: Whether to filter to only plot interacting/non-interacting particles based on `self.scatter_track_index`. If `None` ignores.
+            filter_indices: Keep only the specified indices in `data` (based on the `particle_index` column).
             mask: Any additional mask to apply to the data. Must match the shape of the `data` (pre any other filtration).
             x_bins: The bins for the x-axis (mainly - radius). Also used to define the range to consider.
             y_bins: The bins for the y-axis (mainly - velocity). Also used to define the range to consider.
@@ -1048,6 +1050,11 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             interacting_mask.loc[interacting_mask.index.isin(indices)] = True
             interacting_mask = np.array(interacting_mask)
             data = cast(table.QTable, data[interacting_mask == filter_interacting]).copy()
+        if filter_indices is not None:
+            filter_mask = pd.Series(False, index=np.array(data['particle_index']))
+            filter_mask.loc[filter_mask.index.isin(filter_indices)] = True
+            filter_mask = np.array(filter_mask)
+            data = cast(table.QTable, data[filter_mask]).copy()
 
         if adjust_data_to_EL:
             data['L'] = data['r'] * cast(Quantity, data['vp'])
@@ -1080,7 +1087,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
     def plot_phase_space_by_scattering_amount(
         self,
-        data: table.QTable,
+        data: table.QTable | None = None,
         bins: list[int] | NDArray[np.int64] = [10, 50, 100, 200, 400, 1000, 2000],
         save_basename: str = 'Phase space DM',
         **kwargs: Any,
@@ -1088,8 +1095,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """Plot the phase space distribution of the data.
 
         Parameters:
-            data: The data to plot.
+            data: The data to plot. If `None` create a gif animation of all snapshots of the simulation.
             bins: The bin edges to use for the number of scatterings (the dividers between bins, the start and end will be added automatically).
+            save_basename: Base name for the saved files (`f'{save_basename} [{low},{high}].png'`)
             kwargs: Additional keyword arguments to pass to the plot function (`self.plot_phase_space()`).
 
         Returns:
@@ -1099,8 +1107,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         indices, counts = np.unique(np.hstack(self.scatter_track_index), return_counts=True)
         bins = np.hstack([0, 1, np.array(bins), indices.max() + 1])
 
+        particle_index = self.initial_particles[self.initial_particles['particle_type'] == 'dm']['particle_index']
+
         for low, high in tqdm(list(zip(bins[:-1], bins[1:]))):
-            mask = pd.Series(False, index=np.array(data['particle_index']))
+            mask = pd.Series(False, index=np.array(particle_index))
             if low == 0:
                 mask.loc[mask.index.isin(indices)] = True
                 mask = ~mask
@@ -1108,15 +1118,22 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             else:
                 mask.loc[mask.index.isin(indices[(counts >= low) * (counts < high)])] = True
                 title = f'Initial phase space distribution for particles\nthat scattred between {low} and {high} nubmer of times'
-            self.plot_phase_space(
-                data,
-                filter_particle_type='dm',
-                mask=np.array(mask),
-                title=title,
-                save_kwargs={'save_path': self.results_path / f'{save_basename} [{low},{high}].png'},
-                **kwargs,
-            )
-            plt.close()
+            if data is None:
+                self.plot_phase_space_evolution(
+                    save_path=self.results_path / f'{save_basename} [{low},{high}].png',
+                    filter_particle_type='dm',
+                    frame_plot_kwargs={**kwargs, 'filter_indices': np.array(mask[mask].index), 'title': title},
+                )
+            else:
+                self.plot_phase_space(
+                    data=cast(table.QTable, data[data['particle_type'] == 'dm']),
+                    filter_particle_type='dm',
+                    mask=np.array(mask),
+                    title=title,
+                    save_kwargs={'save_path': self.results_path / f'{save_basename} [{low},{high}].png'},
+                    **kwargs,
+                )
+                plt.close()
 
     def plot_inner_core_density(
         self,
