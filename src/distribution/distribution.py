@@ -546,15 +546,18 @@ class Distribution:
         radius_max_value: Quantity['length'] | None = None,
         velocity_min_value: Quantity['velocity'] = Quantity(0, 'km/second'),
         velocity_max_value: Quantity['velocity'] = Quantity(100, 'km/second'),
-        radius_resolution: int = 10000,
-        velocity_resolution: int = 10000,
+        radius_resolution: int | float = 10000,
+        velocity_resolution: int | float = 10000,
         radius_range: Quantity['length'] | None = None,
         velocity_range: Quantity['velocity'] | None = None,
+        radius_noise: float = 0.1,
+        velocity_noise: float = 0.1,
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
         """Sample particles from the joint phase space distribution:
             - The distribution function `f` is transformed into a joint pdf proportional to `r^2*v^2*f(r, v)`.
             - The joint pdf is discretized on a grid of radius and velocity bins. If not provided directly (`radius_range`, `velocity_range`), a linear grid is constructed based on the rest of the parameters.
             - The discretized distribution is flattened and sampled from using `np.random.choice` with probability weights set by the bin value.
+            - The sampled radius and velocity are perturbed by a uniform noise term to provide sub-pixel results.
             - Angles for the velocity split are sampled by `utils.split_3d()`.
 
         Parameters:
@@ -567,6 +570,8 @@ class Distribution:
             velocity_resolution: Resolution of the velocity grid.
             radius_range: Radius bins to use. If provided override the `radius_min_value`, `radius_max_value`, and `radius_resolution` parameters. If `None` ignores.
             velocity_range: Velocity bins to use. If provided override the `velocity_min_value`, `velocity_max_value`, and `velocity_resolution` parameters. If `None` ignores.
+            radius_noise: Noise factor for the sampled radius values. The samples are perturbed by a uniform distribution in a symmetric interval with half-width `radius_noise` * `r` (i.e. every particle is pertubed by a relative noise of `radius_noise`), and at most the actual radius resolution in `radius_range`.
+            velocity_noise: Noise factor for the sampled velocity values. Same logic as `radius_noise`.
 
         Returns:
             A tuple of two vectors:
@@ -578,9 +583,9 @@ class Distribution:
                 radius_max_value = self.Rmax
             else:
                 radius_max_value = cast(Quantity, np.min(radius_max_value, self.Rmax))
-            radius_range = Quantity(np.linspace(radius_min_value, radius_max_value, radius_resolution))
+            radius_range = Quantity(np.linspace(radius_min_value, radius_max_value, int(radius_resolution)))
         if velocity_range is None:
-            velocity_range = Quantity(np.linspace(velocity_min_value, velocity_max_value, velocity_resolution))
+            velocity_range = Quantity(np.linspace(velocity_min_value, velocity_max_value, int(velocity_resolution)))
 
         r_grid, v_grid = cast(tuple[Quantity, Quantity], np.meshgrid(radius_range, velocity_range))
         grid = np.array(16 * np.pi * r_grid**2 * v_grid**2 * self.f(self.E(r_grid, v_grid)))
@@ -590,7 +595,13 @@ class Distribution:
             np.random.choice(a=flat_grid.size, size=int(n_particles), p=flat_grid),
             grid.shape,
         )
-        return cast(Quantity, r_grid[indices]), cast(Quantity, np.vstack(utils.split_3d(v_grid[indices])).T)
+        radius, velocity = r_grid[indices], v_grid[indices]
+        radius_noise_factor = (radius_noise * radius).clip(max=radius_range.diff()[0])
+        velocity_noise_factor = (velocity_noise * velocity).clip(max=velocity_range.diff()[0])
+        radius += np.random.uniform(-1, 1, size=radius.shape) * radius_noise_factor
+        velocity += np.random.uniform(-1, 1, size=velocity.shape) * velocity_noise_factor
+
+        return cast(Quantity, np.abs(radius)), cast(Quantity, np.vstack(utils.split_3d(np.abs(velocity))).T)
 
     ##Plots
 
