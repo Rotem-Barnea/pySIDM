@@ -27,7 +27,9 @@ def random_angle(like: NDArray[np.float64], acos: bool) -> NDArray[np.float64]:
     return rolls * 2 * np.pi
 
 
-def from_radial(r: NDArray[np.float64], theta: NDArray[np.float64], quick_sin: bool = True) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+def from_radial(
+    r: NDArray[np.float64], theta: NDArray[np.float64], quick_sin: bool = True
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Convert radial coordinates to Cartesian coordinates.
 
     Parameters:
@@ -74,7 +76,9 @@ def clean_pairs(pairs: NDArray[np.int64], blacklist: list[int] | NDArray[np.int6
     first_occurrence = first_occurrence.reshape(pairs.shape)
     cleaned_pairs = pairs[first_occurrence.all(axis=1)]
     if len(blacklist) > 0:
-        cleaned_pairs = np.array([pair for pair in cleaned_pairs if pair[0] not in blacklist and pair[1] not in blacklist])
+        cleaned_pairs = np.array(
+            [pair for pair in cleaned_pairs if pair[0] not in blacklist and pair[1] not in blacklist]
+        )
     return cleaned_pairs
 
 
@@ -229,7 +233,11 @@ def aggregate_QTable(
     Returns:
         The aggregated QTable.
     """
-    return table.QTable(table.Table.from_pandas(pd.DataFrame(data.to_pandas().groupby(groupby)[keys].agg(agg_fn)), index=True, units=final_units))
+    return table.QTable(
+        table.Table.from_pandas(
+            pd.DataFrame(data.to_pandas().groupby(groupby)[keys].agg(agg_fn)), index=True, units=final_units
+        )
+    )
 
 
 def add_label_unit(label: str | None, plot_units: UnitLike | None = None) -> str | None:
@@ -289,7 +297,9 @@ def expand_mask_back(mask: NDArray[np.bool_], n: int) -> NDArray[np.bool_]:
     return np.convolve(mask.astype(int), kernel, mode='same') > 0
 
 
-def to_extent(*args: NDArray[np.float64] | Quantity, force_array: bool = False) -> tuple[float, ...] | tuple[Quantity, ...]:
+def to_extent(
+    *args: NDArray[np.float64] | Quantity, force_array: bool = False
+) -> tuple[float, ...] | tuple[Quantity, ...]:
     """Convert the input arrays to a tuple extent of the shape (min, max, min, max, ...).
 
     Args:
@@ -305,3 +315,56 @@ def to_extent(*args: NDArray[np.float64] | Quantity, force_array: bool = False) 
     if force_array:
         output = [float(o.value) if isinstance(o, Quantity) else o for o in output]
     return tuple(output)
+
+
+def slice_closest(
+    data: table.QTable | pd.DataFrame,
+    value: Quantity | float | str,
+    key: str = 'time',
+    copy: bool = True,
+) -> table.QTable:
+    """Slice the data to only keep the values closest to the input at the key.
+
+    For example, given a table which concatenate values at different times, this method will return the subset of records where the time parameter is the closest to the requested.
+
+    Parameters:
+        data: The data to slice.
+        value: The value to slice to. If a string is provided, it will be matched exactly.
+        key: The key to slice by.
+        copy: Whether to return a copy of the sliced data.
+
+    Returns:
+        The sliced data.
+    """
+    if isinstance(value, str):
+        closest_value = value
+    else:
+        unique_values = np.unique(cast(Quantity, data[key]))
+        closest_value = unique_values[np.argmin(np.abs(unique_values - value))]
+    output = cast(table.QTable, data[data[key] == closest_value])
+    if copy:
+        return output.copy()
+    return output
+
+
+def filter_indices(
+    data: table.QTable | pd.DataFrame,
+    indices: list[int] | NDArray[np.int64],
+    copy: bool = True,
+) -> table.QTable:
+    """Filter the data to only keep the specified indices.
+
+    Parameters:
+        data: The data to filter.
+        indices: The indices to filter by.
+        copy: Whether to return a copy of the sliced data.
+
+    Returns:
+        The filtered data.
+    """
+    mask = pd.Series(False, index=np.array(data['particle_index']))
+    mask.loc[mask.index.isin(indices)] = True
+    output = cast(table.QTable, data[np.array(mask)])
+    if copy:
+        return output.copy()
+    return output

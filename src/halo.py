@@ -724,8 +724,8 @@ class Halo:
         initial = self.initial_particles.copy()
         final = self.particles.copy()
         if filter_particle_type is not None:
-            initial = initial[initial['particle_type'] == filter_particle_type].copy()
-            final = final[final['particle_type'] == filter_particle_type].copy()
+            initial = utils.slice_closest(initial, value=filter_particle_type, key='particle_type')
+            final = utils.slice_closest(final, value=filter_particle_type, key='particle_type')
         return f"""After {self.current_step} steps with dt={self.dt:.4f} | {self.time:.1f}
 Total energy at the start:        {initial['E'].sum():.1f}
 Total energy at the end:          {final['E'].sum():.1f}
@@ -786,7 +786,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             data_tables += [self.particles]
         data = table.QTable(table.vstack(data_tables))
         if filter_particle_type is not None:
-            data = data[data['particle_type'] == filter_particle_type].copy()
+            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
 
         indices = indices if indices is not None else list(range(len(np.unique(np.array(data['time'])))))
 
@@ -867,7 +867,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """
         x_units = plot.default_plot_unit_type(key, x_units)
         if filter_particle_type is not None:
-            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
+            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         x = data[key].to(x_units)
         if x_range is not None:
             x = x[(x > x_range[0]) * (x < x_range[1])]
@@ -969,7 +969,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """
         data = self.get_particle_states(now=include_now, initial=include_start)
         if filter_particle_type is not None:
-            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type]).copy()
+            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
 
         images = plot.evolution_to_images(
             data=data,
@@ -1043,18 +1043,12 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if mask is not None:
             data = cast(table.QTable, data[mask]).copy()
         if filter_particle_type is not None:
-            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type]).copy()
+            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         if filter_interacting is not None:
             indices = np.unique(np.hstack(self.scatter_track_index))
-            interacting_mask = pd.Series(False, index=np.array(data['particle_index']))
-            interacting_mask.loc[interacting_mask.index.isin(indices)] = True
-            interacting_mask = np.array(interacting_mask)
-            data = cast(table.QTable, data[interacting_mask == filter_interacting]).copy()
+            data = utils.filter_indices(data, indices)
         if filter_indices is not None:
-            filter_mask = pd.Series(False, index=np.array(data['particle_index']))
-            filter_mask.loc[filter_mask.index.isin(filter_indices)] = True
-            filter_mask = np.array(filter_mask)
-            data = cast(table.QTable, data[filter_mask]).copy()
+            data = utils.filter_indices(data, filter_indices)
 
         if adjust_data_to_EL:
             data['L'] = data['r'] * cast(Quantity, data['vp'])
@@ -1183,7 +1177,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         data = base_data[['r', 'time', 'particle_type']].to_pandas()
 
         if filter_particle_type is not None:
-            data = data[data['particle_type'] == filter_particle_type].copy()
+            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         time_units = self.fill_time_unit(time_units)
         data['in_radius'] = data['r'] <= radius.to(data_length_units)
 
@@ -1262,7 +1256,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_units = self.fill_time_unit(time_units)
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
-            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
+            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         grid, extent = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
@@ -1325,7 +1319,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_units = self.fill_time_unit(time_units)
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
-            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
+            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         grid, extent = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
@@ -1386,7 +1380,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
             cmap: The colormap to use for the plot.
             setup_kwargs: Additional keyword arguments to pass to `utils.setup_plot()`.
-            kwargs: Additional keyword arguments to pass to the plot function (`utils.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
 
         Returns:
             fig, ax.
@@ -1394,7 +1388,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         time_units = self.fill_time_unit(time_units)
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
-            data = cast(table.QTable, data[data['particle_type'] == filter_particle_type].copy())
+            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         grid, extent = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
@@ -1457,7 +1451,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             x_tick_format: Format string for the x-axis ticks.
             transparent_range: Range of values to turn transparent (i.e. plot as `NaN`). If `None` ignores.
             setup_kwargs: Additional keyword arguments to pass to `utils.setup_plot()`.
-            kwargs: Additional keyword arguments to pass to the plot function (`utils.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
 
         Returns:
             fig, ax.
@@ -2286,3 +2280,128 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 save_path=save_path.with_stem(f'{save_path.stem} {distribution.label}'),
                 **save_kwargs,
             )
+
+    def plot_scatter_distribution_at_time(
+        self,
+        time: Quantity,
+        include_start: bool = True,
+        include_now: bool = False,
+        x_bins: Quantity = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
+        scatter_bins: Quantity = Quantity(np.geomspace(1, 6000, 100), ''),
+        x_key: str = 'r',
+        data_x_units: UnitLike = 'kpc',
+        cmap: str = 'jet',
+        cbar_log_scale: bool = True,
+        transparent_value: float | None = 0,
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = 'Number of scattering events',
+        title: str | None = 'Distribution by number of scattering events at {time}',
+        title_suffix: str | None = None,
+        cbar_label: str | None = 'Number of particles',
+        time_unit: UnitLike = 'Gyr',
+        time_format: str = '.1f',
+        x_log: bool = True,
+        y_log: bool = True,
+        plot_method: Literal['imshow', 'pcolormesh'] = 'pcolormesh',
+        fig: Figure | None = None,
+        ax: Axes | None = None,
+        aggregate_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """
+        Plot the number of scattering events as a function of a tracked property at the closest snapshot to the specified time.
+
+        Parameters:
+            time: The time to slice the snapshots (nearest).
+            include_start: Whether to include the initial particle distribution in the data.
+            include_now: Whether to include the current particle distribution in the data.
+            x_bins: Bins for the x-axis.
+            scatter_bins: Bins for the scatter axis.
+            x_key: The key to use for the x-axis.
+            data_x_units: The units for the x-column in the data.
+            cmap: The colormap to use for the plot.
+            cbar_log_scale: Wheather to plot the cbar in a log scale.
+            transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
+            xlabel: The label for the x-axis.
+            ylabel: The label for the y-axis.
+            title: The title of the plot.
+            cbar_label: Label for the colorbar.
+            time_units: The time units to use in the plot's title.
+            time_format: Format string for time to use in the plot's title.
+            x_log: Sets the x-axis to a log scale.
+            y_log: Sets the y-axis to a log scale.
+            plot_method: Method to use for plotting.
+            fig: Figure to plot on.
+            ax: Axes to plot on.
+            aggregate_kwargs: Additional keyword arguments to pass to the aggregation function (`plot.aggregate_2d_data()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
+
+        Returns:
+            fig, ax.
+        """
+        data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
+        data = utils.slice_closest(utils.slice_closest(data, value=time), value='dm', key='particle_type')
+        sub = pd.merge(
+            data.to_pandas(),
+            pd.DataFrame(
+                np.vstack(np.unique(np.hstack(self.scatter_track_index), return_counts=True)).T,
+                columns=['particle_index', 'n_scatters'],
+            ),
+            on='particle_index',
+            how='left',
+        )
+        sub['n_scatters'] = sub['n_scatters'].fillna(0)
+        data['n_scatters'] = Quantity(sub['n_scatters'], '')
+
+        if title is not None:
+            title = title.format(time=time.to(time_unit).to_string(format='latex', formatter=time_format))
+
+        if title_suffix is not None and title is not None:
+            title += f' ({title_suffix})'
+
+        return plot.plot_2d(
+            *plot.aggregate_2d_data(
+                data, x_key=x_key, y_key='n_scatters', x_bins=x_bins, y_bins=scatter_bins, **aggregate_kwargs
+            ),
+            plot_method=plot_method,
+            x_range=x_bins,
+            y_range=scatter_bins,
+            cmap=cmap,
+            y_units='',
+            log_scale=cbar_log_scale,
+            transparent_value=transparent_value,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            title=title,
+            cbar_label=cbar_label,
+            x_log=x_log,
+            y_log=y_log,
+            **kwargs,
+        )
+
+    def plot_scatter_distribution_at_time_animation(
+        self,
+        include_start: bool = True,
+        include_now: bool = False,
+        save_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> None:
+        """
+        Plot the number of scattering events as a function of a tracked property at the closest snapshot to the specified time.
+
+        Parameters:
+            include_start: Whether to include the initial particle distribution in the data.
+            include_now: Whether to include the current particle distribution in the data.
+            save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
+            kwargs: Additional keyword arguments to pass to the plot function for each frame (`self.plot_scatter_distribution_at_time()`).
+
+        Returns:
+            fig, ax.
+        """
+        plot.save_images(
+            plot.to_images(
+                np.unique(cast(Quantity, self.get_particle_states(initial=include_start, now=include_now)['time'])),
+                plot_fn=lambda x: self.plot_scatter_distribution_at_time(time=x, **kwargs),
+            ),
+            **save_kwargs,
+        )
