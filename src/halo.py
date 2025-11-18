@@ -1737,6 +1737,9 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                     **plot.pretty_ax_text(x=bin_center, y=height + 0.01, verticalalignment='bottom'),
                 )
 
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
+
         return fig, ax
 
     def plot_local_density_by_range(
