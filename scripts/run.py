@@ -18,19 +18,21 @@ if __name__ == '__main__':
     b_Mtot = Quantity(1e5, 'Msun')
     sigma = Quantity(50, 'cm^2/gram')
 
+    print('Setup distributions')
     dm_distribution = NFW(Rs=Rs, c=c, rho_s=dm_rho_s, particle_type='dm')
     b_distribution = Hernquist(Rs=Rs, c=c, Mtot=b_Mtot, particle_type='baryon')
 
     dm_Mtot = dm_distribution.Mtot
 
+    print('Setup parameters')
     dm_n_particles = 1e5
     b_n_particles = 1e5
     dt = dm_distribution.Tdyn / 1000
     save_every_time = 10 * dm_distribution.Tdyn
     hard_save = True
     save_path = Path(os.environ['SAVE_PATH']) / 'run results' / os.environ.get('SAVE_NAME', 'full test run 2')
-    cleanup_nullish_particles = False
-    cleanup_particles_by_radius = False
+    cleanup_nullish_particles = True
+    cleanup_particles_by_radius = True
 
     print('Setup complete, starting halo initialization')
 
@@ -46,8 +48,8 @@ if __name__ == '__main__':
             hard_save=hard_save,
             save_path=save_path,
             save_every_time=save_every_time,
-            cleanup_nullish_particles=False,
-            cleanup_particles_by_radius=False,
+            cleanup_nullish_particles=cleanup_nullish_particles,
+            cleanup_particles_by_radius=cleanup_particles_by_radius,
             dynamics_params={'raise_warning': False},
             scatter_params={'sigma': sigma},
         )
