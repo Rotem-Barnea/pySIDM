@@ -1,4 +1,5 @@
 if __name__ == '__main__':
+    print('Starting run')
     import os
     import sys
     from pathlib import Path
@@ -30,6 +31,8 @@ if __name__ == '__main__':
     save_path = Path(os.environ['SAVE_PATH']) / 'run results' / 'full test run 2'
     cleanup_nullish_particles = False
     cleanup_particles_by_radius = False
+
+    print('Setup complete, starting halo initialization')
 
     if save_path.exists():
         print('Loaded existing halo (continuing run)')
