@@ -263,6 +263,7 @@ def plot_trace(
 def plot_2d(
     grid: Quantity,
     extent: tuple[Quantity, Quantity, Quantity, Quantity] | None = None,
+    plot_method: Literal['imshow', 'pcolormesh'] = 'imshow',
     x_range: Quantity | None = None,
     y_range: Quantity | None = None,
     x_units: UnitLike = run_units.length,
@@ -299,9 +300,10 @@ def plot_2d(
 
     Parameters:
         grid: 2d array of data to plot.
-        extent: Range of values to plot, used to define the x and y axes. If `None` derive from `x_range` and `y_range`, otherwise takes priority.
-        x_range: Range of x values to plot, used to define the extent. Must be provided if `extent` is `None`, otherwise ignored.
-        y_range: Range of y values to plot, used to define the extent. Must be provided if `extent` is `None`, otherwise ignored.
+        extent: Range of values to plot, used to define the x and y axes. If `None` derive from `x_range` and `y_range`, otherwise takes priority. Only used if `plot_method` is `imshow`.
+        plot_method: Method to use for plotting.
+        x_range: Range of x values to plot, used to define the extent. Must be provided if `plot_method` is `pcolormesh` or if `extent` is `None`, otherwise ignored.
+        y_range: Range of y values to plot, used to define the extent. Must be provided if `plot_method` is `pcolormesh` or if `extent` is `None`, otherwise ignored.
         x_units: Units to use for the x-axis.
         y_units: Units to use for the y-axis.
         cbar_units: Units to use for the value of each grid cell.
@@ -330,7 +332,7 @@ def plot_2d(
         ax: Axes to plot on.
         setup_kwargs: Additional keyword arguments to pass to `setup_plot()`.
         save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
-        kwargs: Additional keyword arguments to pass to `plt.imshow()`.
+        kwargs: Additional keyword arguments to pass to `plt.imshow()` or `plt.pcolormesh()`.
 
     Returns:
         fig, ax.
@@ -346,6 +348,11 @@ def plot_2d(
         float(extent[2].to(y_units).value),
         float(extent[3].to(y_units).value),
     )
+
+    if x_log:
+        setup_kwargs['ax_set'] = {**setup_kwargs.get('ax_set', {}), 'xscale': 'log'}
+    if y_log:
+        setup_kwargs['ax_set'] = {**setup_kwargs.get('ax_set', {}), 'yscale': 'log'}
 
     fig, ax = setup_plot(
         fig=fig,
@@ -370,7 +377,14 @@ def plot_2d(
     if transparent_range is not None:
         grid[(grid.value >= transparent_range[0]) * (grid.value <= transparent_range[1])] = np.nan
 
-    im = ax.imshow(grid.value, origin='lower', aspect='auto', extent=extent_value, **kwargs)
+    if plot_method == 'imshow':
+        im = ax.imshow(grid.value, origin='lower', aspect='auto', extent=extent_value, **kwargs)
+    else:
+        assert x_range is not None and y_range is not None, (
+            "x_range and y_range must be provided for `plot_method='pcolormesh'`"
+        )
+        im = ax.pcolormesh(*np.meshgrid(x_range, y_range), grid.value, **kwargs)
+
     cbar = fig.colorbar(im, ax=ax)
 
     if cbar_label_autosuffix and cbar_label is not None:
@@ -683,10 +697,16 @@ def aggregate_2d_data(
         data_x_units = data[x_key].unit
         data_y_units = data[y_key].unit
 
+    if data_x_units is None:
+        data_x_units = ''
+
+    if data_y_units is None:
+        data_y_units = ''
+
     if x_adjust_bins_edges_to_data:
-        x_bins = np.linspace(sub[x_key].min(), sub[x_key].max(), len(x_bins))
+        x_bins = Quantity(np.linspace(sub[x_key].min(), sub[x_key].max(), len(x_bins)))
     if y_adjust_bins_edges_to_data:
-        y_bins = np.linspace(sub[y_key].min(), sub[y_key].max(), len(y_bins))
+        y_bins = Quantity(np.linspace(sub[y_key].min(), sub[y_key].max(), len(y_bins)))
 
     x_bins = x_bins.to(data_x_units)
     y_bins = y_bins.to(data_y_units)
