@@ -65,7 +65,9 @@ def local_density(
         The local density of the particles.
     """
     x = np.array(r)
-    x_end = np.pad(x, (0, max_radius_j + volume_include_final_unit_cell), mode='edge')[max_radius_j + volume_include_final_unit_cell :]
+    x_end = np.pad(x, (0, max_radius_j + volume_include_final_unit_cell), mode='edge')[
+        max_radius_j + volume_include_final_unit_cell :
+    ]
 
     if mass_kind == 'sum':
         y = np.pad(np.array(m), (0, max_radius_j), mode='edge').cumsum()
@@ -77,9 +79,10 @@ def local_density(
         volume = 4 / 3 * np.pi * (x_end**3 - x**3)
     else:
         volume = 4 * np.pi * x**2 * (x_end - x)
-    density = mass[:-1] / volume[:-1]  # The final element has volume=0, this just circumvents this and uses the value from the second-to-last
+    density = mass[:-1] / volume[:-1]
+    # The final element has volume=0, this just circumvents this and uses the value from the second-to-last
     if (volume[:-1] == 0).any():
-        raise ValueError('Volume cannot be zero')
+        raise ValueError('Volume cannot be zero')  # TODO: Handle this case more gracefully
     density = np.hstack([density, density[-1]])
     if isinstance(m, Quantity) and isinstance(r, Quantity):
         return Quantity(density, m.unit / cast(Unit, r.unit) ** 3)
@@ -99,7 +102,9 @@ def Phi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityO
     Returns
         The gravitational potential at the given radius.
     """
-    integral = scipy.integrate.cumulative_trapezoid(y=constants.G.to(run_units.G_units).value * M * m / r**2, x=r, initial=0)
+    integral = scipy.integrate.cumulative_trapezoid(
+        y=constants.G.to(run_units.G_units).value * M * m / r**2, x=r, initial=0
+    )
     if isinstance(r, Quantity):
         return Quantity(integral, run_units.energy)
     return integral
@@ -112,7 +117,9 @@ def Psi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityO
 
     See `Phi()` for details.
     """
-    integral = scipy.integrate.cumulative_trapezoid(y=constants.G.to(run_units.G_units).value * M * m / r**2, x=r, initial=0)
+    integral = scipy.integrate.cumulative_trapezoid(
+        y=constants.G.to(run_units.G_units).value * M * m / r**2, x=r, initial=0
+    )
     integral = integral[-1] - integral
     if isinstance(r, Quantity):
         return Quantity(integral, run_units.energy)

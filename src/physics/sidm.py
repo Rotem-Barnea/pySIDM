@@ -21,10 +21,10 @@ class Params(TypedDict, total=False):
 
 default_params: Params = {
     'max_radius_j': 10,
-    'max_allowed_rounds': 100,
+    'max_allowed_rounds': 1000,
     'record_underestimation': True,
     'kappa': 0.02,
-    'sigma': Quantity(0, 'cm^2/gram').to(run_units.cross_section),
+    'sigma': Quantity(0, run_units.cross_section),
 }
 
 
@@ -46,7 +46,9 @@ def normalize_params(params: Params, add_defaults: bool = False) -> Params:
 
 
 @njit
-def scatter_pair_kinematics(v0: NDArray[np.float64], v1: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+def scatter_pair_kinematics(
+    v0: NDArray[np.float64], v1: NDArray[np.float64]
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Calculate the new velocities of two particles after a scattering event.
 
     Calculates a random isotropic scattering direction from a uniform cosine distribution off of `v_rel`.
@@ -102,7 +104,9 @@ def scatter_pair_kinematics(v0: NDArray[np.float64], v1: NDArray[np.float64]) ->
 
 
 @njit(parallel=True)
-def update_v_rel(v_rel: NDArray[np.float64], v: NDArray[np.float64], max_radius_j: int, whitelist_mask: NDArray[np.bool_]) -> None:
+def update_v_rel(
+    v_rel: NDArray[np.float64], v: NDArray[np.float64], max_radius_j: int, whitelist_mask: NDArray[np.bool_]
+) -> None:
     """Calculate the relative velocity between all neighboring particles.
 
     The result is an array of relative velocity norms `sqrt(sum((v[partner]-v[particle])^2))`, and the partners are taken from: `[particle + 1 : particle + 1 + max_radius_j]`
@@ -146,7 +150,9 @@ def fast_scatter_chance(
 
 
 @njit(parallel=True)
-def fast_scatter_rounds(scatter_chance: NDArray[np.float64], kappa: float, max_allowed_rounds: int) -> NDArray[np.int64]:
+def fast_scatter_rounds(
+    scatter_chance: NDArray[np.float64], kappa: float, max_allowed_rounds: int
+) -> NDArray[np.int64]:
     """Calculate the number of scattering rounds required for each particle to comply with a per-round scattering chance <= `kappa`.
 
     Parameters:
@@ -326,16 +332,22 @@ def scatter(
         return _vx, _vy, _vr, interacted, 0, 0
     v_output = np.vstack([_vx, _vy, _vr]).T
     _sigma = sigma.value
-    local_density = cast(NDArray[np.float64], physics.utils.local_density(_r, _m, max_radius_j, volume_kind='shell', mass_kind='single'))
+    local_density = cast(
+        NDArray[np.float64], physics.utils.local_density(_r, _m, max_radius_j, volume_kind='shell', mass_kind='single')
+    )
     v_rel = np.zeros((len(v_output), max_radius_j), dtype=np.float64)
-    update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=np.ones(len(v_output), dtype=np.bool_))
+    update_v_rel(
+        v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=np.ones(len(v_output), dtype=np.bool_)
+    )
     scatter_chance = fast_scatter_chance(
         v_rel=v_rel,
         dt=np.full(len(v_output), dt.value),
         sigma=_sigma,
         density_term=local_density,
     )
-    scatter_rounds = fast_scatter_rounds(scatter_chance=scatter_chance, kappa=kappa, max_allowed_rounds=max_allowed_rounds)
+    scatter_rounds = fast_scatter_rounds(
+        scatter_chance=scatter_chance, kappa=kappa, max_allowed_rounds=max_allowed_rounds
+    )
     max_scatter_rounds = scatter_rounds.max()
     underestimation: int = (
         fast_scatter_rounds(scatter_chance=scatter_chance, kappa=kappa, max_allowed_rounds=-1).max()
