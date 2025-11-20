@@ -40,31 +40,32 @@ class Halo:
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         Tdyn: Quantity['time'] | None = None,
         Phi0: Quantity['energy'] | None = None,
-        distributions: list[Distribution] = [],
-        scatter_rounds: deque[int] = deque(),
-        scatter_rounds_underestimated: deque[int] = deque(),
-        scatter_track_index: deque[NDArray[np.int64]] = deque(),
-        scatter_track_radius: deque[NDArray[np.float64]] = deque(),
+        distributions: list[Distribution] | None = None,
+        scatter_rounds: deque[int] | None = None,
+        scatter_rounds_underestimated: deque[int] | None = None,
+        scatter_track_index: deque[NDArray[np.int64]] | None = None,
+        scatter_track_radius: deque[NDArray[np.float64]] | None = None,
         time: Quantity['time'] = 0 * run_units.time,
+        steps: int | float = 0,
         background: Mass_Distribution | None = None,
         last_saved_time: Quantity['time'] = 0 * run_units.time,
         save_every_time: Quantity['time'] | None = None,
         save_every_n_steps: int | None = None,
-        dynamics_params: leapfrog.Params = {},
-        scatter_params: sidm.Params = {},
-        snapshots: table.QTable = table.QTable(),
+        dynamics_params: leapfrog.Params | None = None,
+        scatter_params: sidm.Params | None = None,
+        snapshots: table.QTable | None = None,
         hard_save: bool = False,
         save_path: Path | str | None = None,
         Rmax: Quantity['length'] = Quantity(300, 'kpc'),
         scatters_to_collapse: int = 340,
         cleanup_nullish_particles: bool = False,
         cleanup_particles_by_radius: bool = False,
-        runtime_realtime_track: deque[float] = deque(),
-        runtime_track_sort: deque[float] = deque(),
-        runtime_track_cleanup: deque[float] = deque(),
-        runtime_track_sidm: deque[float] = deque(),
-        runtime_track_leapfrog: deque[float] = deque(),
-        runtime_track_full_step: deque[float] = deque(),
+        runtime_realtime_track: deque[float] | None = None,
+        runtime_track_sort: deque[float] | None = None,
+        runtime_track_cleanup: deque[float] | None = None,
+        runtime_track_sidm: deque[float] | None = None,
+        runtime_track_leapfrog: deque[float] | None = None,
+        runtime_track_full_step: deque[float] | None = None,
     ) -> None:
         """Initialize a Halo object.
 
@@ -82,6 +83,7 @@ class Halo:
             scatter_track_index: The interacting particles (particle index) at every time step.
             scatter_track_radius: The location of the interacting particles at every time step.
             time: Time of the halo.
+            steps: number of steps made in the simulation (should match `self.time/self.dt` but left as a sanity check).
             background: Background mass distribution of the halo.
             last_saved_time: Last time a snapshot was saved.
             save_every_time: How often should a snapshot be saved, in time units.
@@ -102,8 +104,9 @@ class Halo:
         self._particles = self.to_dataframe(r, v, m, particle_type)
         self._particles.sort_values('r', inplace=True)
         self.time: Quantity['time'] = time.to(run_units.time)
+        self.steps: int = int(steps)
         self.dt: Quantity['time'] = dt.to(run_units.time)
-        self.distributions: list[Distribution] = distributions
+        self.distributions: list[Distribution] = utils.handle_default(distributions, [])
         self.Tdyn: Quantity['time']
         if Tdyn is not None:
             self.Tdyn = Tdyn
@@ -113,32 +116,32 @@ class Halo:
             self.Tdyn = Quantity(1, run_units.time)
         self.background: Mass_Distribution | None = background
         self.Phi0: Quantity['energy'] = Phi0 if Phi0 is not None else physics.utils.Phi(self.r, self.M, self.m)[-1]
-        self.snapshots: table.QTable = snapshots
+        self.snapshots: table.QTable = utils.handle_default(snapshots, table.QTable())
         self.save_every_n_steps = save_every_n_steps
         self.save_every_time: Quantity['time'] | None = (
             save_every_time if save_every_time is None else save_every_time.to(run_units.time)
         )
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
         self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
-        self.scatter_track_index = scatter_track_index
-        self.scatter_track_radius = scatter_track_radius
+        self.scatter_track_index: deque[NDArray[np.int64]] = utils.handle_default(scatter_track_index, deque())
+        self.scatter_track_radius: deque[NDArray[np.float64]] = utils.handle_default(scatter_track_radius, deque())
         self._initial_particles = self._particles.copy()
         self.initial_particles = self.particles.copy()
         self.last_saved_time = last_saved_time
-        self.scatter_rounds = scatter_rounds
-        self.scatter_rounds_underestimated = scatter_rounds_underestimated
+        self.scatter_rounds: deque[int] = utils.handle_default(scatter_rounds, deque())
+        self.scatter_rounds_underestimated: deque[int] = utils.handle_default(scatter_rounds_underestimated, deque())
         self.hard_save: bool = hard_save
         self.save_path: Path | str | None = Path(save_path) if isinstance(save_path, str) else save_path
         self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
         self.scatters_to_collapse: int = scatters_to_collapse
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
-        self.runtime_realtime_track = runtime_realtime_track
-        self.runtime_track_sort = runtime_track_sort
-        self.runtime_track_cleanup = runtime_track_cleanup
-        self.runtime_track_sidm = runtime_track_sidm
-        self.runtime_track_leapfrog = runtime_track_leapfrog
-        self.runtime_track_full_step = runtime_track_full_step
+        self.runtime_realtime_track: deque[float] = utils.handle_default(runtime_realtime_track, deque())
+        self.runtime_track_sort: deque[float] = utils.handle_default(runtime_track_sort, deque())
+        self.runtime_track_cleanup: deque[float] = utils.handle_default(runtime_track_cleanup, deque())
+        self.runtime_track_sidm: deque[float] = utils.handle_default(runtime_track_sidm, deque())
+        self.runtime_track_leapfrog: deque[float] = utils.handle_default(runtime_track_leapfrog, deque())
+        self.runtime_track_full_step: deque[float] = utils.handle_default(runtime_track_full_step, deque())
 
     @classmethod
     def setup(cls, distributions: list[Distribution], n_particles: list[int | float], **kwargs: Any) -> Self:
@@ -204,6 +207,7 @@ class Halo:
     def reset(self) -> None:
         """Resets the halo to its initial state (no interactions, `time`=0, cleared snapshots, particles at initial positions)."""
         self.time = 0 * run_units.time
+        self.last_saved_time = 0 * run_units.time
         self._particles = self._initial_particles.copy()
         self.scatter_rounds = deque()
         self.scatter_rounds_underestimated = deque()
@@ -516,6 +520,7 @@ class Halo:
 
         self.runtime_track_leapfrog += [time.perf_counter() - t0]
         self.time += self.dt
+        self.steps += 1
         self.runtime_track_full_step += [time.perf_counter() - t_start]
 
     def evolve(
@@ -579,6 +584,7 @@ class Halo:
         """Return the keys of the payload dictionary, used for saving and loading halos. A `@staticmethod` and not a `@property` to allow getting it from an uninitialized cls during `@classmethod`."""
         return [
             'time',
+            'steps',
             'dt',
             'distributions',
             'save_every_n_steps',

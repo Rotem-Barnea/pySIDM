@@ -368,3 +368,10 @@ def filter_indices(
     if copy:
         return output.copy()
     return output
+
+
+def handle_default(value: Any, default: Any) -> Any:
+    """Handles setting the default value, avoiding pointer issues with Python by allowing the default function argument to be `None`"""
+    if value is None:
+        return default
+    return value
