@@ -1,5 +1,5 @@
 import warnings
-from typing import TypedDict
+from typing import TypedDict, cast
 
 import numpy as np
 import pandas as pd
@@ -8,7 +8,7 @@ from astropy import constants
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
-from .. import run_units
+from .. import utils, run_units
 
 G = constants.G.to(run_units.G_units).value
 
@@ -38,7 +38,7 @@ default_params: Params = {
 }
 
 
-def normalize_params(params: Params, add_defaults: bool = False) -> Params:
+def normalize_params(params: Params | None, add_defaults: bool = False) -> Params:
     """Normalize Quantity parameters to the run units.
 
     Parameters:
@@ -48,6 +48,7 @@ def normalize_params(params: Params, add_defaults: bool = False) -> Params:
     Returns:
         Normalized parameters.
     """
+    params = cast(Params, utils.handle_default(params, Params({})))
     if add_defaults:
         params = {**default_params, **params}
     return params
@@ -70,13 +71,24 @@ def get_grid(
     """
     if window_radius == 0:
         return np.empty(0, np.float64), np.empty(0, np.float64)
-    M_grid = np.concatenate((M[particle_index - window_radius : particle_index], M[particle_index + 1 : particle_index + window_radius + 1]))
-    r_grid = np.concatenate((r[particle_index - window_radius : particle_index], r[particle_index + 1 : particle_index + window_radius + 1]))
+    M_grid = np.concatenate(
+        (M[particle_index - window_radius : particle_index], M[particle_index + 1 : particle_index + window_radius + 1])
+    )
+    r_grid = np.concatenate(
+        (r[particle_index - window_radius : particle_index], r[particle_index + 1 : particle_index + window_radius + 1])
+    )
     return M_grid, r_grid
 
 
 @njit
-def adjust_M(r: float, m: float, r_grid: NDArray[np.float64], M_grid: NDArray[np.float64], backup_M: float, count_self: bool = False) -> float:
+def adjust_M(
+    r: float,
+    m: float,
+    r_grid: NDArray[np.float64],
+    M_grid: NDArray[np.float64],
+    backup_M: float,
+    count_self: bool = False,
+) -> float:
     """Calculate the mass cdf (`M(<=r)`) for the particle.
 
     If the input grid is empty (i.e. the subprocess is disabled by setting `grid_window_radius`=0), returns the backup mass cdf value.
@@ -266,7 +278,12 @@ def fast_step(
     Returns:
         Updated position and velocity.
     """
-    output_r, output_vx, output_vy, output_vr = np.empty_like(r), np.empty_like(vx), np.empty_like(vy), np.empty_like(vr)
+    output_r, output_vx, output_vy, output_vr = (
+        np.empty_like(r),
+        np.empty_like(vx),
+        np.empty_like(vy),
+        np.empty_like(vr),
+    )
     output_converged = np.ones(len(r), dtype=np.bool_)
     for particle in prange(len(r)):
         M_grid, r_grid = get_grid(r=r, M=M, window_radius=grid_window_radius, particle_index=particle)
