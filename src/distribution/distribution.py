@@ -591,6 +591,8 @@ class Distribution:
         grid = np.array(16 * np.pi * r_grid**2 * v_grid**2 * self.f(self.E(r_grid, v_grid)))
         grid /= grid.sum()
         flat_grid = grid.ravel()
+        if (grid < 0).any():
+            raise ValueError(f'Negative probability density encountered, {self}')
         indices = np.unravel_index(
             np.random.choice(a=flat_grid.size, size=int(n_particles), p=flat_grid),
             grid.shape,
