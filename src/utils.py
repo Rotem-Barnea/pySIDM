@@ -64,12 +64,25 @@ def joint_clean(arrays: list[NDArray[Any]], keys: list[str], clean_by: str) -> N
     return data.to_numpy().T
 
 
-def clean_pairs(pairs: NDArray[np.int64], blacklist: list[int] | NDArray[np.int64] = []) -> NDArray[np.int64]:
+def clean_pairs(
+    pairs: NDArray[np.int64],
+    blacklist: list[int] | NDArray[np.int64] = [],
+    shuffle: bool = False,
+) -> NDArray[np.int64]:
     """Clean a list of pairs by removing duplicates.
 
     Ensures no particle is considered multiple times.
-    If a `blacklist` is provided, also exclude pairs involving blacklisted particles.
+
+    Parameters:
+        pairs: The raw array of pairs, of shape (n_pairs, 2).
+        blacklist: List of blacklisted particles. If provided (and not empty), any pair containing a blacklisted particle is removed *after* any other filtering (which might lead to over-dropping).
+        shuffle: Whether to shuffle the raw pairs before cleaning, to avoid biasing on smaller indices (and thus smaller radii). The shuffle is performed in-place without prior copy (will affect the input `pairs`).
+
+    Returns:
+        The cleaned array of pairs, of shape (n_cleaned_pairs, 2).
     """
+    if shuffle:
+        np.random.shuffle(pairs)
     _, indices = np.unique(pairs.ravel(), return_index=True)
     first_occurrence = np.zeros(2 * len(pairs), dtype=np.bool_)
     first_occurrence[indices] = True

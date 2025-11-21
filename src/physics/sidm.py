@@ -373,7 +373,10 @@ def scatter(
         rolls = np.random.random(len(v_output))
         events = scatter_chance >= rolls  # TODO - slice with mask
         pair_rolls = np.random.random(len(v_output))  # Have to generate again to avoid biasing the distribution
-        pairs = utils.clean_pairs(pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=pair_rolls))
+        pairs = utils.clean_pairs(
+            pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=pair_rolls),
+            shuffle=True,
+        )
         interacted_particles = pairs.ravel()
         interacted = np.hstack([interacted, interacted_particles])
         scatter_unique_pairs(v=v_output, pairs=pairs)
