@@ -28,7 +28,7 @@ default_params: Params = {
 }
 
 
-def normalize_params(params: Params, add_defaults: bool = False) -> Params:
+def normalize_params(params: Params | None, add_defaults: bool = False) -> Params:
     """Normalize Quantity parameters to the run units.
 
     Parameters:
@@ -38,6 +38,7 @@ def normalize_params(params: Params, add_defaults: bool = False) -> Params:
     Returns:
         Normalized parameters.
     """
+    params = cast(Params, utils.handle_default(params, Params({})))
     if add_defaults:
         params = {**default_params, **params}
     if 'sigma' in params:
@@ -371,7 +372,8 @@ def scatter(
             )
         rolls = np.random.random(len(v_output))
         events = scatter_chance >= rolls  # TODO - slice with mask
-        pairs = utils.clean_pairs(pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=rolls))
+        pair_rolls = np.random.random(len(v_output))  # Have to generate again to avoid biasing the distribution
+        pairs = utils.clean_pairs(pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=pair_rolls))
         interacted_particles = pairs.ravel()
         interacted = np.hstack([interacted, interacted_particles])
         scatter_unique_pairs(v=v_output, pairs=pairs)
