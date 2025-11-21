@@ -2,6 +2,7 @@ import time
 import pickle
 import shutil
 import itertools
+from copy import deepcopy
 from typing import Any, Self, Literal, cast
 from pathlib import Path
 from datetime import datetime
@@ -142,6 +143,41 @@ class Halo:
         self.runtime_track_sidm: deque[float] = utils.handle_default(runtime_track_sidm, deque())
         self.runtime_track_leapfrog: deque[float] = utils.handle_default(runtime_track_leapfrog, deque())
         self.runtime_track_full_step: deque[float] = utils.handle_default(runtime_track_full_step, deque())
+
+    def __repr__(self):
+        scatter_params = dict(deepcopy(self.scatter_params))
+        scatter_params['sigma'] = f'{scatter_params["sigma"].to("cm^2/g"):.1f}'
+        description = {
+            'Current time': f'{self.time:.1f}',
+            'Time step size': f'{self.dt:.4f} = {self.dt.to(self.Tdyn):.1e}',
+            '#particles': self.n_particles,
+            'Save parameters': utils.drop_None(
+                **{
+                    'path': self.save_path,
+                    'hard save': self.hard_save,
+                    'Save every': f'{self.save_every_time:.1f}',
+                    'Save every [n] steps': self.save_every_n_steps,
+                }
+            ),
+            'Cleanup': {
+                'NaN': self.cleanup_nullish_particles,
+                'high radius': self.cleanup_particles_by_radius,
+            },
+            'Leapfrog parameters': dict(self.dynamics_params),
+            'Scatter parameters': scatter_params,
+            'Distributions': {f'#{i}': d for i, d in enumerate(self.distributions)},
+        }
+
+        description_strings = []
+        for key, value in description.items():
+            if isinstance(value, dict):
+                description_strings += [f'{key}:']
+                description_strings += [
+                    '\n'.join([f'    {sub_key}: {sub_value}' for sub_key, sub_value in value.items()])
+                ]
+            else:
+                description_strings += [f'{key}: {value}']
+        return '\n'.join(description_strings)
 
     @classmethod
     def setup(cls, distributions: list[Distribution], n_particles: list[int | float], **kwargs: Any) -> Self:
