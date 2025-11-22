@@ -29,4 +29,4 @@ class Hernquist(Distribution):
         Returns:
             The density at the given radius.
         """
-        return rho_s / ((r / Rs) * (1 + (r / Rs)) ** 3) / (1 + (r / Rvir) ** 20)
+        return rho_s / ((r / Rs) * (1 + (r / Rs)) ** 3) / (1 + (r / Rvir) ** 4)
