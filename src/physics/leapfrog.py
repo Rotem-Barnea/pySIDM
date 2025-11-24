@@ -1,5 +1,5 @@
 import warnings
-from typing import TypedDict, cast
+from typing import Literal, TypedDict, cast
 
 import numpy as np
 import pandas as pd
@@ -24,6 +24,8 @@ class Params(TypedDict, total=False):
     adaptive: bool
     grid_window_radius: int
     raise_warning: bool
+    levi_civita_mode: Literal['always', 'never', 'adaptive']
+    levi_civita_condition_coefficient: float
 
 
 default_params: Params = {
@@ -35,6 +37,8 @@ default_params: Params = {
     'adaptive': True,
     'grid_window_radius': 50,
     'raise_warning': True,
+    'levi_civita_mode': 'adaptive',
+    'levi_civita_condition_coefficient': 1 / 20,
 }
 
 
@@ -122,7 +126,118 @@ def acceleration(r: float, L: float, M: float) -> float:
 
 
 @njit
-def particle_step(
+def levi_civita_criteria(
+    r: float,
+    vx: float,
+    vy: float,
+    M: float,
+    alpha: float = 1 / 20,
+    override_always: bool = False,
+    override_never: bool = False,
+) -> bool:
+    """Check if the particle is in the Levi-Civita regime.
+
+    The innermost particle (M=0) is always considered to be in the Levi-Civita regime.
+
+    Parameters:
+        r: The position of the particle.
+        vx: The first perpendicular component (to the radial direction) of the velocity of the particle.
+        vy: The second perpendicular component (to the radial direction) of the velocity of the particle.
+        M: The mass cdf (`M(<=r)`) of the particle at the start of the step.
+        alpha: Threshold parameter.
+        override_always: If `True`, particle is always in the Levi-Civita regime. Considered before `override_never`. Equivalent to `levi_civita_condition_coefficient=infinity`.
+        override_never: If `True`, the particle is never in the Levi-Civita regime. Considered after `override_always`. Equivalent to `levi_civita_condition_coefficient=0`.
+
+    Returns:
+        Bool.
+    """
+    if override_always:
+        return True
+    if override_never:
+        return False
+    if M == 0:
+        return True
+    return r <= alpha * (r**2 * (vx**2 + vy**2)) / (G * M)
+
+
+@njit
+def particle_levi_civita_step(
+    r: float,
+    vx: float,
+    vy: float,
+    vr: float,
+    m: float,
+    M: float,
+    M_grid: NDArray[np.float64],
+    r_grid: NDArray[np.float64],
+    dt: float,
+    N: int = 1,
+) -> tuple[float, float, float, float]:
+    """Perform a simple leapfrog step in the radius (1D). See `particle_step()` for more details on the leapfrog implementation, this function will only detail the Levi Civita aspect.
+
+    The integration is done in the Levi-Civita coordinates `r_ = sqrt(r)`, with physical velocity and a Sundman time reparameterization `dt/dτ = r = r_^2`.
+        The initial fictitious time step is given by `dτ = dt/r_^2`, and subdivided further by `N`.
+        Physical velocity equation of motion: `dv/dτ = -GM/r_^2 + L^2/r_^4`, with M selected using `adjust_M()`.
+        Levi-Civita coordinate equation of motion: `dr_/dτ = 1/2 * r_* vr`.
+        Integrate until the physical time overshoots, then take a step back and perform a fractional step forward to hit exactly `dt`.
+
+    Parameters:
+        r: The position of the particle.
+        vx: The first perpendicular component (to the radial direction) of the velocity of the particle.
+        vy: The second perpendicular component (to the radial direction) of the velocity of the particle.
+        vr: The radial velocity of the particle.
+        M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
+        m: The mass of the particle.
+        M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
+        r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
+        dt: The time step.
+        N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
+
+    Returns:
+        The new position and velocity of the particle.
+    """
+    Lx, Ly = r * vx, r * vy
+    L = np.sqrt(Lx**2 + Ly**2)
+
+    r_ = np.sqrt(r)
+    t_step = 0
+    dtau = dt / (N * r_**2)
+    a = -G * adjust_M(r_**2, m, r_grid, M_grid, M) / r_**2 + L**2 / r_**4
+    vr += a * dtau / 2
+    for ministep in range(N):
+        r_ += 0.5 * r_ * vr * dtau
+        if r_ < 0:
+            r_ = -r_
+            vr = -vr
+        dt_physical = r_**2 * dtau
+        t_step += dt_physical
+
+        if t_step >= dt and ministep < N - 1:  # Check if we've overshot the target time
+            fraction = 1 - (t_step - dt) / dt_physical  # Fractional step to hit exactly dt
+
+            # Backtrack and take fractional step
+            r_ -= 0.5 * r_ * vr * dtau
+            r_ += 0.5 * r_ * vr * dtau * fraction
+
+            # Recalculate acceleration and take final half-step
+            a = -G * adjust_M(r_**2, m, r_grid, M_grid, M) / r_**2 + L**2 / r_**4
+            vr += a * dtau * fraction / 2
+            break  # Exit early since we've reached target time
+
+        a = -G * adjust_M(r_**2, m, r_grid, M_grid, M) / r_**2 + L**2 / r_**4
+        if ministep < N - 1:
+            vr += a * dtau
+        else:
+            vr += a * dtau / 2
+
+    # Transform back to physical coordinates
+    r = r_**2
+
+    return r, Lx / r, Ly / r, vr
+
+
+@njit
+def particle_normal_step(
     r: float,
     vx: float,
     vy: float,
@@ -142,8 +257,8 @@ def particle_step(
 
     Parameters:
         r: The position of the particle.
-        vx: The first pernpendicular component (to the radial direction) of the velocity of the particle.
-        vy: The second pernpendicular component (to the radial direction) of the velocity of the particle.
+        vx: The first perpendicular component (to the radial direction) of the velocity of the particle.
+        vy: The second perpendicular component (to the radial direction) of the velocity of the particle.
         vr: The radial velocity of the particle.
         M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
         m: The mass of the particle.
@@ -174,6 +289,57 @@ def particle_step(
 
 
 @njit
+def particle_step(
+    r: float,
+    vx: float,
+    vy: float,
+    vr: float,
+    m: float,
+    M: float,
+    M_grid: NDArray[np.float64],
+    r_grid: NDArray[np.float64],
+    dt: float,
+    N: int = 1,
+    levi_civita_override_always: bool = False,
+    levi_civita_override_never: bool = False,
+    levi_civita_condition_coefficient: float = 1 / 20,
+) -> tuple[float, float, float, float]:
+    """Perform a simple leapfrog step in the radius (1D).
+
+    Handler function for performing either a normal or a Levi-Civita step.
+
+    Parameters:
+        r: The position of the particle.
+        vx: The first perpendicular component (to the radial direction) of the velocity of the particle.
+        vy: The second perpendicular component (to the radial direction) of the velocity of the particle.
+        vr: The radial velocity of the particle.
+        M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
+        m: The mass of the particle.
+        M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
+        r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
+        dt: The time step.
+        N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
+        levi_civita_override_always: If `True`, particle is always in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=infinity`.
+        levi_civita_override_never: If `True`, the particle is never in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=0`.
+        levi_civita_condition_coefficient: Threshold parameter for the Levi-Civita condition.
+
+    Returns:
+        The new position and velocity of the particle.
+    """
+    if levi_civita_criteria(
+        r=r,
+        vx=vx,
+        vy=vy,
+        M=M,
+        alpha=levi_civita_condition_coefficient,
+        override_always=levi_civita_override_always,
+        override_never=levi_civita_override_never,
+    ):
+        return particle_levi_civita_step(r=r, vx=vx, vy=vy, vr=vr, m=m, M=M, M_grid=M_grid, r_grid=r_grid, dt=dt, N=N)
+    return particle_normal_step(r=r, vx=vx, vy=vy, vr=vr, m=m, M=M, M_grid=M_grid, r_grid=r_grid, dt=dt, N=N)
+
+
+@njit
 def particle_adaptive_step(
     r: float,
     vx: float,
@@ -189,13 +355,16 @@ def particle_adaptive_step(
     vr_convergence_threshold: float = 1e-7,
     first_mini_round: int = 0,
     richardson_extrapolation: bool = True,
+    levi_civita_override_always: bool = False,
+    levi_civita_override_never: bool = False,
+    levi_civita_condition_coefficient: float = 1 / 20,
 ) -> tuple[float, float, float, float, bool]:
     """Perform an adaptive leapfrog step for a particle.
 
     Parameters:
         r: Particle position.
-        vx: The first pernpendicular component (to the radial direction) of the velocity of the particle.
-        vy: The second pernpendicular component (to the radial direction) of the velocity of the particle.
+        vx: The first perpendicular component (to the radial direction) of the velocity of the particle.
+        vy: The second perpendicular component (to the radial direction) of the velocity of the particle.
         vr: The radial velocity of the particle.
         m: The mass of the particle.
         M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
@@ -207,6 +376,9 @@ def particle_adaptive_step(
         vr_convergence_threshold: Convergence threshold for radial velocity.
         first_mini_round: The first mini-round to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
         richardson_extrapolation: Use Richardson extrapolation.
+        levi_civita_override_always: If `True`, particle is always in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=infinity`.
+        levi_civita_override_never: If `True`, the particle is never in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=0`.
+        levi_civita_condition_coefficient: Threshold parameter for the Levi-Civita condition.
 
     Returns:
         Updated position and velocity.
@@ -216,10 +388,34 @@ def particle_adaptive_step(
     r_fine, vx_fine, vy_fine, vr_fine = r_coarse, vx_coarse, vy_coarse, vr_coarse
     for mini_round in range(first_mini_round, first_mini_round + max_minirounds):
         r_coarse, vx_coarse, vy_coarse, vr_coarse = particle_step(
-            r=r, vx=vx, vy=vy, vr=vr, m=m, M=M, M_grid=M_grid, r_grid=r_grid, dt=dt, N=2**mini_round
+            r=r,
+            vx=vx,
+            vy=vy,
+            vr=vr,
+            m=m,
+            M=M,
+            M_grid=M_grid,
+            r_grid=r_grid,
+            dt=dt,
+            N=2**mini_round,
+            levi_civita_override_always=levi_civita_override_always,
+            levi_civita_override_never=levi_civita_override_never,
+            levi_civita_condition_coefficient=levi_civita_condition_coefficient,
         )
         r_fine, vx_fine, vy_fine, vr_fine = particle_step(
-            r=r, vx=vx, vy=vy, vr=vr, m=m, M=M, M_grid=M_grid, r_grid=r_grid, dt=dt, N=2**mini_round * 2
+            r=r,
+            vx=vx,
+            vy=vy,
+            vr=vr,
+            m=m,
+            M=M,
+            M_grid=M_grid,
+            r_grid=r_grid,
+            dt=dt,
+            N=2**mini_round * 2,
+            levi_civita_override_always=levi_civita_override_always,
+            levi_civita_override_never=levi_civita_override_never,
+            levi_civita_condition_coefficient=levi_civita_condition_coefficient,
         )
         r_relative_error = np.abs(r_fine - r_coarse) / r_fine
         vr_relative_error = np.abs(vr_fine - vr_coarse) / vr_fine
@@ -254,6 +450,9 @@ def fast_step(
     vr_convergence_threshold: float = 1e-7,
     first_mini_round: int = 0,
     richardson_extrapolation: bool = True,
+    levi_civita_override_always: bool = False,
+    levi_civita_override_never: bool = False,
+    levi_civita_condition_coefficient: float = 1 / 20,
     adaptive: bool = True,
     grid_window_radius: int = 2,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.bool_]]:
@@ -261,8 +460,8 @@ def fast_step(
 
     Parameters:
         r: Particle position.
-        vx: The first pernpendicular component (to the radial direction) of the velocity of the particle.
-        vy: The second pernpendicular component (to the radial direction) of the velocity of the particle.
+        vx: The first perpendicular component (to the radial direction) of the velocity of the particle.
+        vy: The second perpendicular component (to the radial direction) of the velocity of the particle.
         vr: The radial velocity of the particle.
         m: The mass of the particle.
         M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
@@ -272,6 +471,9 @@ def fast_step(
         vr_convergence_threshold: Convergence threshold for radial velocity.
         first_mini_round: The first mini-round to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
         richardson_extrapolation: Use Richardson extrapolation.
+        levi_civita_override_always: If `True`, particle is always in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=infinity`.
+        levi_civita_override_never: If `True`, the particle is never in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=0`.
+        levi_civita_condition_coefficient: Threshold parameter for the Levi-Civita condition.
         adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If `False` performs a single mini-round at `first_mini_round`.
         grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (`M(<=r)`) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (`M(<=r)`) during the step (use the value pre-step for all acceleration calculations).
 
@@ -299,6 +501,9 @@ def fast_step(
                 r_grid=r_grid,
                 dt=dt,
                 N=2**first_mini_round,
+                levi_civita_override_always=levi_civita_override_always,
+                levi_civita_override_never=levi_civita_override_never,
+                levi_civita_condition_coefficient=levi_civita_condition_coefficient,
             )
         else:
             r_result, vx_result, vy_result, vr_result, output_converged[particle] = particle_adaptive_step(
@@ -316,6 +521,9 @@ def fast_step(
                 vr_convergence_threshold=vr_convergence_threshold,
                 first_mini_round=first_mini_round,
                 richardson_extrapolation=richardson_extrapolation,
+                levi_civita_override_always=levi_civita_override_always,
+                levi_civita_override_never=levi_civita_override_never,
+                levi_civita_condition_coefficient=levi_civita_condition_coefficient,
             )
         output_r[particle] = r_result
         output_vx[particle] = vx_result
@@ -337,6 +545,8 @@ def step(
     vr_convergence_threshold: float = default_params['vr_convergence_threshold'],
     first_mini_round: int = default_params['first_mini_round'],
     richardson_extrapolation: bool = default_params['richardson_extrapolation'],
+    levi_civita_mode: Literal['always', 'never', 'adaptive'] = default_params['levi_civita_mode'],
+    levi_civita_condition_coefficient: float = default_params['levi_civita_condition_coefficient'],
     adaptive: bool = default_params['adaptive'],
     grid_window_radius: int = default_params['grid_window_radius'],
     raise_warning: bool = default_params['raise_warning'],
@@ -347,8 +557,8 @@ def step(
 
     Parameters:
         r: Particles position.
-        vx: The first pernpendicular component (to the radial direction) of the velocity of the particles.
-        vy: The second pernpendicular component (to the radial direction) of the velocity of the particles.
+        vx: The first perpendicular component (to the radial direction) of the velocity of the particles.
+        vy: The second perpendicular component (to the radial direction) of the velocity of the particles.
         vr: The radial velocity of the particles.
         m: The mass of the particles.
         M: The mass cdf (`M(<=r)`) of the particles at the start of the step. Used only if `M_grid` is empty.
@@ -358,6 +568,8 @@ def step(
         vr_convergence_threshold: Convergence threshold for radial velocity.
         first_mini_round: The first mini-round to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
         richardson_extrapolation: Use Richardson extrapolation.
+        levi_civita_mode: Operation mode for controlling when to use Levi-Civita regularization and when to use a normal leapfrog step.
+        alpha: Threshold parameter for the Levi-Civita condition.
         adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If `False` performs a single mini-round at `first_mini_round`.
         grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (`M(<=r)`) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (`M(<=r)`) during the step (use the value pre-step for all acceleration calculations).
         raise_warning: Raise a warning if a particle fails to converge.
@@ -378,6 +590,9 @@ def step(
         vr_convergence_threshold=vr_convergence_threshold,
         first_mini_round=first_mini_round,
         richardson_extrapolation=richardson_extrapolation,
+        levi_civita_override_always=levi_civita_mode == 'always',
+        levi_civita_override_never=levi_civita_mode == 'never',
+        levi_civita_condition_coefficient=levi_civita_condition_coefficient,
         adaptive=adaptive,
         grid_window_radius=grid_window_radius,
     )
