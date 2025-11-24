@@ -48,7 +48,10 @@ def normalize_params(params: Params | None, add_defaults: bool = False) -> Param
 
 @njit
 def scatter_pair_kinematics(
-    v0: NDArray[np.float64], v1: NDArray[np.float64]
+    v0: NDArray[np.float64],
+    v1: NDArray[np.float64],
+    cos_theta: float,
+    phi: float,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Calculate the new velocities of two particles after a scattering event.
 
@@ -57,6 +60,8 @@ def scatter_pair_kinematics(
     Parameters:
         v0: Velocity of the first particle. Array of shape `(3,)` representing the velocity in 3D space as `(vx,vy,vr)`.
         v1: Velocity of the second particle. Array of shape `(3,)` representing the velocity in 3D space as `(vx,vy,vr)`.
+        cos_theta: Prerolled cosine of the scattering angle in the center-of-mass frame. Should be rolled uniformly between -1 and 1.
+        phi: Prerolled azimuthal angle in the center-of-mass frame. Should be rolled uniformly between 0 and 2*pi.
 
     Returns:
         Tuple of new velocities for the two particles (two arrays of shape `(3,)`).
@@ -71,9 +76,9 @@ def scatter_pair_kinematics(
         return v0, v1
 
     # Generate random scattering angles (isotropic)
-    cos_theta = np.random.rand() * 2 - 1
+    # cos_theta = np.random.rand() * 2 - 1 #Prerolled to avoid random rolls in a numba function
     sin_theta = np.sqrt(1 - cos_theta**2)
-    phi = np.random.rand() * 2 * np.pi
+    # phi = np.random.rand() * 2 * np.pi #Prerolled to avoid random rolls in a numba function
     cos_phi = np.cos(phi)
     sin_phi = np.sin(phi)
 
@@ -201,11 +206,16 @@ def pick_scatter_partner(v_rel: NDArray[np.float64], scatter_mask: NDArray[np.bo
 
 
 @njit(parallel=True)
-def scatter_unique_pairs(v: NDArray[np.float64], pairs: NDArray[np.int64]) -> None:
+def scatter_unique_pairs(
+    v: NDArray[np.float64],
+    pairs: NDArray[np.int64],
+    cos_theta: NDArray[np.float64],
+    phi: NDArray[np.float64],
+) -> None:
     """Loop over all unique pairs found and calculate the new velocities inplace. pairs MUST be unique, otherwise numba will fail the race condition check."""
     for pair_index in prange(len(pairs)):
         i0, i1 = pairs[pair_index]
-        v[i0], v[i1] = scatter_pair_kinematics(v0=v[i0], v1=v[i1])
+        v[i0], v[i1] = scatter_pair_kinematics(v0=v[i0], v1=v[i1], cos_theta=cos_theta[pair_index], phi=phi[pair_index])
 
 
 def scatter_chance_shortcut(
@@ -222,8 +232,8 @@ def scatter_chance_shortcut(
 
     Parameters:
         r: Particles position.
-        vx: The first pernpendicular component (to the radial direction) of the velocity of the particles.
-        vy: The second pernpendicular component (to the radial direction) of the velocity of the particles.
+        vx: The first perpendicular component (to the radial direction) of the velocity of the particles.
+        vy: The second perpendicular component (to the radial direction) of the velocity of the particles.
         vr: The radial velocity of the particles.
         dt: Time step.
         m: The mass of the particles.
@@ -263,8 +273,8 @@ def scatter_underestimate_shortcut(
 
     Parameters:
         r: Particles position.
-        vx: The first pernpendicular component (to the radial direction) of the velocity of the particles.
-        vy: The second pernpendicular component (to the radial direction) of the velocity of the particles.
+        vx: The first perpendicular component (to the radial direction) of the velocity of the particles.
+        vy: The second perpendicular component (to the radial direction) of the velocity of the particles.
         vr: The radial velocity of the particles.
         dt: Time step.
         m: The mass of the particles.
@@ -311,8 +321,8 @@ def scatter(
 
     Parameters:
         r: Particles position.
-        vx: The first pernpendicular component (to the radial direction) of the velocity of the particles.
-        vy: The second pernpendicular component (to the radial direction) of the velocity of the particles.
+        vx: The first perpendicular component (to the radial direction) of the velocity of the particles.
+        vy: The second perpendicular component (to the radial direction) of the velocity of the particles.
         vr: The radial velocity of the particles.
         dt: Time step.
         m: The mass of the particles.
@@ -379,5 +389,10 @@ def scatter(
         )
         interacted_particles = pairs.ravel()
         interacted = np.hstack([interacted, interacted_particles])
-        scatter_unique_pairs(v=v_output, pairs=pairs)
+        scatter_unique_pairs(
+            v=v_output,
+            pairs=pairs,
+            cos_theta=np.random.rand(len(pairs)) * 2 - 1,
+            phi=np.random.rand(len(pairs)) * 2 * np.pi,
+        )
     return *v_output.T, interacted, max_scatter_rounds, underestimation
