@@ -7,6 +7,7 @@ from typing import Any, Self, Literal, cast
 from pathlib import Path
 from datetime import datetime
 from collections import deque
+from collections.abc import Mapping
 
 import numpy as np
 import scipy
@@ -21,7 +22,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from . import plot, utils, physics, run_units
+from . import rng, plot, utils, physics, run_units
 from .tqdm import tqdm
 from .types import ParticleType
 from .physics import sidm, leapfrog
@@ -67,6 +68,7 @@ class Halo:
         runtime_track_sidm: deque[float] | None = None,
         runtime_track_leapfrog: deque[float] | None = None,
         runtime_track_full_step: deque[float] | None = None,
+        seed: int | None = None,
     ) -> None:
         """Initialize a Halo object.
 
@@ -98,6 +100,7 @@ class Halo:
             scatters_to_collapse: Number of scatters required on average for every dark matter particle to reach core collapse. Only used for estimating core collapse time for the early stopping mechanism, has no effect on the physical calculation (which will reach core-collapse on its own independently).
             cleanup_nullish_particles: Whether to remove particles from the halo after each interaction if they are nullish.
             cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `Rmax`).
+            seed: The RNG seed.
 
         Returns:
             Halo object.
@@ -143,6 +146,8 @@ class Halo:
         self.runtime_track_sidm: deque[float] = utils.handle_default(runtime_track_sidm, deque())
         self.runtime_track_leapfrog: deque[float] = utils.handle_default(runtime_track_leapfrog, deque())
         self.runtime_track_full_step: deque[float] = utils.handle_default(runtime_track_full_step, deque())
+        self.seed = seed
+        rng.set_seed(self.seed)
 
     def __repr__(self):
         scatter_params = dict(deepcopy(self.scatter_params))
@@ -256,6 +261,7 @@ class Halo:
         self.runtime_track_sidm = deque()
         self.runtime_track_leapfrog = deque()
         self.runtime_track_full_step = deque()
+        rng.set_seed(self.seed)
 
     @property
     def particles(self) -> table.QTable:
@@ -468,6 +474,11 @@ class Halo:
         """Return the unit mass of the given distribution."""
         return distribution.Mtot / self.n_particles[distribution.particle_type]
 
+    @property
+    def current_seed_state(self) -> Mapping[str, Any]:
+        """Get the current state of the random number generator."""
+        return rng.get_state()
+
     #####################
     ##Dynamic evolution
     #####################
@@ -646,6 +657,8 @@ class Halo:
             'runtime_track_sidm',
             'runtime_track_leapfrog',
             'runtime_track_full_step',
+            'seed',
+            'current_seed_state',
         ]
 
     @staticmethod
@@ -742,6 +755,10 @@ class Halo:
             tables[name] = cls.load_table(path / f'{name}.fits')
         particles = tables['particles']
         particles.sort('particle_index')
+        if 'current_seed_state' in payload:
+            current_seed_state = payload.pop('current_seed_state')
+        else:
+            current_seed_state = None
         output = cls(
             r=particles['r'],
             v=cast(Quantity, np.vstack([particles['vx'], particles['vy'], particles['vr']]).T),
@@ -750,6 +767,8 @@ class Halo:
             **payload,
             snapshots=tables['snapshots'],
         )
+        if current_seed_state is not None:
+            rng.set_state(current_seed_state)
         output.initial_particles = tables['initial_particles']
         if update_save_path:
             output.save_path = path.resolve()

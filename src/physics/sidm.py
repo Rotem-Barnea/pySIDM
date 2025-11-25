@@ -6,7 +6,7 @@ from numba import njit, prange
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
-from .. import utils, physics, run_units
+from .. import rng, utils, physics, run_units
 
 
 class Params(TypedDict, total=False):
@@ -380,9 +380,9 @@ def scatter(
                 sigma=_sigma,
                 density_term=local_density[mask],
             )
-        rolls = np.random.random(len(v_output))
+        rolls = rng.generator.random(len(v_output))
         events = scatter_chance >= rolls  # TODO - slice with mask
-        pair_rolls = np.random.random(len(v_output))  # Have to generate again to avoid biasing the distribution
+        pair_rolls = rng.generator.random(len(v_output))  # Have to generate again to avoid biasing the distribution
         pairs = utils.clean_pairs(
             pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=pair_rolls),
             shuffle=True,
@@ -392,7 +392,7 @@ def scatter(
         scatter_unique_pairs(
             v=v_output,
             pairs=pairs,
-            cos_theta=np.random.rand(len(pairs)) * 2 - 1,
-            phi=np.random.rand(len(pairs)) * 2 * np.pi,
+            cos_theta=rng.generator.random(len(pairs)) * 2 - 1,
+            phi=rng.generator.random(len(pairs)) * 2 * np.pi,
         )
     return *v_output.T, interacted, max_scatter_rounds, underestimation

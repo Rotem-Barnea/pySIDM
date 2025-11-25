@@ -8,6 +8,7 @@ from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 from astropy.units.typing import UnitLike
 
+from . import rng
 from .types import FloatOrArray
 
 
@@ -21,7 +22,7 @@ def random_angle(like: NDArray[np.float64], acos: bool) -> NDArray[np.float64]:
     Returns:
         Array of random angles.
     """
-    rolls = np.random.rand(len(like)) if len(like.shape) == 1 else np.random.rand(*like.shape)
+    rolls = rng.generator.random(len(like)) if len(like.shape) == 1 else rng.generator.random(*like.shape)
     if acos:
         return np.acos(rolls * 2 - 1)
     return rolls * 2 * np.pi
@@ -82,7 +83,7 @@ def clean_pairs(
         The cleaned array of pairs, of shape (n_cleaned_pairs, 2).
     """
     if shuffle:
-        np.random.shuffle(pairs)
+        rng.generator.shuffle(pairs)
     _, indices = np.unique(pairs.ravel(), return_index=True)
     first_occurrence = np.zeros(2 * len(pairs), dtype=np.bool_)
     first_occurrence[indices] = True

@@ -11,7 +11,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from .. import plot, utils, run_units
+from .. import rng, plot, utils, run_units
 from ..types import FloatOrArray, ParticleType
 
 
@@ -476,7 +476,7 @@ class Distribution:
 
     def roll_r(self, n_particles: int | float) -> Quantity['length']:
         """Sample particle positions from the distribution quantile function."""
-        rolls = np.random.rand(int(n_particles))
+        rolls = rng.generator.random(int(n_particles))
         return self.quantile_function(rolls)
 
     @staticmethod
@@ -495,7 +495,7 @@ class Distribution:
                 pdf[i] = v**2 * utils.linear_interpolation(E_grid, f_grid, Psi[particle] - v**2 / 2)
             pdf /= pdf.sum()
             cdf = np.cumsum(pdf)
-            p = np.random.rand()
+            p = rng.generator.random()
             i = np.searchsorted(cdf, p) - 1
             if i < 0:
                 i = 0
@@ -536,7 +536,7 @@ class Distribution:
 
     def roll_initial_angle(self, n_particles: int) -> NDArray[np.float64]:
         """Sample initial angle off the radial direction from a uniform cosine distribution."""
-        theta = np.acos(np.random.rand(n_particles) * 2 - 1)
+        theta = np.arccos(rng.generator.uniform(-1, 1, size=n_particles))
         return theta
 
     def roll_joint_phase_space(
@@ -556,7 +556,7 @@ class Distribution:
         """Sample particles from the joint phase space distribution:
             - The distribution function `f` is transformed into a joint pdf proportional to `r^2*v^2*f(r, v)`.
             - The joint pdf is discretized on a grid of radius and velocity bins. If not provided directly (`radius_range`, `velocity_range`), a linear grid is constructed based on the rest of the parameters.
-            - The discretized distribution is flattened and sampled from using `np.random.choice` with probability weights set by the bin value.
+            - The discretized distribution is flattened and sampled from using `rng.generator.choice` with probability weights set by the bin value.
             - The sampled radius and velocity are perturbed by a uniform noise term to provide sub-pixel results.
             - Angles for the velocity split are sampled by `utils.split_3d()`.
 
@@ -594,14 +594,14 @@ class Distribution:
         if (grid < 0).any():
             raise ValueError(f'Negative probability density encountered, {self}')
         indices = np.unravel_index(
-            np.random.choice(a=flat_grid.size, size=int(n_particles), p=flat_grid),
+            rng.generator.choice(a=flat_grid.size, size=int(n_particles), p=flat_grid),
             grid.shape,
         )
         radius, velocity = r_grid[indices], v_grid[indices]
         radius_noise_factor = (radius_noise * radius).clip(max=radius_range.diff()[0])
         velocity_noise_factor = (velocity_noise * velocity).clip(max=velocity_range.diff()[0])
-        radius += np.random.uniform(-1, 1, size=radius.shape) * radius_noise_factor
-        velocity += np.random.uniform(-1, 1, size=velocity.shape) * velocity_noise_factor
+        radius += rng.generator.uniform(-1, 1, size=radius.shape) * radius_noise_factor
+        velocity += rng.generator.uniform(-1, 1, size=velocity.shape) * velocity_noise_factor
 
         return cast(Quantity, np.abs(radius)), cast(Quantity, np.vstack(utils.split_3d(np.abs(velocity))).T)
 
