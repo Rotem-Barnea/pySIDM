@@ -195,8 +195,8 @@ class Halo:
         Distribution.merge_distribution_grids(distributions)
         for distribution, n in zip(distributions, n_particles):
             r_sub, v_sub = distribution.roll_joint_phase_space(n)
-            # r_sub = distribution.roll_r(int(n)).to(run_units.length)
-            # v_sub = distribution.roll_v_3d(r_sub).to(run_units.velocity)
+            # r_sub = distribution.roll_r(int(n)).to(run_units.length) #TODO - delete deprecated
+            # v_sub = distribution.roll_v_3d(r_sub).to(run_units.velocity) #TODO - delete deprecated
             r += [r_sub]
             v += [v_sub]
             particle_type += [[distribution.particle_type] * int(n)]
@@ -243,6 +243,7 @@ class Halo:
     def reset(self) -> None:
         """Resets the halo to its initial state (no interactions, `time`=0, cleared snapshots, particles at initial positions)."""
         self.time = 0 * run_units.time
+        self.steps = 0
         self.last_saved_time = 0 * run_units.time
         self._particles = self._initial_particles.copy()
         self.scatter_rounds = deque()
@@ -262,8 +263,8 @@ class Halo:
 
         Has the following columns:
             r: Radius.
-            vx: The first pernpendicular component (to the radial direction) of the velocity.
-            vy: The second pernpendicular component (to the radial direction) of the velocity.
+            vx: The first perpendicular component (to the radial direction) of the velocity.
+            vy: The second perpendicular component (to the radial direction) of the velocity.
             vr: The radial velocity.
             vp: Tangential velocity (`np.sqrt(vx**2 + vy**2)`).
             m: Mass.
@@ -352,12 +353,12 @@ class Halo:
 
     @property
     def vx(self) -> Quantity['velocity']:
-        """The first pernpendicular component (to the radial direction) of the particle velocity."""
+        """The first perpendicular component (to the radial direction) of the particle velocity."""
         return Quantity(self._particles['vx'], run_units.velocity)
 
     @property
     def vy(self) -> Quantity['velocity']:
-        """The second pernpendicular component (to the radial direction) of the particle velocity."""
+        """The second perpendicular component (to the radial direction) of the particle velocity."""
         return Quantity(self._particles['vy'], run_units.velocity)
 
     @property
@@ -712,8 +713,9 @@ class Halo:
             file.rename(file.with_stem(file.stem[:-1]))
         if split_snapshots:
             (path / 'split_snapshots').mkdir(exist_ok=True)
-            for i, group in enumerate(self.snapshots.group_by('time').groups):
-                self.save_table(group, path / f'split_snapshots/snapshot_{i}.fits', overwrite=True)
+            if len(self.snapshots) > 0:
+                for i, group in enumerate(self.snapshots.group_by('time').groups):
+                    self.save_table(group, path / f'split_snapshots/snapshot_{i}.fits', overwrite=True)
 
     @classmethod
     def load(cls, path: str | Path = Path('halo_state'), update_save_path: bool = True) -> Self:
@@ -725,12 +727,16 @@ class Halo:
         tables = {}
 
         if (path / 'split_snapshots').exists():
-            tables['snapshots'] = cast(
-                table.QTable,
-                table.vstack([cls.load_table(file) for file in (path / 'split_snapshots').glob('*.fits')]),
-            )
-        else:
+            table_list = [cls.load_table(file) for file in (path / 'split_snapshots').glob('*.fits')]
+            if len(table_list) > 0:
+                tables['snapshots'] = cast(
+                    table.QTable,
+                    table.vstack([cls.load_table(file) for file in (path / 'split_snapshots').glob('*.fits')]),
+                )
+        elif (path / 'snapshots.fits').exists():
             tables['snapshots'] = cls.load_table(path / 'snapshots.fits')
+        else:
+            tables['snapshots'] = None
 
         for name in ['particles', 'initial_particles']:
             tables[name] = cls.load_table(path / f'{name}.fits')
@@ -748,6 +754,20 @@ class Halo:
         if update_save_path:
             output.save_path = path.resolve()
         return output
+
+    def rename(self, full_path: str | Path | None = None, stem: str | None = None) -> None:
+        """Renames the halo save path (and existing output folder if it exists)."""
+        assert full_path is None or stem is None, 'Only one of full_path or stem can be specified'
+        if full_path is not None:
+            save_path = Path(full_path)
+        elif stem is not None:
+            assert self.save_path is not None, 'save_path must be specified to use this option'
+            save_path = Path(self.save_path).with_stem(stem)
+        else:
+            raise ValueError('Either full_path or stem must be specified')
+        if self.save_path is not None and Path(self.save_path).exists():
+            Path(self.save_path).rename(save_path)
+        self.save_path = save_path
 
     #####################
     ##Plots
