@@ -482,7 +482,11 @@ class Distribution:
     @staticmethod
     @njit(parallel=True)
     def roll_v_fast(
-        Psi: NDArray[np.float64], E_grid: NDArray[np.float64], f_grid: NDArray[np.float64], num: int = 100000
+        Psi: NDArray[np.float64],
+        E_grid: NDArray[np.float64],
+        f_grid: NDArray[np.float64],
+        rolls: NDArray[np.float64],
+        num: int = 100000,
     ) -> NDArray[np.float64]:
         """Sample particle velocity from the distribution function. Internal njit accelerated function. Prioritize using `roll_v()`."""
         output = np.empty_like(Psi)
@@ -495,8 +499,7 @@ class Distribution:
                 pdf[i] = v**2 * utils.linear_interpolation(E_grid, f_grid, Psi[particle] - v**2 / 2)
             pdf /= pdf.sum()
             cdf = np.cumsum(pdf)
-            p = rng.generator.random()
-            i = np.searchsorted(cdf, p) - 1
+            i = np.searchsorted(cdf, rolls[particle]) - 1
             if i < 0:
                 i = 0
             elif i >= len(cdf) - 1:
@@ -521,6 +524,7 @@ class Distribution:
                 Psi=self.Psi_interpolate(r).to(run_units.specific_energy),
                 E_grid=self.E_grid,
                 f_grid=self.f_grid,
+                rolls=rng.generator.random(len(r)),
                 num=num,
             ),
             run_units.velocity,
@@ -553,9 +557,11 @@ class Distribution:
         radius_noise: float = 0.1,
         velocity_noise: float = 0.1,
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
-        """Sample particles from the joint phase space distribution:
-            - The distribution function `f` is transformed into a joint pdf proportional to `r^2*v^2*f(r, v)`.
-            - The joint pdf is discretized on a grid of radius and velocity bins. If not provided directly (`radius_range`, `velocity_range`), a linear grid is constructed based on the rest of the parameters.
+        """NOT READY YET!
+
+        Sample particles from the joint phase space distribution:
+            - The distribution function `f` is transformed into a joint pdf proportional to `r^2*v^2*f(r,v)*drdv`.
+            - The joint pdf is discretized on a grid of radius and velocity bins. If not provided directly (`radius_range`, `velocity_range`), a linear grid is constructed based on the rest of the parameters. The final row and column is dropped to facilitate the calculation of the `drdv` term.
             - The discretized distribution is flattened and sampled from using `rng.generator.choice` with probability weights set by the bin value.
             - The sampled radius and velocity are perturbed by a uniform noise term to provide sub-pixel results.
             - Angles for the velocity split are sampled by `utils.split_3d()`.
@@ -587,8 +593,10 @@ class Distribution:
         if velocity_range is None:
             velocity_range = Quantity(np.linspace(velocity_min_value, velocity_max_value, int(velocity_resolution)))
 
-        r_grid, v_grid = cast(tuple[Quantity, Quantity], np.meshgrid(radius_range, velocity_range))
-        grid = np.array(16 * np.pi * r_grid**2 * v_grid**2 * self.f(self.E(r_grid, v_grid)))
+        r_grid, v_grid = cast(tuple[Quantity, Quantity], np.meshgrid(radius_range[:-1], velocity_range[:-1]))
+
+        drdv = np.prod(np.meshgrid(radius_range.diff(), velocity_range.diff()), axis=0)
+        grid = np.array(16 * np.pi * r_grid**2 * v_grid**2 * self.f(self.E(r_grid, v_grid)) * drdv)
         grid /= grid.sum()
         flat_grid = grid.ravel()
         if (grid < 0).any():
@@ -597,11 +605,15 @@ class Distribution:
             rng.generator.choice(a=flat_grid.size, size=int(n_particles), p=flat_grid),
             grid.shape,
         )
-        radius, velocity = r_grid[indices], v_grid[indices]
-        radius_noise_factor = (radius_noise * radius).clip(max=radius_range.diff()[0])
-        velocity_noise_factor = (velocity_noise * velocity).clip(max=velocity_range.diff()[0])
-        radius += rng.generator.uniform(-1, 1, size=radius.shape) * radius_noise_factor
-        velocity += rng.generator.uniform(-1, 1, size=velocity.shape) * velocity_noise_factor
+
+        jittered_indices = indices + np.array(
+            [rng.generator.uniform(0, f, size=int(n_particles)) for f in [radius_noise, velocity_noise]]
+        )
+
+        radius, velocity = tuple(
+            Quantity(scipy.ndimage.map_coordinates(grid, jittered_indices, order=1, mode='nearest'), grid.unit)
+            for grid in [r_grid, v_grid]
+        )
 
         return cast(Quantity, np.abs(radius)), cast(Quantity, np.vstack(utils.split_3d(np.abs(velocity))).T)
 
