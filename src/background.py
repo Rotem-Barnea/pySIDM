@@ -13,7 +13,9 @@ from .spatial_approximation import Lattice
 class Mass_Distribution:
     """Background mass distribution"""
 
-    def __init__(self, lattice: Lattice, M: Quantity['mass'], time: Quantity['time'], load_kwargs: dict[str, Any] = {}) -> None:
+    def __init__(
+        self, lattice: Lattice, M: Quantity['mass'], time: Quantity['time'], load_kwargs: dict[str, Any] = {}
+    ) -> None:
         """Initialize a background mass distribution object, tracking a changing mass distribution external to the halo.
 
         Parameters:
@@ -31,7 +33,9 @@ class Mass_Distribution:
         self.load_kwargs = load_kwargs
 
     @classmethod
-    def from_files(cls, Mtot: Quantity['mass'], files: pd.DataFrame | None = None, **kwargs: Unpack[nsphere.File_params]) -> Self:
+    def from_files(
+        cls, Mtot: Quantity['mass'], files: pd.DataFrame | None = None, **kwargs: Unpack[nsphere.File_params]
+    ) -> Self:
         """Initialize a background mass distribution object from input files, i.e. `NSphere` output.
 
         Parameters:
@@ -44,7 +48,12 @@ class Mass_Distribution:
         """
         if files is None:
             files = nsphere.gather_files(**kwargs)
-        data = np.vstack([nsphere.load_file(path, dtype)['R'] for path, dtype in tqdm(files[['path', 'record_dtype']].to_numpy(), desc='Load files')])
+        data = np.vstack(
+            [
+                nsphere.load_file(path, dtype)['R']
+                for path, dtype in tqdm(files[['path', 'record_dtype']].to_numpy(), desc='Load files')
+            ]
+        )
         lattice = Lattice(n_posts=10000, start=data.ravel().min() * 0.9, end=data.ravel().max() * 1.1, log=True)
         M = np.vstack([lattice.values_on_lattice_point_cumsum(lattice(d)) for d in data]) * Mtot / data.shape[1]
         time = Quantity(files.time.tolist())
@@ -71,4 +80,6 @@ class Mass_Distribution:
 
     def M_at_time(self, r: Quantity['length'], time: Quantity['time']) -> Quantity['mass']:
         """Calculate the mass at a given radius and time. Achieved by finding the nearest grid point and using linear interpolation in the time dimension (see `self.at_time()`)."""
-        return cast(Quantity, self.at_time(time)[self.lattice(r.value).clip(min=0, max=len(self.lattice) - 1).astype(np.int64)])
+        return cast(
+            Quantity, self.at_time(time)[self.lattice(r.value).clip(min=0, max=len(self.lattice) - 1).astype(np.int64)]
+        )

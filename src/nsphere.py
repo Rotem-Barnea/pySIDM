@@ -91,7 +91,9 @@ def load_all_files(files: pd.DataFrame | None = None, **kwargs: Unpack[File_para
     if files is None:
         files = gather_files(**kwargs)
     data: list[pd.DataFrame] = []
-    for path, dtype, time, save_step in tqdm(files[['path', 'record_dtype', 'time', 'save_step']].to_numpy(), desc='Load files'):
+    for path, dtype, time, save_step in tqdm(
+        files[['path', 'record_dtype', 'time', 'save_step']].to_numpy(), desc='Load files'
+    ):
         sub = pd.DataFrame(load_file(path, dtype))
         sub['time'] = time
         sub['save_step'] = save_step

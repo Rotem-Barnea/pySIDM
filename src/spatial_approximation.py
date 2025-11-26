@@ -38,10 +38,20 @@ class Lattice:
 
     @classmethod
     def from_distribution(
-        cls, distribution: Distribution, start: float = 1e-4, overide_start: bool = True, n_posts: int | float = int(1e4), **kwargs: Any
+        cls,
+        distribution: Distribution,
+        start: float = 1e-4,
+        overide_start: bool = True,
+        n_posts: int | float = int(1e4),
+        **kwargs: Any,
     ) -> Self:
         """Construct a lattice to match the extent of a density object."""
-        return cls(start=distribution.Rmin.value if overide_start else start, end=distribution.Rmax.value, n_posts=n_posts, **kwargs)
+        return cls(
+            start=distribution.Rmin.value if overide_start else start,
+            end=distribution.Rmax.value,
+            n_posts=n_posts,
+            **kwargs,
+        )
 
     def __len__(self) -> int:
         """Return the number of posts in the lattice."""
@@ -82,7 +92,12 @@ class Lattice:
     @staticmethod
     @njit(parallel=True)
     def fast_augment_to_lattice(
-        x: NDArray[np.float64], start_lattice: float, log: bool, clip: bool = False, min_lattice: float = 0, max_lattice: int = 100000
+        x: NDArray[np.float64],
+        start_lattice: float,
+        log: bool,
+        clip: bool = False,
+        min_lattice: float = 0,
+        max_lattice: int = 100000,
     ) -> NDArray[np.float64]:
         """Transform the given array from spatial coordinates to lattice coordinates. njit accelerated."""
         output = np.empty_like(x)
