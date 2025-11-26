@@ -365,6 +365,7 @@ def plot_2d(
         ylabel=utils.add_label_unit(ylabel, y_units),
         **setup_kwargs,
     )
+    grid = grid.copy()
     if cbar_units != '':
         grid = grid.to(cbar_units)
     cbar_units = Unit(str(grid.unit))
