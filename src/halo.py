@@ -29,6 +29,8 @@ from .physics import sidm, leapfrog
 from .background import Mass_Distribution
 from .distribution.distribution import Distribution
 
+no_sigma = Quantity(0, run_units.cross_section)
+
 
 class Halo:
     """Halo class for SIDM simulations"""
@@ -59,6 +61,7 @@ class Halo:
         hard_save: bool = False,
         save_path: Path | str | None = None,
         Rmax: Quantity['length'] = Quantity(300, 'kpc'),
+        bootstrap_steps: int = 100,
         scatters_to_collapse: int = 340,
         cleanup_nullish_particles: bool = False,
         cleanup_particles_by_radius: bool = False,
@@ -97,6 +100,7 @@ class Halo:
             hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
             save_path: Path to save the halo to memory.
             Rmax: Maximum radius of the halo, particles outside of this radius get killed off. If `None` ignores.
+            bootstrap_steps: Number of bootstrap rounds to perform before scattering begins. Time only begins counting after the bootstrap steps.
             scatters_to_collapse: Number of scatters required on average for every dark matter particle to reach core collapse. Only used for estimating core collapse time for the early stopping mechanism, has no effect on the physical calculation (which will reach core-collapse on its own independently).
             cleanup_nullish_particles: Whether to remove particles from the halo after each interaction if they are nullish.
             cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `Rmax`).
@@ -137,6 +141,7 @@ class Halo:
         self.hard_save: bool = hard_save
         self.save_path: Path | str | None = Path(save_path) if isinstance(save_path, str) else save_path
         self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
+        self.bootstrap_steps = bootstrap_steps
         self.scatters_to_collapse: int = scatters_to_collapse
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
@@ -199,9 +204,9 @@ class Halo:
         r, v, particle_type, m = [], [], [], []
         Distribution.merge_distribution_grids(distributions)
         for distribution, n in zip(distributions, n_particles):
-            r_sub, v_sub = distribution.roll_joint_phase_space(n)
-            # r_sub = distribution.roll_r(int(n)).to(run_units.length) #TODO - delete deprecated
-            # v_sub = distribution.roll_v_3d(r_sub).to(run_units.velocity) #TODO - delete deprecated
+            # r_sub = distribution.roll_r(int(n)).to(run_units.length)
+            # v_sub = distribution.roll_v_3d(r_sub).to(run_units.velocity)
+            r_sub, v_sub = distribution.roll_joint_phase_space(n)  # TODO - finish
             r += [r_sub]
             v += [v_sub]
             particle_type += [[distribution.particle_type] * int(n)]
@@ -511,7 +516,7 @@ class Halo:
             return True
         return False
 
-    def step(self, save_kwargs: dict[str, Any] = {}) -> None:
+    def step(self, in_bootstrap: bool = False, save_kwargs: dict[str, Any] = {}) -> None:
         """Perform a single time step of the simulation.
 
         Every step:
@@ -533,9 +538,7 @@ class Halo:
         if self.is_save_round():
             self.save_snapshot(**save_kwargs)
         r, vx, vy, vr, m = self._particles[['r', 'vx', 'vy', 'vr', 'm']].values.T
-        if self.scatter_params.get('sigma', Quantity(0, run_units.cross_section)) > Quantity(
-            0, run_units.cross_section
-        ):
+        if self.scatter_params.get('sigma', no_sigma) > no_sigma and not in_bootstrap:
             t0 = time.perf_counter()
             mask = cast(NDArray[np.bool_], self._particles['interacting'].values)
             (
@@ -567,8 +570,9 @@ class Halo:
         self._particles['vr'] = vr
 
         self.runtime_track_leapfrog += [time.perf_counter() - t0]
-        self.time += self.dt
-        self.steps += 1
+        if not in_bootstrap:
+            self.time += self.dt
+            self.steps += 1
         self.runtime_track_full_step += [time.perf_counter() - t_start]
 
     def evolve(
@@ -604,8 +608,12 @@ class Halo:
                 n_steps = self.to_step(cast(Quantity, until_t - self.time))
             else:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
-        for _ in tqdm(range(n_steps), start_time=self.time, dt=self.dt, **tqdm_kwargs):
-            self.step(save_kwargs=save_kwargs)
+        if self.bootstrap_steps > 0 and self.steps == 0:
+            start_time = self.time - self.bootstrap_steps * self.dt
+        else:
+            start_time = self.time
+        for step in tqdm(range(n_steps), start_time=cast(Quantity, start_time), dt=self.dt, **tqdm_kwargs):
+            self.step(in_bootstrap=(step < self.bootstrap_steps and self.steps == 0), save_kwargs=save_kwargs)
             if (
                 np.sign(t_after_core_collapse) >= 0
                 and self.n_scatters.sum() > self.scatters_to_collapse * self.n_particles['dm']
@@ -1460,7 +1468,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             cbar_label: Label for the colorbar.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
             cmap: The colormap to use for the plot.
-            setup_kwargs: Additional keyword arguments to pass to `utils.setup_plot()`.
+            setup_kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
 
         Returns:
@@ -1500,6 +1508,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         radius_bins: Quantity = Quantity(np.linspace(1e-3, 1, 100), 'kpc'),
         time_range: Quantity | None = None,
         time_bin_size: Quantity | None = Quantity(100, 'Myr'),
+        normalize_by_n_particles: bool = False,
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
@@ -1520,6 +1529,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
             time_range: Range of times to consider (filters the data).
             time_bin_size: The size of the time bins.
+            normalize_by_n_particles: Whether to normalize the histogram by the number of particles in each bin.
             length_units: Units to use for the radius axis.
             time_units: Units to use for the time axis.
             xlabel: Label for the radius axis.
@@ -1531,7 +1541,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             cmap: The colormap to use for the plot.
             x_tick_format: Format string for the x-axis ticks.
             transparent_range: Range of values to turn transparent (i.e. plot as `NaN`). If `None` ignores.
-            setup_kwargs: Additional keyword arguments to pass to `utils.setup_plot()`.
+            setup_kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
 
         Returns:
@@ -1564,6 +1574,22 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_range=time_range,
             row_normalization=row_normalization,
         )
+
+        if normalize_by_n_particles:
+            location_data = self.get_particle_states(now=False).copy()
+            time_bins = np.unique(time_array)
+            location_data['time'] = time_bins[
+                np.searchsorted(time_bins, cast(NDArray[np.float64], location_data['time']))
+            ]
+
+            location_grid, _ = plot.aggregate_evolution_data(
+                data=location_data,
+                radius_bins=radius_bins,
+                time_range=time_range,
+            )
+
+            grid[location_grid == 0] = 0
+            grid[location_grid != 0] = grid[location_grid != 0] / location_grid[location_grid != 0]
 
         return plot.plot_2d(
             grid=grid,
@@ -1685,6 +1711,48 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             ax=ax,
             log=True,
         )
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
+        return fig, ax
+
+    def plot_scattering_distance(
+        self,
+        title: str | None = 'Interaction distance distribution',
+        xlabel: str | None = 'Interaction distance',
+        length_units: UnitLike = 'pc',
+        log_scale: bool = True,
+        stat: str = 'density',
+        fig: Figure | None = None,
+        ax: Axes | None = None,
+        setup_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the histogram of the distance between scattering particles during interaction.
+
+        Flattens all the events (ignores time), and tracks the location of the particles at each scattering event.
+
+        Parameters:
+            title: Title for the plot.
+            xlabel: Label for the x-axis.
+            length_units: Units to use for the radius axis.
+            log_scale: Whether to use a logarithmic scale for the histogram.
+            stat: Statistical function to use for the histogram, must be a valid input for `sns.histplot`.
+            fig: Figure to use for the plot.
+            ax: Axes to use for the plot.
+            setup_kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
+            kwargs: Additional keyword arguments passed to `sns.histplot`.
+
+        Returns:
+            fig, ax.
+
+        """
+        fig, ax = plot.setup_plot(
+            fig, ax, **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, length_units)), **setup_kwargs
+        )
+        radius = np.hstack(self.scatter_track_radius).reshape(-1, 2)
+        sns.histplot(radius.diff().ravel().to(length_units), log_scale=log_scale, stat=stat, ax=ax, **kwargs)
         if save_kwargs is not None:
             plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
@@ -2218,8 +2286,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         radius_bins: Quantity['length'] = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
         limit_radius_by_Rvir: bool = True,
         distributions: list[int] | None = None,
+        ax_set: dict[str, Any] = {'xscale': 'log', 'yscale': 'log'},
         fig: Figure | None = None,
         ax: Axes | None = None,
+        setup_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -2234,8 +2304,10 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             radius_bins: The radius bins for the density profile calculations.
             limit_radius_by_Rvir: Whether to limit the radius bins by the virial radius.
             distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions.
+            ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
             fig: The figure to plot on.
             ax: The axes to plot on.
+            setup_kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments are passed to every call to the plotting function.
 
@@ -2244,7 +2316,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """
         if data is None:
             data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
-        fig, ax = plot.setup_plot(fig=fig, ax=ax)
+        fig, ax = plot.setup_plot(fig=fig, ax=ax, ax_set=ax_set, **setup_kwargs)
         add_distribution_label = distributions is None or len(distributions) > 1
 
         for i, distribution in enumerate(self.distributions):
