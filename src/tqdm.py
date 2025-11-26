@@ -44,12 +44,14 @@ class tqdm(tqdm_base):
         for i, obj in enumerate(super().__iter__()):
             if self.time_mode:
                 current_time = cast(Quantity, i * self.dt + self.start_time)
-                self.set_description(f'Time: [{self.cleanup_time(current_time)}]/[{self.cleanup_time(self.total_time, add_units=True)}]')
+                self.set_description(
+                    f'Time: [{self.cleanup_time(current_time)}]/[{self.cleanup_time(self.total_time, add_units=True)}]'
+                )
             yield obj
 
     def cleanup_time(self, time: Quantity['time'], add_units: bool = False) -> str:
         """Cleanup the time string."""
-        value = format(time.value, self.time_format).rstrip('0').rstrip('.')
+        value = format(max(time.value, 0), self.time_format).rstrip('0').rstrip('.')
         if add_units:
             return f'{value} {time.unit}'
         return value
