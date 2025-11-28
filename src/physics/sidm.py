@@ -344,11 +344,21 @@ def scatter(
     v_output = np.vstack([_vx, _vy, _vr]).T
     _sigma = sigma.value
     local_density = cast(
-        NDArray[np.float64], physics.utils.local_density(_r, _m, max_radius_j, volume_kind='shell', mass_kind='single')
+        NDArray[np.float64],
+        physics.utils.local_density(
+            _r,
+            _m,
+            max_radius_j,
+            volume_kind='shell',
+            mass_kind='single',
+        ),
     )
     v_rel = np.zeros((len(v_output), max_radius_j), dtype=np.float64)
     update_v_rel(
-        v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=np.ones(len(v_output), dtype=np.bool_)
+        v_rel=v_rel,
+        v=v_output,
+        max_radius_j=max_radius_j,
+        whitelist_mask=np.ones(len(v_output), dtype=np.bool_),
     )
     scatter_chance = fast_scatter_chance(
         v_rel=v_rel,
@@ -357,7 +367,9 @@ def scatter(
         density_term=local_density,
     )
     scatter_rounds = fast_scatter_rounds(
-        scatter_chance=scatter_chance, kappa=kappa, max_allowed_rounds=max_allowed_rounds
+        scatter_chance=scatter_chance,
+        kappa=kappa,
+        max_allowed_rounds=max_allowed_rounds,
     )
     max_scatter_rounds = scatter_rounds.max()
     underestimation: int = (
@@ -369,10 +381,13 @@ def scatter(
     scatter_chance /= scatter_rounds
     interacted_particles = np.empty(0, dtype=np.int64)
     for round in range(1, max_scatter_rounds + 1):
-        mask = scatter_rounds >= round
+        relevant_particles = scatter_rounds >= round
+        scatter_chance[~relevant_particles] = 0
         if len(interacted_particles) > 0:
             # Only update the relative velocities and scattering chance for particles that scattered in the past round or in the neighborhood of scattering particles (i.e. only particles that would have a change in their v_rel values, otherwise the probability is the same and we don't need to recalculate it)
-            mask *= utils.expand_mask_back(utils.indices_to_mask(interacted_particles, len(v_output)), n=max_radius_j)
+            mask = relevant_particles * utils.expand_mask_back(
+                utils.indices_to_mask(interacted_particles, len(v_output)), n=max_radius_j
+            )
             update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=mask)
             scatter_chance[mask] = fast_scatter_chance(
                 v_rel=v_rel[mask],
@@ -380,9 +395,14 @@ def scatter(
                 sigma=_sigma,
                 density_term=local_density[mask],
             )
-        rolls = rng.generator.random(len(v_output))
-        events = scatter_chance >= rolls  # TODO - slice with mask
-        pair_rolls = rng.generator.random(len(v_output))  # Have to generate again to avoid biasing the distribution
+        # Only roll for particles that participate in the current round to save on overhead.
+        rolls = rng.generator.random(relevant_particles.sum())
+        # TODO - probably wasteful to recreate the False cells in `events` and the 0 cells in `pair_rolls` every-time.
+        events = np.zeros(len(v_output), dtype=np.bool_)  # False by default for particles that don't participate
+        events[relevant_particles] = scatter_chance[relevant_particles] >= rolls
+        pair_rolls = np.zeros(len(v_output), dtype=np.float64)
+        # Only roll for scattering events that actually took place this round
+        pair_rolls[events] = rng.generator.random(events.sum())
         pairs = utils.clean_pairs(
             pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=pair_rolls),
             shuffle=True,
