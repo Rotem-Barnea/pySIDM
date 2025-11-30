@@ -610,6 +610,7 @@ class Halo:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
         if self.bootstrap_steps > 0 and self.steps == 0:
             start_time = self.time - self.bootstrap_steps * self.dt
+            n_steps += self.bootstrap_steps
         else:
             start_time = self.time
         for step in tqdm(range(n_steps), start_time=cast(Quantity, start_time), dt=self.dt, **tqdm_kwargs):
