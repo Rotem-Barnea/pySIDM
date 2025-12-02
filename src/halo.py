@@ -47,6 +47,8 @@ class Halo:
         distributions: list[Distribution] | None = None,
         scatter_rounds: deque[int] | None = None,
         scatter_rounds_underestimated: deque[int] | None = None,
+        ministep_size: deque[Quantity['time']] | None = None,
+        scatter_track_time: deque[Quantity['time']] | None = None,
         scatter_track_index: deque[NDArray[np.int64]] | None = None,
         scatter_track_radius: deque[NDArray[np.float64]] | None = None,
         time: Quantity['time'] = 0 * run_units.time,
@@ -57,6 +59,7 @@ class Halo:
         save_every_n_steps: int | None = None,
         dynamics_params: leapfrog.Params | None = None,
         scatter_params: sidm.Params | None = None,
+        max_allowed_subdivisions: int = 1,
         snapshots: table.QTable | None = None,
         hard_save: bool = False,
         save_path: Path | str | None = None,
@@ -86,6 +89,8 @@ class Halo:
             n_interactions: Number of interactions the halo had.
             scatter_rounds: Number of scatter rounds the halo had every time step.
             scatter_rounds_underestimated: Number of underestimated scatter rounds the halo had every time step (due to `max_allowed_rounds` in `physics.sidm.scatter()`).
+            ministep_size: The size of the ministep used for each ministep (to track changes in them).
+            scatter_track_time: The time for each scatter track round, must match `scatter_track_index` and `scatter_track_radius` in shape.
             scatter_track_index: The interacting particles (particle index) at every time step.
             scatter_track_radius: The location of the interacting particles at every time step.
             time: Time of the halo.
@@ -96,6 +101,7 @@ class Halo:
             save_every_n_steps: How often should a snapshot be saved, in time-step units (integer).
             dynamics_params: Dynamics parameters of the halo, sent to the leapfrog integrator.
             scatter_params: Scatter parameters of the halo, used in the SIDM calculation.
+            max_allowed_subdivisions: Maximum number of subdivisions allowed in each step.
             snapshots: Snapshots of the halo.
             hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
             save_path: Path to save the halo to memory.
@@ -131,6 +137,9 @@ class Halo:
         )
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
         self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
+        self.max_allowed_subdivisions: int = max_allowed_subdivisions
+        self.ministep_size: deque[Quantity] = utils.handle_default(ministep_size, deque())
+        self.scatter_track_time: deque[Quantity] = utils.handle_default(scatter_track_time, deque())
         self.scatter_track_index: deque[NDArray[np.int64]] = utils.handle_default(scatter_track_index, deque())
         self.scatter_track_radius: deque[NDArray[np.float64]] = utils.handle_default(scatter_track_radius, deque())
         self._initial_particles = self._particles.copy()
@@ -484,6 +493,28 @@ class Halo:
         """Get the current state of the random number generator."""
         return rng.get_state()
 
+    @property
+    def scatter_track_time_raveled(self) -> Quantity['time']:
+        """Get a raveled array with the scatter time matching each particle in the hstack-ed `self.scatter_track_index`."""
+        return Quantity(
+            np.hstack(
+                [
+                    [t.to(run_units.time).value] * len(i)
+                    for i, t in zip(self.scatter_track_index, self.scatter_track_time)
+                ]
+            ),
+            run_units.time,
+        )
+
+    def scatter_track_time_raveled_binned(self, time_bin_size: Quantity | None):
+        """Get a raveled array with the scatter time matching each particle in the hstack-ed `self.scatter_track_index`, with the time binned to a fixed bin size."""
+        time_array = self.scatter_track_time_raveled
+        if time_bin_size is None:
+            return time_array
+        n_bins = int(time_array.max() / time_bin_size)
+        time_array = (time_array // time_bin_size) / n_bins * time_array.max()
+        return time_array
+
     #####################
     ##Dynamic evolution
     #####################
@@ -516,7 +547,12 @@ class Halo:
             return True
         return False
 
-    def step(self, in_bootstrap: bool = False, save_kwargs: dict[str, Any] = {}) -> None:
+    def step(
+        self,
+        in_bootstrap: bool = False,
+        subdivisions: int | None = None,
+        save_kwargs: dict[str, Any] = {},
+    ) -> None:
         """Perform a single time step of the simulation.
 
         Every step:
@@ -526,54 +562,83 @@ class Halo:
             - Perform scattering. This is done before the leapfrog integration since it doesn't modify the particle positions and thus doesn't require resorting.
             - Perform leapfrog integration.
             - Update simulation time.
-        """
-        self.runtime_realtime_track += [datetime.now().timestamp()]
-        t_start = time.perf_counter()
-        t0 = time.perf_counter()
-        self._particles.sort_values('r', inplace=True)
-        self.runtime_track_sort += [time.perf_counter() - t0]
-        t0 = time.perf_counter()
-        self.cleanup_particles()
-        self.runtime_track_cleanup += [time.perf_counter() - t0]
-        if self.is_save_round():
-            self.save_snapshot(**save_kwargs)
-        r, vx, vy, vr, m = self._particles[['r', 'vx', 'vy', 'vr', 'm']].values.T
-        if self.scatter_params.get('sigma', no_sigma) > no_sigma and not in_bootstrap:
-            t0 = time.perf_counter()
-            mask = cast(NDArray[np.bool_], self._particles['interacting'].values)
-            (
-                vx[mask],
-                vy[mask],
-                vr[mask],
-                indices,
-                scatter_rounds,
-                scatter_rounds_underestimated,
-            ) = sidm.scatter(
-                r=r[mask],
-                vx=vx[mask],
-                vy=vy[mask],
-                vr=vr[mask],
-                dt=self.dt,
-                m=m[mask],
-                **self.scatter_params,
-            )
-            self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
-            self.scatter_track_radius += [self.r[mask][indices]]
-            self.scatter_rounds += [scatter_rounds]
-            self.scatter_rounds_underestimated += [scatter_rounds_underestimated]
-            self.runtime_track_sidm += [time.perf_counter() - t0]
-        t0 = time.perf_counter()
-        r, vx, vy, vr = leapfrog.step(r=r, vx=vx, vy=vy, vr=vr, m=m, M=self.M, dt=self.dt, **self.dynamics_params)
-        self._particles['r'] = r
-        self._particles['vx'] = vx
-        self._particles['vy'] = vy
-        self._particles['vr'] = vr
 
-        self.runtime_track_leapfrog += [time.perf_counter() - t0]
-        if not in_bootstrap:
-            self.time += self.dt
-            self.steps += 1
-        self.runtime_track_full_step += [time.perf_counter() - t_start]
+        Parameters:
+            in_bootstrap: Whether the simulation is in bootstrap mode.
+            subdivisions: Number of time subdivisions within the step.
+            save_kwargs: Keyword arguments for saving the snapshot.
+        """
+
+        if in_bootstrap or self.scatter_params.get('sigma', no_sigma) == no_sigma:
+            subdivisions = 1
+        elif subdivisions is None:
+            subdivisions = sidm.fast_scatter_rounds(
+                scatter_chance=sidm.scatter_chance_shortcut(
+                    r=self._particles.r,
+                    vx=self._particles.vx,
+                    vy=self._particles.vy,
+                    vr=self._particles.vr,
+                    dt=self.dt,
+                    m=self._particles.m,
+                    sigma=self.scatter_params.get('sigma', no_sigma),
+                    max_radius_j=self.scatter_params.get('max_radius_j', 10),
+                ),
+                kappa=self.scatter_params.get('kappa', 1),
+                max_allowed_rounds=self.max_allowed_subdivisions,
+            ).max()
+            assert subdivisions is not None, 'Error in subdivision calculation'
+
+        for _ in range(subdivisions):
+            self.runtime_realtime_track += [datetime.now().timestamp()]
+            t_start = time.perf_counter()
+            t0 = time.perf_counter()
+            self._particles.sort_values('r', inplace=True)
+            self.runtime_track_sort += [time.perf_counter() - t0]
+            t0 = time.perf_counter()
+            self.cleanup_particles()
+            self.runtime_track_cleanup += [time.perf_counter() - t0]
+            if self.is_save_round():
+                self.save_snapshot(**save_kwargs)
+            r, vx, vy, vr, m = self._particles[['r', 'vx', 'vy', 'vr', 'm']].values.T
+            dt = self.dt / subdivisions
+            if not in_bootstrap and self.scatter_params.get('sigma', no_sigma) > no_sigma:
+                t0 = time.perf_counter()
+                mask = cast(NDArray[np.bool_], self._particles['interacting'].values)
+                (
+                    vx[mask],
+                    vy[mask],
+                    vr[mask],
+                    indices,
+                    scatter_rounds,
+                    scatter_rounds_underestimated,
+                ) = sidm.scatter(
+                    r=r[mask],
+                    vx=vx[mask],
+                    vy=vy[mask],
+                    vr=vr[mask],
+                    dt=dt,
+                    m=m[mask],
+                    **self.scatter_params,
+                )
+                self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
+                self.scatter_track_time += [self.time.copy()]
+                self.scatter_track_radius += [self.r[mask][indices]]
+                self.scatter_rounds += [scatter_rounds]
+                self.scatter_rounds_underestimated += [scatter_rounds_underestimated]
+                self.runtime_track_sidm += [time.perf_counter() - t0]
+            t0 = time.perf_counter()
+            r, vx, vy, vr = leapfrog.step(r=r, vx=vx, vy=vy, vr=vr, m=m, M=self.M, dt=dt, **self.dynamics_params)
+            self._particles['r'] = r
+            self._particles['vx'] = vx
+            self._particles['vy'] = vy
+            self._particles['vr'] = vr
+
+            self.runtime_track_leapfrog += [time.perf_counter() - t0]
+            if not in_bootstrap:
+                self.time += dt
+                self.ministep_size += [dt]
+                self.steps += 1
+            self.runtime_track_full_step += [time.perf_counter() - t_start]
 
     def evolve(
         self,
@@ -614,7 +679,11 @@ class Halo:
         else:
             start_time = self.time
         for step in tqdm(range(n_steps), start_time=cast(Quantity, start_time), dt=self.dt, **tqdm_kwargs):
-            self.step(in_bootstrap=(step < self.bootstrap_steps and self.steps == 0), save_kwargs=save_kwargs)
+            self.step(
+                in_bootstrap=(step < self.bootstrap_steps and self.steps == 0),
+                save_kwargs=save_kwargs,
+                subdivisions=None if self.max_allowed_subdivisions != 1 else 1,
+            )
             if (
                 np.sign(t_after_core_collapse) >= 0
                 and self.n_scatters.sum() > self.scatters_to_collapse * self.n_particles['dm']
@@ -648,6 +717,9 @@ class Halo:
             'save_every_time',
             'dynamics_params',
             'scatter_params',
+            'max_allowed_subdivisions',
+            'ministep_size',
+            'scatter_track_time',
             'scatter_track_index',
             'scatter_track_radius',
             'background',
@@ -1550,10 +1622,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """
         time_units = self.fill_time_unit(time_units)
 
-        time_array = np.hstack([[i] * len(x) for i, x in enumerate(self.scatter_track_radius)]) * self.dt.to(time_units)
-        if time_bin_size is not None:
-            n_bins = int(time_array.max() / time_bin_size)
-            time_array = (time_array // time_bin_size) / n_bins * time_array.max()
+        time_array = self.scatter_track_time_raveled_binned(time_bin_size)
 
         if cbar_label is not None:
             cbar_label = cbar_label.format(
@@ -1752,8 +1821,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         fig, ax = plot.setup_plot(
             fig, ax, **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, length_units)), **setup_kwargs
         )
-        radius = np.hstack(self.scatter_track_radius).reshape(-1, 2)
-        sns.histplot(radius.diff().ravel().to(length_units), log_scale=log_scale, stat=stat, ax=ax, **kwargs)
+        radius = np.diff(np.hstack(self.scatter_track_radius).reshape(-1, 2)).ravel().to(length_units)
+        sns.histplot(radius, log_scale=log_scale, stat=stat, ax=ax, **kwargs)
         if save_kwargs is not None:
             plot.save_plot(fig=fig, **save_kwargs)
         return fig, ax
@@ -2050,6 +2119,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
     def plot_cumulative_scattering_amount_over_time(
         self,
         time_unit: UnitLike = 'Gyr',
+        undersample: int | None = None,
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Cumulative number of scattering events',
         title: str | None = 'Cumulative number of scattering events',
@@ -2079,9 +2149,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             ax_set=ax_set,
             **kwargs,
         )
+        x = np.hstack(self.scatter_track_time).to(time_unit)
+        y = self.n_scatters.cumsum()
+        if undersample is not None:
+            x = x[::undersample]
+            y = y[::undersample]
         sns.lineplot(
-            x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit),
-            y=self.n_scatters.cumsum(),
+            x=x,
+            y=y,
             ax=ax,
             label=label,
         )
@@ -2574,3 +2649,112 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             ),
             **save_kwargs,
         )
+
+    def plot_mean_scattering_distance_over_time(
+        self,
+        bin_edges: Quantity['time'] = Quantity(np.linspace(0, 13.5, 20), 'Gyr'),
+        length_units: UnitLike = 'pc',
+        time_units: UnitLike = 'Gyr',
+        xlabel: str | None = 'Time',
+        ylabel: str | None = 'Interaction distance',
+        title: str | None = 'Mean interaction distance over time',
+        accuracy_factor: int = 3,
+        plot_guidelines: dict[str, Any] | None = {
+            'times': Quantity([[0, 1], [12.5, 13]], 'Gyr'),
+            'labels': ['core\nexpanding', 'core\ncollapse'],
+        },
+        texts: list[dict[str, Any]] | None = None,
+        vlines: list[dict[str, Any]] | None = None,
+        save_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the mean and median interaction distance over time.
+
+        Parameters:
+            bin_edges: The edges of the time bins.
+            length_units: Units to use for distance.
+            time_units: Units to use for time.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            title: The title of the plot.
+            accuracy_factor: The width of the plotted error range (in units of standard deviations),
+            plot_guidelines: A dictionary of guidelines for plotting. A dict with keys `times` and `labels`, where `times` is an array of time Quantities shaped (n_guidelines, 2), and `labels` is a list of strings of length n_guidelines that will be plotted at the center of each guideline tuple (row).
+            texts: Overwrites the autogenerated text bubbles from `plot_guidelines`. If provided must be a list of dictionaries valid for `ax.text()`.
+            vlines: Overwrites the autogenerated vertical lines from `plot_guidelines`. If provided must be a list of dictionaries valid for `ax.axvline()`.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
+            kwargs: Additional keyword arguments passed to `plot.setup_kwargs()`
+
+        Returns:
+            fig, ax.
+        """
+
+        time_array = np.hstack(self.scatter_track_time)
+        values = []
+        time_bins = []
+        for time_range in tqdm(list(zip(bin_edges[:-1], bin_edges[1:]))):
+            mask = (time_array >= time_range[0]) * (time_array <= time_range[1])
+            if not mask.any():
+                continue
+            start, end = np.arange(len(mask))[mask][[0, -1]]
+            values += [
+                np.diff(np.hstack(list(self.scatter_track_radius)[start:end]).reshape(-1, 2)).ravel().to(length_units)
+            ]
+            time_bins += [Quantity(time_range).mean()]
+
+        time_bins = Quantity(time_bins)
+        distance_mean = Quantity([v.mean() for v in values])
+        distance_median = Quantity([np.median(v) for v in values])
+        distance_std = Quantity([v.std() for v in values])
+        bin_count = np.array([len(v) for v in values])
+        distance_accuracy = accuracy_factor * distance_std / np.sqrt(bin_count)
+
+        if plot_guidelines is None:
+            vlines = [{}]
+            texts = [{}]
+        else:
+            if texts is None:
+                texts = [
+                    plot.pretty_ax_text(**cast(dict[str, Any], t))
+                    for t in pd.DataFrame(
+                        {
+                            's': plot_guidelines['labels'],
+                            'x': plot_guidelines['times'].to(time_units).mean(1).value,
+                            'y': [0.07] * 2,
+                            'horizontalalignment': ['center'] * 2,
+                            'verticalalignment': ['bottom'] * 2,
+                        }
+                    ).to_dict('records')
+                ]
+            if vlines is None:
+                vlines = [
+                    {'x': t, 'color': 'red', 'linestyle': '--', 'linewidth': 0.5}
+                    for t in plot_guidelines['times'].to(time_units).ravel().value
+                ]
+
+        fig, ax = plot.setup_plot(
+            **utils.drop_None(
+                xlabel=utils.add_label_unit(xlabel, time_units),
+                ylabel=utils.add_label_unit(ylabel, length_units),
+                title=title,
+            ),
+            vlines=vlines,
+            texts=texts,
+            **kwargs,
+        )
+        sns.lineplot(x=time_bins.value, y=distance_mean.value, ax=ax, label='Mean')
+        ax.fill_between(
+            time_bins.value,
+            (distance_mean - distance_accuracy).value,
+            (distance_mean + distance_accuracy).value,
+            alpha=0.2,
+        )
+        sns.lineplot(x=time_bins.value, y=distance_median.value, ax=ax, label='Median')
+        ax.fill_between(
+            time_bins.value,
+            (distance_median - distance_accuracy).value,
+            (distance_median + distance_accuracy).value,
+            alpha=0.2,
+        )
+        if save_kwargs is not None:
+            plot.save_plot(fig=fig, **save_kwargs)
+        return fig, ax
