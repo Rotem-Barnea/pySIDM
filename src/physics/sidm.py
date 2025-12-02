@@ -50,7 +50,7 @@ def normalize_params(params: Params | None, add_defaults: bool = False) -> Param
 def scatter_pair_kinematics(
     v0: NDArray[np.float64],
     v1: NDArray[np.float64],
-    cos_theta: float,
+    theta: float,
     phi: float,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Calculate the new velocities of two particles after a scattering event.
@@ -75,10 +75,8 @@ def scatter_pair_kinematics(
     if v_rel_norm < 1e-10:
         return v0, v1
 
-    # Generate random scattering angles (isotropic)
-    # cos_theta = np.random.rand() * 2 - 1 #Prerolled to avoid random rolls in a numba function
-    sin_theta = np.sqrt(1 - cos_theta**2)
-    # phi = np.random.rand() * 2 * np.pi #Prerolled to avoid random rolls in a numba function
+    cos_theta = np.cos(theta)
+    sin_theta = np.sin(theta)
     cos_phi = np.cos(phi)
     sin_phi = np.sin(phi)
 
@@ -209,13 +207,13 @@ def pick_scatter_partner(v_rel: NDArray[np.float64], scatter_mask: NDArray[np.bo
 def scatter_unique_pairs(
     v: NDArray[np.float64],
     pairs: NDArray[np.int64],
-    cos_theta: NDArray[np.float64],
+    theta: NDArray[np.float64],
     phi: NDArray[np.float64],
 ) -> None:
     """Loop over all unique pairs found and calculate the new velocities inplace. pairs MUST be unique, otherwise numba will fail the race condition check."""
     for pair_index in prange(len(pairs)):
         i0, i1 = pairs[pair_index]
-        v[i0], v[i1] = scatter_pair_kinematics(v0=v[i0], v1=v[i1], cos_theta=cos_theta[pair_index], phi=phi[pair_index])
+        v[i0], v[i1] = scatter_pair_kinematics(v0=v[i0], v1=v[i1], theta=theta[pair_index], phi=phi[pair_index])
 
 
 def scatter_chance_shortcut(
@@ -412,7 +410,51 @@ def scatter(
         scatter_unique_pairs(
             v=v_output,
             pairs=pairs,
-            cos_theta=rng.generator.random(len(pairs)) * 2 - 1,
+            theta=np.acos(rng.generator.random(len(pairs)) * 2 - 1),
             phi=rng.generator.random(len(pairs)) * 2 * np.pi,
         )
     return *v_output.T, interacted, max_scatter_rounds, underestimation
+
+
+# def scatter_shortcut(
+#     scatter_chance: NDArray[np.float64],
+#     subdivisions: int,
+#     vx: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
+#     vy: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
+#     vr: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
+#     max_radius_j: int = default_params['max_radius_j'],
+# ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64], int, int]:
+#     """Perform SIDM scatter events.
+#     TODO
+#     """
+#     _vx, _vy, _vr = np.array(vx).copy(), np.array(vy).copy(), np.array(vr).copy()
+#     interacted: NDArray[np.int64] = np.empty(0, dtype=np.int64)
+#     v_output = np.vstack([_vx, _vy, _vr]).T
+
+#     rolls = rng.generator.random(len(v_output))
+#     events = (scatter_chance / subdivisions) >= rolls
+#     pair_rolls = np.zeros(len(v_output), dtype=np.float64)
+#     # Only roll for scattering events that actually took place this round
+#     pair_rolls[events] = rng.generator.random(events.sum())
+
+#     v_rel = np.zeros((len(v_output), max_radius_j), dtype=np.float64)
+#     update_v_rel(
+#         v_rel=v_rel,
+#         v=v_output,
+#         max_radius_j=max_radius_j,
+#         whitelist_mask=events,  # Only calculate for particles that scattered
+#     )
+
+#     pairs = utils.clean_pairs(
+#         pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=pair_rolls),
+#         shuffle=True,
+#     )
+#     interacted_particles = pairs.ravel()
+#     interacted = np.hstack([interacted, interacted_particles])
+#     scatter_unique_pairs(
+#         v=v_output,
+#         pairs=pairs,
+#         cos_theta=rng.generator.random(len(pairs)) * 2 - 1,
+#         phi=rng.generator.random(len(pairs)) * 2 * np.pi,
+#     )
+#     return *v_output.T, interacted, 1, 0
