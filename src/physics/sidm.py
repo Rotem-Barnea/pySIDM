@@ -336,6 +336,7 @@ def scatter(
     if max_allowed_rounds is None:
         max_allowed_rounds = -1
     _r, _vx, _vy, _vr, _m = np.array(r), np.array(vx).copy(), np.array(vy).copy(), np.array(vr).copy(), np.array(m)
+    _vx, _vy = utils.split_2d(r=utils.fast_norm(np.vstack([_vx, _vy]).T), acos=False)
     interacted: NDArray[np.int64] = np.empty(0, dtype=np.int64)
     if sigma == 0:
         return _vx, _vy, _vr, interacted, 0, 0
@@ -386,6 +387,8 @@ def scatter(
             mask = relevant_particles * utils.expand_mask_back(
                 utils.indices_to_mask(interacted_particles, len(v_output)), n=max_radius_j
             )
+            _vx, _vy = utils.split_2d(r=utils.fast_norm(v_output[mask, :2]), acos=False)
+            v_output[mask, 0], v_output[mask, 1] = _vx, _vy
             update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=mask)
             scatter_chance[mask] = fast_scatter_chance(
                 v_rel=v_rel[mask],
