@@ -12,17 +12,29 @@ from . import rng
 from .types import FloatOrArray
 
 
-def random_angle(like: NDArray[np.float64], acos: bool) -> NDArray[np.float64]:
+def random_angle(
+    like: NDArray[np.float64] | int,
+    acos: bool,
+    generator: np.random.Generator | None = None,
+) -> NDArray[np.float64]:
     """Generate an array of random angles.
 
     Parameters:
-        like: Array who's shape to mimic.
+        like: Array who's shape to mimic. if `int` treat it as the length of the array.
         acos: If `False` generate a uniform random angle. If `True` generate a uniform random `cos(angle)`, and then applies arccos to retrieve the angle.
+        generator: If `None` use the default generator from `rng.generator`.
 
     Returns:
         Array of random angles.
     """
-    rolls = rng.generator.random(len(like)) if len(like.shape) == 1 else rng.generator.random(*like.shape)
+    if generator is None:
+        generator = rng.generator
+    if isinstance(like, int):
+        rolls = generator.random(like)
+    elif len(like.shape) == 1:
+        rolls = generator.random(len(like))
+    else:
+        rolls = generator.random(*like.shape)
     if acos:
         return np.acos(rolls * 2 - 1)
     return rolls * 2 * np.pi
@@ -46,15 +58,22 @@ def from_radial(
     return r * cos, r * sin
 
 
-def split_2d(r: NDArray[np.float64], acos: bool) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+def split_2d(
+    r: NDArray[np.float64],
+    acos: bool,
+    generator: np.random.Generator | None = None,
+) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Split an array of radiuses to x,y coordinates using a random angle. See `random_angle()` for details on the angle calculation."""
-    return from_radial(r, theta=random_angle(r, acos))
+    return from_radial(r, theta=random_angle(r, acos, generator=generator))
 
 
-def split_3d(r: NDArray[np.float64]) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+def split_3d(
+    r: NDArray[np.float64],
+    generator: np.random.Generator | None = None,
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Split an array of radiuses to `x`,`y`,`z` coordinates using a `random acos angle` for the `z` coordinate (i.e. radial in the halo), and a `random uniform angle` for the `x-y` plane (i.e. tangential plane in the halo)."""
-    radial, perp = from_radial(r, theta=random_angle(r, acos=True))
-    x, y = from_radial(perp, theta=random_angle(perp, acos=False))
+    radial, perp = from_radial(r, theta=random_angle(r, acos=True, generator=generator))
+    x, y = from_radial(perp, theta=random_angle(perp, acos=False, generator=generator))
     return x, y, radial
 
 
@@ -69,6 +88,7 @@ def clean_pairs(
     pairs: NDArray[np.int64],
     blacklist: list[int] | NDArray[np.int64] = [],
     shuffle: bool = False,
+    generator: np.random.Generator | None = None,
 ) -> NDArray[np.int64]:
     """Clean a list of pairs by removing duplicates.
 
@@ -82,8 +102,10 @@ def clean_pairs(
     Returns:
         The cleaned array of pairs, of shape (n_cleaned_pairs, 2).
     """
+    if generator is None:
+        generator = rng.generator
     if shuffle:
-        rng.generator.shuffle(pairs)
+        generator.shuffle(pairs)
     _, indices = np.unique(pairs.ravel(), return_index=True)
     first_occurrence = np.zeros(2 * len(pairs), dtype=np.bool_)
     first_occurrence[indices] = True

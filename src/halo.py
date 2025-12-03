@@ -22,7 +22,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from . import rng, plot, utils, physics, run_units
+from . import plot, utils, physics, run_units
 from .tqdm import tqdm
 from .types import ParticleType
 from .physics import sidm, leapfrog
@@ -74,7 +74,9 @@ class Halo:
         runtime_track_sidm: deque[float] | None = None,
         runtime_track_leapfrog: deque[float] | None = None,
         runtime_track_full_step: deque[float] | None = None,
+        generator: np.random.Generator | None = None,
         seed: int | None = None,
+        generator_state: Mapping[str, Any] | None = None,
     ) -> None:
         """Initialize a Halo object.
 
@@ -110,7 +112,9 @@ class Halo:
             scatters_to_collapse: Number of scatters required on average for every dark matter particle to reach core collapse. Only used for estimating core collapse time for the early stopping mechanism, has no effect on the physical calculation (which will reach core-collapse on its own independently).
             cleanup_nullish_particles: Whether to remove particles from the halo after each interaction if they are nullish.
             cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `Rmax`).
-            seed: The RNG seed.
+            generator: Random number generator. If provided ignore `seed` and `generator_state`.
+            seed: Seed for the random number generator.
+            generator_state: State of the random number generator. If not provided, will be set by the `seed`
 
         Returns:
             Halo object.
@@ -160,8 +164,14 @@ class Halo:
         self.runtime_track_sidm: deque[float] = utils.handle_default(runtime_track_sidm, deque())
         self.runtime_track_leapfrog: deque[float] = utils.handle_default(runtime_track_leapfrog, deque())
         self.runtime_track_full_step: deque[float] = utils.handle_default(runtime_track_full_step, deque())
-        self.seed = seed
-        rng.set_seed(self.seed)
+        if generator is not None:
+            self.rng = generator
+            self.seed = generator.bit_generator.seed_seq.entropy
+        else:
+            self.seed = seed
+            self.rng = np.random.default_rng(self.seed)
+            if generator_state is not None:
+                self.rng.state = generator_state
 
     def __repr__(self):
         scatter_params = dict(deepcopy(self.scatter_params))
@@ -199,23 +209,32 @@ class Halo:
         return '\n'.join(description_strings)
 
     @classmethod
-    def setup(cls, distributions: list[Distribution], n_particles: list[int | float], **kwargs: Any) -> Self:
+    def setup(
+        cls,
+        distributions: list[Distribution],
+        n_particles: list[int | float],
+        seed: int | None = None,
+        **kwargs: Any,
+    ) -> Self:
         """Initialize a Halo object from a given set of distributions.
 
         Parameters:
             distributions: List of distributions for each particle type.
             n_particles: List of number of particles for each particle type.
+            seed: Seed for the random number generator.
+            generator: If `None` use the default generator from `rng.generator`.
             kwargs: Additional keyword arguments, passed to the constructor.
 
         Returns:
             Halo object.
         """
         r, v, particle_type, m = [], [], [], []
+        generator = np.random.default_rng(seed)
         Distribution.merge_distribution_grids(distributions)
         for distribution, n in zip(distributions, n_particles):
             # r_sub = distribution.roll_r(int(n)).to(run_units.length)
             # v_sub = distribution.roll_v_3d(r_sub).to(run_units.velocity)
-            r_sub, v_sub = distribution.roll_joint_phase_space(n)  # TODO - finish
+            r_sub, v_sub = distribution.roll_joint_phase_space(n, generator=generator)
             r += [r_sub]
             v += [v_sub]
             particle_type += [[distribution.particle_type] * int(n)]
@@ -227,6 +246,7 @@ class Halo:
             m=cast(Quantity, np.hstack(m)),
             particle_type=np.hstack(particle_type),
             distributions=distributions,
+            generator=generator,
             **kwargs,
         )
 
@@ -275,7 +295,7 @@ class Halo:
         self.runtime_track_sidm = deque()
         self.runtime_track_leapfrog = deque()
         self.runtime_track_full_step = deque()
-        rng.set_seed(self.seed)
+        self.rng = np.random.default_rng(self.seed)
 
     @property
     def particles(self) -> table.QTable:
@@ -489,9 +509,9 @@ class Halo:
         return distribution.Mtot / self.n_particles[distribution.particle_type]
 
     @property
-    def current_seed_state(self) -> Mapping[str, Any]:
+    def generator_state(self) -> Mapping[str, Any]:
         """Get the current state of the random number generator."""
-        return rng.get_state()
+        return self.rng.bit_generator.state
 
     @property
     def scatter_track_time_raveled(self) -> Quantity['time']:
@@ -618,6 +638,7 @@ class Halo:
                     vr=vr[mask],
                     dt=dt,
                     m=m[mask],
+                    generator=self.rng,
                     **self.scatter_params,
                 )
                 self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
@@ -739,7 +760,7 @@ class Halo:
             'runtime_track_leapfrog',
             'runtime_track_full_step',
             'seed',
-            'current_seed_state',
+            'generator_state',
         ]
 
     @staticmethod
@@ -836,10 +857,6 @@ class Halo:
             tables[name] = cls.load_table(path / f'{name}.fits')
         particles = tables['particles']
         particles.sort('particle_index')
-        if 'current_seed_state' in payload:
-            current_seed_state = payload.pop('current_seed_state')
-        else:
-            current_seed_state = None
         output = cls(
             r=particles['r'],
             v=cast(Quantity, np.vstack([particles['vx'], particles['vy'], particles['vr']]).T),
@@ -848,8 +865,6 @@ class Halo:
             **payload,
             snapshots=tables['snapshots'],
         )
-        if current_seed_state is not None:
-            rng.set_state(current_seed_state)
         output.initial_particles = tables['initial_particles']
         if update_save_path:
             output.save_path = path.resolve()

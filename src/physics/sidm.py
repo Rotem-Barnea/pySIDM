@@ -6,7 +6,7 @@ from numba import njit, prange
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
-from .. import rng, utils, physics, run_units
+from .. import utils, physics, run_units
 
 
 class Params(TypedDict, total=False):
@@ -303,6 +303,7 @@ def scatter(
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
     record_underestimation: bool = default_params['record_underestimation'],
+    generator: np.random.Generator | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64], int, int]:
     """Perform SIDM scatter events.
 
@@ -329,6 +330,7 @@ def scatter(
         kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
         record_underestimation: Whether to record the amount of rounds underestimated (due to `max_allowed_rounds`).
+        generator: If `None` use the default generator from `rng.generator`.
 
     Returns:
         post scattering vx, vy, vz, indices of the particles that interacted, the maximum number of rounds performed, and the amount of rounds underestimated (due to `max_allowed_rounds`).
@@ -336,10 +338,12 @@ def scatter(
     if max_allowed_rounds is None:
         max_allowed_rounds = -1
     _r, _vx, _vy, _vr, _m = np.array(r), np.array(vx).copy(), np.array(vy).copy(), np.array(vr).copy(), np.array(m)
-    _vx, _vy = utils.split_2d(r=utils.fast_norm(np.vstack([_vx, _vy]).T), acos=False)
     interacted: NDArray[np.int64] = np.empty(0, dtype=np.int64)
     if sigma == 0:
         return _vx, _vy, _vr, interacted, 0, 0
+    if generator is None:
+        generator = np.random.default_rng()
+    _vx, _vy = utils.split_2d(r=utils.fast_norm(np.vstack([_vx, _vy]).T), acos=False, generator=generator)
     v_output = np.vstack([_vx, _vy, _vr]).T
     _sigma = sigma.value
     local_density = cast(
@@ -387,7 +391,7 @@ def scatter(
             mask = relevant_particles * utils.expand_mask_back(
                 utils.indices_to_mask(interacted_particles, len(v_output)), n=max_radius_j
             )
-            _vx, _vy = utils.split_2d(r=utils.fast_norm(v_output[mask, :2]), acos=False)
+            _vx, _vy = utils.split_2d(r=utils.fast_norm(v_output[mask, :2]), acos=False, generator=generator)
             v_output[mask, 0], v_output[mask, 1] = _vx, _vy
             update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=mask)
             scatter_chance[mask] = fast_scatter_chance(
@@ -397,13 +401,13 @@ def scatter(
                 density_term=local_density[mask],
             )
         # Only roll for particles that participate in the current round to save on overhead.
-        rolls = rng.generator.random(relevant_particles.sum())
+        rolls = generator.random(relevant_particles.sum())
         # TODO - probably wasteful to recreate the False cells in `events` and the 0 cells in `pair_rolls` every-time.
         events = np.zeros(len(v_output), dtype=np.bool_)  # False by default for particles that don't participate
         events[relevant_particles] = scatter_chance[relevant_particles] >= rolls
         pair_rolls = np.zeros(len(v_output), dtype=np.float64)
         # Only roll for scattering events that actually took place this round
-        pair_rolls[events] = rng.generator.random(events.sum())
+        pair_rolls[events] = generator.random(events.sum())
         pairs = utils.clean_pairs(
             pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=pair_rolls),
             shuffle=True,
@@ -413,8 +417,8 @@ def scatter(
         scatter_unique_pairs(
             v=v_output,
             pairs=pairs,
-            theta=np.acos(rng.generator.random(len(pairs)) * 2 - 1),
-            phi=rng.generator.random(len(pairs)) * 2 * np.pi,
+            theta=utils.random_angle(len(pairs), acos=True, generator=generator),
+            phi=utils.random_angle(len(pairs), acos=False, generator=generator),
         )
     return *v_output.T, interacted, max_scatter_rounds, underestimation
 

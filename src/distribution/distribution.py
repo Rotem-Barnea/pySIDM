@@ -474,9 +474,11 @@ class Distribution:
 
     ## Roll initial setup
 
-    def roll_r(self, n_particles: int | float) -> Quantity['length']:
+    def roll_r(self, n_particles: int | float, generator: np.random.Generator | None = None) -> Quantity['length']:
         """Sample particle positions from the distribution quantile function."""
-        rolls = rng.generator.random(int(n_particles))
+        if generator is None:
+            generator = rng.generator
+        rolls = generator.random(int(n_particles))
         return self.quantile_function(rolls)
 
     @staticmethod
@@ -507,7 +509,12 @@ class Distribution:
             output[particle] = vs[i]
         return output
 
-    def roll_v(self, r: Quantity['length'], num: int = 1000) -> Quantity['velocity']:
+    def roll_v(
+        self,
+        r: Quantity['length'],
+        num: int = 1000,
+        generator: np.random.Generator | None = None,
+    ) -> Quantity['velocity']:
         """Sample particle velocity (norm) from the distribution function.
 
         For full 3d velocity vectors, use `roll_v_3d()`.
@@ -519,29 +526,35 @@ class Distribution:
         Returns:
             Sampled velocity norm of the particle, shaped `(num_particles,)`.
         """
+        if generator is None:
+            generator = rng.generator
         return Quantity(
             self.roll_v_fast(
                 Psi=self.Psi_interpolate(r).to(run_units.specific_energy),
                 E_grid=self.E_grid,
                 f_grid=self.f_grid,
-                rolls=rng.generator.random(len(r)),
+                rolls=generator.random(len(r)),
                 num=num,
             ),
             run_units.velocity,
         )
 
-    def roll_v_3d(self, r: Quantity['length'], num: int = 1000) -> Quantity['velocity']:
+    def roll_v_3d(
+        self,
+        r: Quantity['length'],
+        num: int = 1000,
+        generator: np.random.Generator | None = None,
+    ) -> Quantity['velocity']:
         """Sample particle velocity (3d vectors) from the distribution function. Shape `(num_particles, 3)` with `(vx,vy,vr)`.
 
         The velocity is split into radial and perpendicular components by a uniform cosine distributed angle, and then the perpendicular component is split into x and y components by a uniform angle.
         See `roll_v()` for parameter details.
         """
-        return cast(Quantity, np.vstack(utils.split_3d(self.roll_v(r))).T)
+        return cast(Quantity, np.vstack(utils.split_3d(self.roll_v(r, generator=generator), generator=generator)).T)
 
-    def roll_initial_angle(self, n_particles: int) -> NDArray[np.float64]:
+    def roll_initial_angle(self, n_particles: int, generator: np.random.Generator | None = None) -> NDArray[np.float64]:
         """Sample initial angle off the radial direction from a uniform cosine distribution."""
-        theta = np.arccos(rng.generator.uniform(-1, 1, size=n_particles))
-        return theta
+        return utils.random_angle(n_particles, acos=True, generator=generator)
 
     def roll_joint_phase_space(
         self,
@@ -556,13 +569,12 @@ class Distribution:
         velocity_range: Quantity['velocity'] | None = None,
         radius_noise: float = 0.1,
         velocity_noise: float = 0.1,
+        generator: np.random.Generator | None = None,
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
-        """NOT READY YET!
-
-        Sample particles from the joint phase space distribution:
+        """Sample particles from the joint phase space distribution:
             - The distribution function `f` is transformed into a joint pdf proportional to `r^2*v^2*f(r,v)*drdv`.
             - The joint pdf is discretized on a grid of radius and velocity bins. If not provided directly (`radius_range`, `velocity_range`), a linear grid is constructed based on the rest of the parameters. The final row and column is dropped to facilitate the calculation of the `drdv` term.
-            - The discretized distribution is flattened and sampled from using `rng.generator.choice` with probability weights set by the bin value.
+            - The discretized distribution is flattened and sampled from using `generator.choice` with probability weights set by the bin value.
             - The sampled radius and velocity are perturbed by a uniform noise term to provide sub-pixel results.
             - Angles for the velocity split are sampled by `utils.split_3d()`.
 
@@ -578,12 +590,15 @@ class Distribution:
             velocity_range: Velocity bins to use. If provided override the `velocity_min_value`, `velocity_max_value`, and `velocity_resolution` parameters. If `None` ignores.
             radius_noise: Noise factor for the sampled radius values. The samples are perturbed by a uniform distribution in a symmetric interval with half-width `radius_noise` * `r` (i.e. every particle is pertubed by a relative noise of `radius_noise`), and at most the actual radius resolution in `radius_range`.
             velocity_noise: Noise factor for the sampled velocity values. Same logic as `radius_noise`.
+            generator: If not provided, use the default generator defined in `rng.generator`.
 
         Returns:
             A tuple of two vectors:
                 Sampled radius values for each particle, shaped `(num_particles,)`
                 Corresponding 3d velocities for each particle, shaped `(num_particles,3)`.
         """
+        if generator is None:
+            generator = rng.generator
         if radius_range is None:
             if radius_max_value is None:
                 radius_max_value = self.Rmax
@@ -602,12 +617,12 @@ class Distribution:
         if (grid < 0).any():
             raise ValueError(f'Negative probability density encountered, {self}')
         indices = np.unravel_index(
-            rng.generator.choice(a=flat_grid.size, size=int(n_particles), p=flat_grid),
+            generator.choice(a=flat_grid.size, size=int(n_particles), p=flat_grid),
             grid.shape,
         )
 
         jittered_indices = indices + np.array(
-            [rng.generator.uniform(0, f, size=int(n_particles)) for f in [radius_noise, velocity_noise]]
+            [generator.uniform(0, f, size=int(n_particles)) for f in [radius_noise, velocity_noise]]
         )
 
         radius, velocity = tuple(
@@ -615,7 +630,10 @@ class Distribution:
             for grid in [r_grid, v_grid]
         )
 
-        return cast(Quantity, np.abs(radius)), cast(Quantity, np.vstack(utils.split_3d(np.abs(velocity))).T)
+        return (
+            cast(Quantity, np.abs(radius)),
+            cast(Quantity, np.vstack(utils.split_3d(np.abs(velocity), generator=generator)).T),
+        )
 
     ##Plots
 
