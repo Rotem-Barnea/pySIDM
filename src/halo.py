@@ -1664,9 +1664,6 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             time_bins = np.unique(time_array)
             location_data = self.get_particle_states(now=False).copy()
             location_data = cast(table.QTable, location_data[location_data['time'] <= time_bins.max()])
-            # index = np.searchsorted(time_bins, cast(NDArray[np.float64], location_data['time']))
-            # location_data['time'][index < len(time_bins)] = time_bins[index < len(time_bins)]
-            # location_data = cast(table.QTable, location_data[index < len(time_bins)])
             location_data['time'] = time_bins[
                 np.searchsorted(time_bins, cast(NDArray[np.float64], location_data['time']))
             ]
