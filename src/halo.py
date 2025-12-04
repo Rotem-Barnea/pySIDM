@@ -171,7 +171,7 @@ class Halo:
             self.seed = seed
             self.rng = np.random.default_rng(self.seed)
             if generator_state is not None:
-                self.rng.state = generator_state
+                self.rng.bit_generator.state = generator_state
 
     def __repr__(self):
         scatter_params = dict(deepcopy(self.scatter_params))
@@ -1637,7 +1637,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """
         time_units = self.fill_time_unit(time_units)
 
-        time_array = self.scatter_track_time_raveled_binned(time_bin_size)
+        time_array = self.scatter_track_time_raveled_binned(time_bin_size).to(time_units)
 
         if cbar_label is not None:
             cbar_label = cbar_label.format(
@@ -1661,8 +1661,12 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         )
 
         if normalize_by_n_particles:
-            location_data = self.get_particle_states(now=False).copy()
             time_bins = np.unique(time_array)
+            location_data = self.get_particle_states(now=False).copy()
+            location_data = cast(table.QTable, location_data[location_data['time'] <= time_bins.max()])
+            # index = np.searchsorted(time_bins, cast(NDArray[np.float64], location_data['time']))
+            # location_data['time'][index < len(time_bins)] = time_bins[index < len(time_bins)]
+            # location_data = cast(table.QTable, location_data[index < len(time_bins)])
             location_data['time'] = time_bins[
                 np.searchsorted(time_bins, cast(NDArray[np.float64], location_data['time']))
             ]
