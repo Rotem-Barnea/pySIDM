@@ -324,7 +324,7 @@ def plot_2d(
         cbar_label_autosuffix: Add a prefix and suffix based on the `row_normalization` selected.
         cbar_format: Format string for the colorbar.
         cbar_log_numticks: Number of ticks for the colorbar when using a log scale. If `None` ignores.
-        log_scale: Whether to use a log scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `colors.LogNorm()`.
+        log_scale: Whether to use a log scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `colors.LogNorm()`. Ignored if the grid has no variance.
         percentile_clip_scale: Whether to use a percentile clip scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `colors.PercentileNorm()`.
         grid_row_normalization: Normalization applied to the grid row values, used for the cbar label prefix and suffix.
         hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
@@ -370,7 +370,7 @@ def plot_2d(
         grid = grid.to(cbar_units)
     cbar_units = Unit(str(grid.unit))
 
-    if log_scale:
+    if log_scale and grid.std() != 0:
         kwargs.update(norm=colors.LogNorm())
     elif percentile_clip_scale is not None:
         kwargs.update(norm=colors.Normalize(*np.nanpercentile(grid.value, percentile_clip_scale)))

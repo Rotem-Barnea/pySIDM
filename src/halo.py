@@ -2542,6 +2542,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         include_start: bool = True,
         include_now: bool = False,
         no_scatter_value: float = 0,
+        only_past_scatters: bool = True,
         x_bins: Quantity = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
         scatter_bins: Quantity = Quantity(np.geomspace(1, 6000, 100), ''),
         x_key: str = 'r',
@@ -2573,6 +2574,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             include_start: Whether to include the initial particle distribution in the data. Ignored if `data` is provided.
             include_now: Whether to include the current particle distribution in the data. Ignored if `data` is provided.
             no_scatter_value: Value to use for particles with no scattering events.
+            only_past_scatters: Whether to only include past scattering events, or any event this particle will be a part of.
             x_bins: Bins for the x-axis.
             scatter_bins: Bins for the scatter axis.
             x_key: The key to use for the x-axis.
@@ -2600,23 +2602,32 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if data is None:
             data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
             data = utils.slice_closest(utils.slice_closest(data, value=time), value='dm', key='particle_type')
-        sub = pd.merge(
-            data.to_pandas(),
-            pd.DataFrame(
-                np.vstack(np.unique(np.hstack(self.scatter_track_index), return_counts=True)).T,
-                columns=['particle_index', 'n_scatters'],
-            ),
-            on='particle_index',
-            how='left',
-        )
-        sub['n_scatters'] = sub['n_scatters'].fillna(no_scatter_value)
-        data['n_scatters'] = Quantity(sub['n_scatters'], '')
 
         if title is not None:
             title = title.format(time=time.to(time_unit).to_string(format='latex', formatter=time_format))
 
         if title_suffix is not None and title is not None:
             title += f' ({title_suffix})'
+
+        index_track = (
+            list(self.scatter_track_index)[: np.argmin(np.hstack(self.scatter_track_time) < time)]
+            if only_past_scatters
+            else self.scatter_track_index
+        )
+        if len(index_track) == 0:
+            data['n_scatters'] = Quantity(np.full(len(data), no_scatter_value))
+        else:
+            sub = pd.merge(
+                data.to_pandas(),
+                pd.DataFrame(
+                    np.vstack(np.unique(np.hstack(index_track), return_counts=True)).T,
+                    columns=['particle_index', 'n_scatters'],
+                ),
+                on='particle_index',
+                how='left',
+            )
+            sub['n_scatters'] = sub['n_scatters'].fillna(no_scatter_value)
+            data['n_scatters'] = Quantity(sub['n_scatters'])
 
         return plot.plot_2d(
             *plot.aggregate_2d_data(
@@ -2641,7 +2652,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
     def plot_scatter_distribution_at_time_animation(
         self,
-        include_start: bool = True,
+        include_start: bool = False,
         include_now: bool = False,
         save_kwargs: dict[str, Any] = {},
         **kwargs: Any,
@@ -2660,7 +2671,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         """
         plot.save_images(
             plot.to_images(
-                np.unique(cast(Quantity, self.get_particle_states(initial=include_start, now=include_now)['time'])),
+                iterator=[
+                    t
+                    for t in np.unique(
+                        cast(Quantity, self.get_particle_states(initial=include_start, now=include_now)['time'])
+                    )
+                    if t <= self.scatter_track_time[-1]
+                ],
                 plot_fn=lambda x: self.plot_scatter_distribution_at_time(time=x, **kwargs),
             ),
             **save_kwargs,
