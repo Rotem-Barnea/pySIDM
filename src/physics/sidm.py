@@ -10,10 +10,20 @@ from .. import utils, physics, run_units
 
 
 class Params(TypedDict, total=False):
-    """Parameter dictionary for the SIDM calculation."""
+    """Parameter dictionary for the SIDM calculation.
+
+    Attributes:
+        max_radius_j: Maximum index radius for partners for scattering.
+        max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
+        max_allowed_scatters: Maximum number of allowed scatter events.
+        record_underestimation: Whether to record the amount of rounds underestimated (due to `max_allowed_rounds`).
+        kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
+        sigma: Scattering cross-section.
+    """
 
     max_radius_j: int
     max_allowed_rounds: int | None
+    max_allowed_scatters: int | None
     record_underestimation: bool
     kappa: float
     sigma: Quantity[run_units.cross_section]
@@ -22,6 +32,7 @@ class Params(TypedDict, total=False):
 default_params: Params = {
     'max_radius_j': 10,
     'max_allowed_rounds': 1000,
+    'max_allowed_scatters': None,
     'record_underestimation': True,
     'kappa': 0.02,
     'sigma': Quantity(0, run_units.cross_section),
@@ -303,6 +314,7 @@ def scatter(
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
     record_underestimation: bool = default_params['record_underestimation'],
+    max_allowed_scatters: int | None = default_params['max_allowed_scatters'],
     generator: np.random.Generator | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64], int, int]:
     """Perform SIDM scatter events.
@@ -408,18 +420,25 @@ def scatter(
         pair_rolls = np.zeros(len(v_output), dtype=np.float64)
         # Only roll for scattering events that actually took place this round
         pair_rolls[events] = generator.random(events.sum())
+        if max_allowed_scatters is not None:
+            index, counts = np.unique(interacted, return_counts=True)
+            blacklist = index[counts >= max_allowed_scatters]
+        else:
+            blacklist = []
         pairs = utils.clean_pairs(
             pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=pair_rolls),
             shuffle=True,
+            blacklist=blacklist,
         )
-        interacted_particles = pairs.ravel()
-        interacted = np.hstack([interacted, interacted_particles])
-        scatter_unique_pairs(
-            v=v_output,
-            pairs=pairs,
-            theta=utils.random_angle(len(pairs), acos=True, generator=generator),
-            phi=utils.random_angle(len(pairs), acos=False, generator=generator),
-        )
+        if len(pairs) > 0:
+            interacted_particles = pairs.ravel()
+            interacted = np.hstack([interacted, interacted_particles])
+            scatter_unique_pairs(
+                v=v_output,
+                pairs=pairs,
+                theta=utils.random_angle(len(pairs), acos=True, generator=generator),
+                phi=utils.random_angle(len(pairs), acos=False, generator=generator),
+            )
     return *v_output.T, interacted, max_scatter_rounds, underestimation
 
 
