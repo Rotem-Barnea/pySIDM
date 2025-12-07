@@ -7,6 +7,7 @@ from numpy.typing import NDArray
 from astropy.units import Quantity
 
 from .. import utils, physics, run_units
+from ..tqdm import tqdm
 
 
 class Params(TypedDict, total=False):
@@ -395,7 +396,12 @@ def scatter(
     round_dt = dt.value / scatter_rounds
     scatter_chance /= scatter_rounds
     interacted_particles = np.empty(0, dtype=np.int64)
-    for round in range(1, max_scatter_rounds + 1):
+    for round in tqdm(
+        range(1, max_scatter_rounds + 1),
+        desc='Dense timestep, scattering...',
+        leave=False,
+        disable=max_scatter_rounds < 1000,
+    ):
         relevant_particles = scatter_rounds >= round
         scatter_chance[~relevant_particles] = 0
         if len(interacted_particles) > 0:
