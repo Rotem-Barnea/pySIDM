@@ -2141,6 +2141,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         title: str | None = 'Cumulative number of scattering events',
         label: str | None = None,
         ax_set: dict[str, Any] = {'yscale': 'log'},
+        lineplot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -2153,6 +2154,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             title: The title of the plot.
             label: Label for the plot (legend).
             ax_set: Additional keyword arguments to pass to `Axes.set()`.
+            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
+            save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
         Returns:
@@ -2175,6 +2178,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             y=y,
             ax=ax,
             label=label,
+            **lineplot_kwargs,
         )
         if label is not None:
             ax.legend()

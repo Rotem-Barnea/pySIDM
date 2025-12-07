@@ -779,6 +779,7 @@ def plot_cumulative_scattering_amount_over_time(
     ylabel: str | None = 'Cumulative number of scattering events',
     label: str | None = None,
     data_time_units: UnitLike = 'Myr',
+    lineplot_kwargs: dict[str, Any] = {},
     save_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
@@ -791,6 +792,7 @@ def plot_cumulative_scattering_amount_over_time(
         ylabel: Label for the y-axis.
         label: Label for the plot (legend).
         data_time_units: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
         save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
         kwargs: Additional keyword arguments to pass to the plot function (`setup_plot()`).
 
@@ -800,7 +802,7 @@ def plot_cumulative_scattering_amount_over_time(
     if not isinstance(time, Quantity):
         time = Quantity(time, data_time_units)
     fig, ax = setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, **kwargs)
-    sns.lineplot(x=time.to(time_unit).value, y=cumulative_scatters, ax=ax, label=label)
+    sns.lineplot(x=time.to(time_unit).value, y=cumulative_scatters, ax=ax, label=label, **lineplot_kwargs)
     if label is not None:
         ax.legend()
     if save_kwargs is not None:
