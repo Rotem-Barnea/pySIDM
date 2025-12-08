@@ -62,6 +62,7 @@ class Halo:
         max_allowed_subdivisions: int = 1,
         subdivide_on_scatter_chance: bool = False,
         subdivide_on_gravitational_step: bool = True,
+        subdivide_on_startup: bool = False,
         snapshots: table.QTable | None = None,
         hard_save: bool = False,
         save_path: Path | str | None = None,
@@ -106,8 +107,9 @@ class Halo:
             dynamics_params: Dynamics parameters of the halo, sent to the leapfrog integrator.
             scatter_params: Scatter parameters of the halo, used in the SIDM calculation.
             max_allowed_subdivisions: Maximum number of subdivisions allowed in each step.
-            subdivide_on_scatter_chance: Whether to subdivide based on the scatter chance. Only relevant if `max_allowed_subdivision` is not `1`. If `subdivide_on_gravitational_step` is also provided, take the greater constraint of the two at each step.
-            subdivide_on_gravitational_step: Whether to subdivide based on the ratio of vr*dt to the spacing to the nearest neighbor. Only relevant if `max_allowed_subdivision` is not `1`. If `subdivide_on_scatter_chance` is also provided, take the greater constraint of the two at each step.
+            subdivide_on_scatter_chance: Whether to subdivide based on the scatter chance. Only relevant if `max_allowed_subdivision` is not `1`. If multiple subdivisions logic are provided, take the greater constraint.
+            subdivide_on_gravitational_step: Whether to subdivide based on the ratio of vr*dt to the spacing to the nearest neighbor. Only relevant if `max_allowed_subdivision` is not `1`. If multiple subdivisions logic are provided, take the greater constraint.
+            subdivide_on_startup: Whether to subdivide to the maximum allowed subdivisions until the 1 Gyr mark. Only relevant if `max_allowed_subdivision` is not `1`. If multiple subdivisions logic are provided, take the greater constraint.
             snapshots: Snapshots of the halo.
             hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
             save_path: Path to save the halo to memory.
@@ -148,6 +150,7 @@ class Halo:
         self.max_allowed_subdivisions: int = max_allowed_subdivisions
         self.subdivide_on_scatter_chance: bool = subdivide_on_scatter_chance
         self.subdivide_on_gravitational_step: bool = subdivide_on_gravitational_step
+        self.subdivide_on_startup: bool = subdivide_on_startup
         self.ministep_size: deque[Quantity] = utils.handle_default(ministep_size, deque())
         self.scatter_track_time: deque[Quantity] = utils.handle_default(scatter_track_time, deque())
         self.scatter_track_index: deque[NDArray[np.int64]] = utils.handle_default(scatter_track_index, deque())
@@ -598,7 +601,7 @@ class Halo:
         if in_bootstrap or self.scatter_params.get('sigma', no_sigma) == no_sigma:
             subdivisions = 1
         elif subdivisions is None:
-            subdivision_values = []
+            subdivision_values: list[int] = []
             assert self.subdivide_on_scatter_chance or self.subdivide_on_gravitational_step, (
                 'If subdivisioning is used, at least one of `subdivide_on_scatter_chance` or `subdivide_on_gravitational_step` must be True.'
             )
@@ -620,11 +623,21 @@ class Halo:
                     ).max()
                 ]
             if self.subdivide_on_gravitational_step:
+                neighborhood_size = self.scatter_params.get('neighborhood_size', 10) // 3
                 subdivision_values += [
-                    int(((self._particles.vr * self.dt) / self._particles.r.diff(-1)).abs().quantile(0.9))
+                    np.ceil(
+                        ((self._particles.vr * self.dt * np.sqrt(2)) / self._particles.r.diff(-neighborhood_size))
+                        .abs()
+                        .quantile(0.99)
+                    ).astype(int)
                 ]
-            subdivisions = max(subdivision_values)
-            assert subdivisions is not None, 'Error in subdivision calculation'
+            if self.subdivide_on_startup and self.time <= Quantity(1, 'Gyr'):
+                subdivision_values += [self.max_allowed_subdivisions]
+            if len(subdivision_values) == 0:
+                subdivisions = 1
+            else:
+                subdivisions = int(min(self.max_allowed_subdivisions, max(1, *subdivision_values)))
+            assert subdivisions is not None and subdivisions > 0, 'Error in subdivision calculation'
 
         for _ in range(subdivisions):
             self.runtime_realtime_track += [datetime.now().timestamp()]
@@ -759,6 +772,7 @@ class Halo:
             'max_allowed_subdivisions',
             'subdivide_on_scatter_chance',
             'subdivide_on_gravitational_step',
+            'subdivide_on_startup',
             'ministep_size',
             'scatter_track_time',
             'scatter_track_index',
