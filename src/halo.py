@@ -867,7 +867,7 @@ class Halo:
                     self.save_table(group, path / f'split_snapshots/snapshot_{i}.fits', overwrite=True)
 
     @classmethod
-    def load(cls, path: str | Path = Path('halo_state'), update_save_path: bool = True) -> Self:
+    def load(cls, path: str | Path = Path('halo_state'), update_save_path: bool = True, static: bool = False) -> Self:
         """Load the simulation state from a directory."""
         path = Path(path)
         with open(path / 'halo_payload.pkl', 'rb') as f:
@@ -902,6 +902,8 @@ class Halo:
         output.initial_particles = tables['initial_particles']
         if update_save_path:
             output.save_path = path.resolve()
+        if static:
+            output.hard_save = False
         return output
 
     def rename(self, full_path: str | Path | None = None, stem: str | None = None) -> None:
