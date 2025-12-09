@@ -20,6 +20,9 @@ class Params(TypedDict, total=False):
         record_underestimation: Whether to record the amount of rounds underestimated (due to `max_allowed_rounds`).
         kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
         sigma: Scattering cross-section.
+        disable_tqdm: Whether to disable tqdm progress bar.
+        tqdm_cutoff: Disable the tqdm progress bar if the number of scattering rounds is less than this value.
+        tqdm_cutoff_ratio: Disable the tqdm progress bar if the number of scattering rounds is less than the maximum allowed times by this value.
     """
 
     max_radius_j: int
@@ -28,15 +31,21 @@ class Params(TypedDict, total=False):
     record_underestimation: bool
     kappa: float
     sigma: Quantity[run_units.cross_section]
+    disable_tqdm: bool
+    tqdm_cutoff: int | None
+    tqdm_cutoff_ratio: float | None
 
 
 default_params: Params = {
     'max_radius_j': 10,
-    'max_allowed_rounds': 1000,
+    'max_allowed_rounds': 10000,
     'max_allowed_scatters': None,
     'record_underestimation': True,
     'kappa': 0.02,
     'sigma': Quantity(0, run_units.cross_section),
+    'disable_tqdm': False,
+    'tqdm_cutoff': None,
+    'tqdm_cutoff_ratio': 2,
 }
 
 
@@ -56,6 +65,34 @@ def normalize_params(params: Params | None, add_defaults: bool = False) -> Param
     if 'sigma' in params:
         params['sigma'] = params['sigma'].to(run_units.cross_section)
     return params
+
+
+def tqdm_disable_condition(
+    requested_rounds: int,
+    disable_tqdm: bool,
+    tqdm_cutoff: int | None = None,
+    tqdm_cutoff_ratio: float | None = None,
+    max_allowed_scatters: int | None = None,
+):
+    """Disable condition for the tqdm progress bar to avoid spamming on short iterations.
+
+    Parameters:
+        requested_rounds: Number of scattering rounds to perform.
+        disable_tqdm: Whether to disable tqdm progress bar altogether.
+        tqdm_cutoff: Disable the tqdm progress bar if the number of scattering rounds is less than this value.
+        tqdm_cutoff_ratio: Disable the tqdm progress bar if the number of scattering rounds is less than the maximum allowed times by this value. If `max_allowed_scatters=None`, this option is ignored.
+        max_allowed_scatters: Maximum number of allowed scattering rounds.
+
+    Returns:
+        Whether to disable tqdm progress bar.
+    """
+    if disable_tqdm:
+        return True
+    if tqdm_cutoff is not None:
+        return requested_rounds < tqdm_cutoff
+    if tqdm_cutoff_ratio is not None and max_allowed_scatters is not None:
+        return requested_rounds < max_allowed_scatters * tqdm_cutoff_ratio
+    return True
 
 
 @njit
@@ -316,6 +353,9 @@ def scatter(
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
     record_underestimation: bool = default_params['record_underestimation'],
     max_allowed_scatters: int | None = default_params['max_allowed_scatters'],
+    disable_tqdm: bool = default_params['disable_tqdm'],
+    tqdm_cutoff: int | None = default_params['tqdm_cutoff'],
+    tqdm_cutoff_ratio: float | None = default_params['tqdm_cutoff_ratio'],
     generator: np.random.Generator | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64], int, int]:
     """Perform SIDM scatter events.
@@ -343,6 +383,9 @@ def scatter(
         kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
         record_underestimation: Whether to record the amount of rounds underestimated (due to `max_allowed_rounds`).
+        disable_tqdm: Whether to disable tqdm progress bar.
+        tqdm_cutoff: Disable the tqdm progress bar if the number of scattering rounds is less than this value.
+        tqdm_cutoff_ratio: Disable the tqdm progress bar if the number of scattering rounds is less than the maximum allowed times by this value.
         generator: If `None` use the default generator from `rng.generator`.
 
     Returns:
@@ -400,7 +443,13 @@ def scatter(
         range(1, max_scatter_rounds + 1),
         desc='Dense timestep, scattering...',
         leave=False,
-        disable=max_scatter_rounds < 1000,
+        disable=tqdm_disable_condition(
+            requested_rounds=max_allowed_rounds,
+            disable_tqdm=disable_tqdm,
+            tqdm_cutoff=tqdm_cutoff,
+            tqdm_cutoff_ratio=tqdm_cutoff_ratio,
+            max_allowed_scatters=max_allowed_scatters,
+        ),
     ):
         relevant_particles = scatter_rounds >= round
         scatter_chance[~relevant_particles] = 0
