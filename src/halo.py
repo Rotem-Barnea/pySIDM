@@ -933,6 +933,14 @@ class Halo:
     ##Plots
     #####################
 
+    def save_plot(self, fig: Figure, save_kwargs: dict[str, Any] | None = None) -> None:
+        """Saves the plot."""
+        if save_kwargs is None:
+            return
+        if 'stem' in save_kwargs:
+            save_kwargs['save_path'] = self.results_path / save_kwargs['stem']
+        plot.save_plot(fig=fig, **save_kwargs)
+
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
         """If the `unit` is `Tdyn` return `self.Tdyn`. If it's `time step` return `self.time_step`, otherwise return `unit`."""
         if unit == 'Tdyn':
@@ -1035,8 +1043,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if legend_loc:
             fig.legend(loc=legend_loc)
 
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_distribution(
@@ -1106,8 +1113,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             sns.histplot(x, cumulative=cumulative, ax=ax, stat=stat, label=label, **plt_kwargs)
         if x_plot_range is not None:
             ax.set_xlim(*x_plot_range.to(x_units).value)
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_r_distribution(
@@ -1161,8 +1167,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 label=density_label,
                 **params,
             )
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_phase_space_evolution(
@@ -1434,8 +1439,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             label=label,
             **line_kwargs,
         )
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_particle_evolution(
@@ -1792,8 +1796,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             },
         )
         ax.legend()
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_scattering_location(
@@ -1842,8 +1845,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             ax=ax,
             log=True,
         )
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_scattering_distance(
@@ -1884,8 +1886,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         )
         radius = np.diff(np.hstack(self.scatter_track_radius).reshape(-1, 2)).ravel().to(length_units)
         sns.histplot(radius, log_scale=log_scale, stat=stat, ax=ax, **kwargs)
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_scattering_density(
@@ -1949,8 +1950,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             )
         fig, ax = plot.setup_plot(**kwargs, ax_set={'yscale': 'log'}, **utils.drop_None(title=title, xlabel=xlabel))
         sns.lineplot(x=r_bins, y=smoothed_density, ax=ax)
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_scattering_amount_distribution(
@@ -2011,9 +2011,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                     **plot.pretty_ax_text(x=bin_center, y=height + 0.01, verticalalignment='bottom'),
                 )
 
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
-
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_local_density_by_range(
@@ -2066,8 +2064,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         ylabel = utils.add_label_unit(ylabel, density_units)
         fig, ax = plot.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
         sns.lineplot(x=x, y=smoothed_local_density, ax=ax)
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_local_density_distribution(
@@ -2117,8 +2114,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             cumulative=cumulative,
             **hist_kwargs,
         )
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_trace(
@@ -2227,8 +2223,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         )
         if label is not None:
             ax.legend()
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_cumulative_scattering_amount_per_particle_over_time(
@@ -2266,8 +2261,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         )
         if label is not None:
             ax.legend()
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_binned_scattering_amount_over_time(
@@ -2307,8 +2301,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         sns.lineplot(x=x[:-1], y=scatters[:-1], ax=ax, label=label)
         if label is not None:
             ax.legend()
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_scatter_rounds_over_time(
@@ -2383,8 +2376,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             or (underestimations and label_underestimations is not None)
         ):
             ax.legend()
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_distributions_rho(
@@ -2413,8 +2405,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                 **kwargs,
             )
         assert fig is not None and ax is not None
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_distributions_over_time(
@@ -2477,8 +2468,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
                     **kwargs,
                 )
         assert fig is not None and ax is not None
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_distributions_over_time_animation(
@@ -2837,6 +2827,5 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             (distance_median + distance_accuracy).value,
             alpha=0.2,
         )
-        if save_kwargs is not None:
-            plot.save_plot(fig=fig, **save_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
