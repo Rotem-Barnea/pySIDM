@@ -9,30 +9,55 @@ if __name__ == '__main__':
     from astropy.units import Quantity
 
     from src.halo import Halo
+    from src.physics import sidm, leapfrog
     from src.distribution.nfw import NFW
     from src.distribution.hernquist import Hernquist
 
+    print('Setup distributions')
     dm_rho_s = Quantity(2.73e7, 'Msun/kpc^3')
     Rs = Quantity(1.18, 'kpc')
     c = 19
     b_Mtot = Quantity(1e5, 'Msun')
-    sigma = Quantity(50, 'cm^2/gram')
-
-    print('Setup distributions')
     dm_distribution = NFW(Rs=Rs, c=c, rho_s=dm_rho_s, particle_type='dm')
     b_distribution = Hernquist(Rs=Rs, c=c, Mtot=b_Mtot, particle_type='baryon')
-
-    dm_Mtot = dm_distribution.Mtot
 
     print('Setup parameters')
     dm_n_particles = 1e5
     b_n_particles = 1e5
+    sigma = Quantity(50, 'cm^2/gram')
     dt = dm_distribution.Tdyn / 1000
     save_every_time = 10 * dm_distribution.Tdyn
     hard_save = True
     save_path = Path(os.environ['SAVE_PATH']) / 'run results' / os.environ.get('SAVE_NAME', 'run 1')
     cleanup_nullish_particles = True
     cleanup_particles_by_radius = True
+    max_allowed_subdivisions = 1
+    bootstrap_steps = 100
+
+    scatter_params = sidm.Params(
+        max_radius_j=10,
+        max_allowed_rounds=10000,
+        max_allowed_scatters=None,
+        record_underestimation=True,
+        kappa=0.002,  # not default
+        sigma=sigma,  # not default
+        disable_tqdm=True,  # not default
+        tqdm_cutoff=None,
+        tqdm_cutoff_ratio=2,
+    )
+
+    dynamics_params = leapfrog.Params(
+        max_minirounds=20,
+        r_convergence_threshold=1e-7,
+        vr_convergence_threshold=1e-7,
+        first_mini_round=0,
+        richardson_extrapolation=True,
+        adaptive=True,
+        grid_window_radius=50,
+        raise_warning=False,  # not default
+        levi_civita_mode='adaptive',
+        levi_civita_condition_coefficient=1 / 20,
+    )
 
     print('Setup complete, starting halo initialization')
 
@@ -50,8 +75,10 @@ if __name__ == '__main__':
             save_every_time=save_every_time,
             cleanup_nullish_particles=cleanup_nullish_particles,
             cleanup_particles_by_radius=cleanup_particles_by_radius,
-            dynamics_params={'raise_warning': False},
-            scatter_params={'sigma': sigma},
+            dynamics_params=dynamics_params,
+            scatter_params=scatter_params,
+            max_allowed_subdivisions=max_allowed_subdivisions,
+            bootstrap_steps=bootstrap_steps,
         )
 
     halo.evolve(
