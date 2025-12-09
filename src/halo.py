@@ -940,7 +940,7 @@ class Halo:
         if save_kwargs is None:
             return
         if 'stem' in save_kwargs:
-            save_kwargs['save_path'] = self.results_path / save_kwargs['stem']
+            save_kwargs['save_path'] = self.results_path / save_kwargs.pop('stem')
         plot.save_plot(fig=fig, **save_kwargs)
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
@@ -1175,7 +1175,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
     def plot_phase_space_evolution(
         self,
         include_start: bool = True,
-        include_now: bool = True,
+        include_now: bool = False,
         filter_particle_type: ParticleType | None = None,
         save_path: str | Path | None = None,
         frame_plot_kwargs: dict[str, Any] = {},
@@ -2437,12 +2437,12 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
 
     def plot_distributions_over_time(
         self,
-        times: Quantity['time'] = Quantity([0, 1, 11.3], 'Gyr'),
+        times: Quantity['time'] = Quantity([0, 1, 11, 14.5], 'Gyr'),
         data: table.QTable | None = None,
         include_start: bool = True,
         include_now: bool = False,
-        labels: list[str] = ['start', 'max core', 'core collapse'],
-        radius_bins: Quantity['length'] = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
+        labels: list[str] = ['start', 'max core', 'core collapse (start)', 'core collapse (deep)'],
+        radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
         limit_radius_by_Rvir: bool = True,
         distributions: list[int] | None = None,
         ax_set: dict[str, Any] = {'xscale': 'log', 'yscale': 'log'},
