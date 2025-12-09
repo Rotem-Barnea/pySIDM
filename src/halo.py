@@ -1013,17 +1013,17 @@ class Halo:
             return self.time_step
         return unit
 
-    def print_energy_change_summary(self, filter_particle_type: ParticleType | None = None, **kwargs: Any) -> str:
-        """Print a summary of the energy change during the simulation."""
+    def energy_change_summary(self, filter_particle_type: ParticleType | None = None, **kwargs: Any) -> report.Report:
+        """Generate a summary of the energy change during the simulation."""
         initial = self.initial_particles.copy()
         final = self.particles.copy()
         if filter_particle_type is not None:
             initial = utils.slice_closest(initial, value=filter_particle_type, key='particle_type')
             final = utils.slice_closest(final, value=filter_particle_type, key='particle_type')
 
-        return report.compile(
+        return report.Report(
             header=f'After {self.current_step} steps with dt={self.dt:.4f} | {self.time:.1f}',
-            report=[
+            body_lines=[
                 report.Line(title='Total energy at the start', value=initial['E'].sum(), format='.1f'),
                 report.Line(title='Total energy at the end', value=final['E'].sum(), format='.1f'),
                 report.Line(
@@ -1080,8 +1080,8 @@ class Halo:
             **kwargs,
         )
 
-    def print_scatter_report(self, **kwargs: Any) -> str:
-        """Print a summary of the scattering during the simulation."""
+    def scatter_report(self, **kwargs: Any) -> report.Report:
+        """Generate a summary of the scattering during the simulation."""
         core_collapse_start_time = self.core_collapse_start_time()
         max_core_time = self.max_core_time()
         n_scatter_cumsum = self.n_scatters.cumsum()
@@ -1089,8 +1089,8 @@ class Halo:
             (np.hstack(self.scatter_track_time) <= core_collapse_start_time).argmin()
         ]
         n_scattering_particles = len(np.unique(np.hstack(self.scatter_track_index)))
-        return report.compile(
-            report=[
+        return report.Report(
+            body_lines=[
                 report.Line(title='Maximal core time', value=max_core_time.to('Gyr'), format='.1f'),
                 report.Line(
                     title='Core collapse start time',
@@ -1110,7 +1110,7 @@ class Halo:
                 report.Line(title='Overall number of scatter events', value=n_scatter_cumsum[-1], format=''),
                 report.Line(
                     title='Participating particles',
-                    value=f'{n_scattering_particles}/{self.n_particles["dm"]}',
+                    value=f'{n_scattering_particles:,}/{self.n_particles["dm"]:,}',
                     format='',
                 ),
                 report.Line(
