@@ -877,17 +877,19 @@ def save_images(
     images[0].save(save_path, save_all=True, append_images=images[1:], duration=duration, loop=loop, **kwargs)
 
 
-def save_plot(fig: Figure, save_path: str | Path, bbox_inches: str = 'tight', **kwargs: Any) -> None:
+def save_plot(fig: Figure, save_path: str | Path | None, bbox_inches: str = 'tight', **kwargs: Any) -> None:
     """Save the figure.
 
     Parameters:
         fig: Figure to save.
-        save_path: Path to save the file to.
+        save_path: Path to save the file to. if 'None', the figure is not saved.
         bbox_inches: see `plt.savefig()`. This just defines the default value.
         kwargs: Additional keyword arguments to pass to `plt.savefig()`.
 
     Returns:
         None.
     """
+    if save_path is None:
+        return
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, bbox_inches=bbox_inches, **kwargs)

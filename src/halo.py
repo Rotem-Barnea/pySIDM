@@ -535,11 +535,13 @@ class Halo:
             run_units.time,
         )
 
-    def scatter_track_time_raveled_binned(self, time_bin_size: Quantity | None):
+    def scatter_track_time_raveled_binned(self, time_bin_size: Quantity | None | Literal['save cadence']):
         """Get a raveled array with the scatter time matching each particle in the hstack-ed `self.scatter_track_index`, with the time binned to a fixed bin size."""
         time_array = self.scatter_track_time_raveled
         if time_bin_size is None:
             return time_array
+        elif time_bin_size == 'save cadence':
+            time_bin_size = self.save_every_time
         n_bins = int(time_array.max() / time_bin_size)
         time_array = (time_array // time_bin_size) / n_bins * time_array.max()
         return time_array
@@ -933,7 +935,7 @@ class Halo:
     ##Plots
     #####################
 
-    def save_plot(self, fig: Figure, save_kwargs: dict[str, Any] | None = None) -> None:
+    def save_plot(self, fig: Figure, save_kwargs: dict[str, Any] | None = None, **kwargs: Any) -> None:
         """Saves the plot."""
         if save_kwargs is None:
             return
@@ -1294,7 +1296,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         )
         if return_grid:
             return grid, extent
-        return plot.plot_2d(
+        fig, ax = plot.plot_2d(
             grid=grid,
             extent=extent,
             xlabel=xlabel,
@@ -1305,6 +1307,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             transparent_value=transparent_value,
             **kwargs,
         )
+        self.save_plot(fig=fig, **kwargs)
+        return fig, ax
 
     def plot_phase_space_by_scattering_amount(
         self,
@@ -1359,7 +1363,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
     def plot_inner_core_density(
         self,
         include_start: bool = True,
-        include_now: bool = True,
+        include_now: bool = False,
         radius: Quantity['length'] = Quantity(0.2, 'kpc'),
         filter_particle_type: ParticleType | None = None,
         time_units: UnitLike = 'Tdyn',
@@ -1445,7 +1449,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
     def plot_particle_evolution(
         self,
         include_start: bool = True,
-        include_now: bool = True,
+        include_now: bool = False,
         filter_particle_type: ParticleType | None = None,
         radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
         time_range: Quantity | None = None,
@@ -1491,7 +1495,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             row_normalization=row_normalization,
         )
 
-        return plot.plot_2d(
+        fig, ax = plot.plot_2d(
             grid=grid,
             extent=extent,
             x_units=length_units,
@@ -1503,11 +1507,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             cmap=cmap,
             **kwargs,
         )
+        self.save_plot(fig=fig, **kwargs)
+        return fig, ax
 
     def plot_temperature_evolution(
         self,
         include_start: bool = True,
-        include_now: bool = True,
+        include_now: bool = False,
         filter_particle_type: ParticleType | None = None,
         radius_bins: Quantity = Quantity(np.linspace(1e-1, 5, 100), 'kpc'),
         time_range: Quantity | None = None,
@@ -1555,7 +1561,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             output_grid_units=specific_energy_units,
         )
 
-        return plot.plot_2d(
+        fig, ax = plot.plot_2d(
             grid=grid,
             extent=extent,
             x_units=length_units,
@@ -1568,6 +1574,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             cmap=cmap,
             **kwargs,
         )
+        self.save_plot(fig=fig, **kwargs)
+        return fig, ax
 
     def plot_heat_flux_evolution(
         self,
@@ -1625,7 +1633,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             output_grid_units=heat_units,
         )
 
-        return plot.plot_2d(
+        fig, ax = plot.plot_2d(
             grid=grid,
             extent=extent,
             x_units=length_units,
@@ -1639,12 +1647,14 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             setup_kwargs=setup_kwargs,
             **kwargs,
         )
+        self.save_plot(fig=fig, **kwargs)
+        return fig, ax
 
     def plot_scattering_location_evolution(
         self,
-        radius_bins: Quantity = Quantity(np.linspace(1e-3, 1, 100), 'kpc'),
+        radius_bins: Quantity = Quantity(np.linspace(1e-3, 1.2, 100), 'kpc'),
         time_range: Quantity | None = None,
-        time_bin_size: Quantity | None = Quantity(100, 'Myr'),
+        time_bin_size: Quantity | None | Literal['save cadence'] = 'save cadence',
         normalize_by_n_particles: bool = False,
         length_units: UnitLike = 'kpc',
         time_units: UnitLike = 'Tdyn',
@@ -1653,6 +1663,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         cbar_label: str | None = 'Number of scattering events per {time}',
         cbar_label_time_units: UnitLike = 'Myr',
         cbar_label_time_format: str = '.1f',
+        cbar_log_scale: bool = True,
         row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
         cmap: str = 'jet',
         x_tick_format: str = '.1f',
@@ -1665,7 +1676,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         Parameters:
             radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
             time_range: Range of times to consider (filters the data).
-            time_bin_size: The size of the time bins.
+            time_bin_size: The size of the time bins. If `save cadence`, the time bins will be set to the save cadence of the simulation. If `None`, avoid binning completely.
             normalize_by_n_particles: Whether to normalize the histogram by the number of particles in each bin.
             length_units: Units to use for the radius axis.
             time_units: Units to use for the time axis.
@@ -1674,6 +1685,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             cbar_label: Label for the colorbar.
             cbar_label_time_units: Units to use for time.
             cbar_label_time_format: Format string for time.
+            cbar_log_scale: Whether to use a logarithmic scale for the colorbar.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
             cmap: The colormap to use for the plot.
             x_tick_format: Format string for the x-axis ticks.
@@ -1726,7 +1738,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             grid[location_grid == 0] = 0
             grid[location_grid != 0] = grid[location_grid != 0] / location_grid[location_grid != 0]
 
-        return plot.plot_2d(
+        fig, ax = plot.plot_2d(
             grid=grid,
             extent=extent,
             x_units=length_units,
@@ -1734,6 +1746,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             xlabel=xlabel,
             ylabel=ylabel,
             cbar_label=cbar_label,
+            log_scale=cbar_log_scale,
             grid_row_normalization=row_normalization,
             cbar_label_autosuffix=True if row_normalization is not None else False,
             cmap=cmap,
@@ -1742,6 +1755,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             setup_kwargs=setup_kwargs,
             **kwargs,
         )
+        self.save_plot(fig=fig, **kwargs)
+        return fig, ax
 
     def plot_start_end_distribution(
         self,
@@ -2274,16 +2289,22 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         label: str | None = None,
         time_format: str | None = None,
         title_time_unit: str | None = 'Myr',
+        ax_set: dict[str, str] | None = {'yscale': 'log'},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the number of scattering events over time, binned.
 
         Parameters:
+            time_binning: Binning for the x-axis.
             time_unit: Units for the x-axis.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
+            title: Title for the plot.
             label: Label for the plot (legend).
+            time_format: Format for the time in the title.
+            title_time_unit: Units for the time displayed in the title.
+            ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'yscale': 'log'}`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
 
@@ -2297,7 +2318,13 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
         if title is not None:
             title = title.format(time=time_binning.to(title_time_unit).to_string(format='latex', formatter=time_format))
 
-        fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
+        fig, ax = plot.setup_plot(
+            xlabel=utils.add_label_unit(xlabel, time_unit),
+            ylabel=ylabel,
+            title=title,
+            ax_set=ax_set,
+            **kwargs,
+        )
         sns.lineplot(x=x[:-1], y=scatters[:-1], ax=ax, label=label)
         if label is not None:
             ax.legend()
@@ -2502,14 +2529,17 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             label_format: String format for the time label.
             density_guidelines_kwargs: Keyword arguments to pass to `plot.plot_distributions_over_time()` for plotting the density at fixed timestamps throughout the animation, serving as guidelines (i.e. initial distribution, max core, final distribution, etc.). If `None` doesn't plot the guidelines.
             multiplicity_guidelines: Number of frames to print for when the animation reaches the guidelines. If `None` ignores.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. If it doesn't include `save_path`, it will use the default path (`self.results_path`).
 
         Returns:
             fig, ax.
         """
 
         data = self.get_particle_states()
-        save_path = Path(save_kwargs.pop('save_path'))
+        if 'save_path' in save_kwargs:
+            save_path = Path(save_kwargs.pop('save_path'))
+        else:
+            save_path = self.results_path
 
         for i, (distribution, xlim_, ylim_) in enumerate(zip(self.distributions, xlim, ylim)):
             bins = cast(
@@ -2668,7 +2698,7 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             sub['n_scatters'] = sub['n_scatters'].fillna(no_scatter_value)
             data['n_scatters'] = Quantity(sub['n_scatters'])
 
-        return plot.plot_2d(
+        fig, ax = plot.plot_2d(
             *plot.aggregate_2d_data(
                 data, x_key=x_key, y_key='n_scatters', x_bins=x_bins, y_bins=scatter_bins, **aggregate_kwargs
             ),
@@ -2688,6 +2718,8 @@ Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_no
             y_log=y_log,
             **kwargs,
         )
+        self.save_plot(fig=fig, **kwargs)
+        return fig, ax
 
     def plot_scatter_distribution_at_time_animation(
         self,
