@@ -867,8 +867,17 @@ class Halo:
                     self.save_table(group, path / f'split_snapshots/snapshot_{i}.fits', overwrite=True)
 
     @classmethod
-    def load(cls, path: str | Path = Path('halo_state'), update_save_path: bool = True, static: bool = False) -> Self:
-        """Load the simulation state from a directory."""
+    def load(cls, path: str | Path, update_save_path: bool = True, static: bool = False) -> Self:
+        """Load the simulation state from a directory.
+
+        Parameters:
+            path: Save path to load from.
+            update_save_path: Whether to update the internal save path to `path` (for example, if the directory was moved after the run).
+            static: Whether to load the simulation with `hard_save=False` as a safeguard, to avoid accidently evolving the simulation on a completed run (that was loaded for analysis).
+
+        Returns:
+            The loaded Halo object
+        """
         path = Path(path)
         with open(path / 'halo_payload.pkl', 'rb') as f:
             payload = {key: value for key, value in pickle.load(f).items() if key in cls.payload_keys()}
