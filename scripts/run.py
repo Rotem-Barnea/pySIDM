@@ -9,7 +9,6 @@ if __name__ == '__main__':
     from astropy.units import Quantity
 
     from src.halo import Halo
-    from src.physics import sidm, leapfrog
     from src.distribution.nfw import NFW
     from src.distribution.hernquist import Hernquist
 
@@ -33,31 +32,8 @@ if __name__ == '__main__':
     cleanup_particles_by_radius = True
     max_allowed_subdivisions = 1
     bootstrap_steps = 100
-
-    scatter_params = sidm.Params(
-        max_radius_j=10,
-        max_allowed_rounds=10000,
-        max_allowed_scatters=None,
-        record_underestimation=True,
-        kappa=0.002,  # not default
-        sigma=sigma,  # not default
-        disable_tqdm=True,  # not default
-        tqdm_cutoff=None,
-        tqdm_cutoff_ratio=2,
-    )
-
-    dynamics_params = leapfrog.Params(
-        max_minirounds=20,
-        r_convergence_threshold=1e-7,
-        vr_convergence_threshold=1e-7,
-        first_mini_round=0,
-        richardson_extrapolation=True,
-        adaptive=True,
-        grid_window_radius=50,
-        raise_warning=False,  # not default
-        levi_civita_mode='adaptive',
-        levi_civita_condition_coefficient=1 / 20,
-    )
+    dynamics_params = {'raise_warning': False}
+    scatter_params = {'kappa': 0.002, 'disable_tqdm': True}
 
     print('Setup complete, starting halo initialization')
 
@@ -75,8 +51,8 @@ if __name__ == '__main__':
             save_every_time=save_every_time,
             cleanup_nullish_particles=cleanup_nullish_particles,
             cleanup_particles_by_radius=cleanup_particles_by_radius,
-            dynamics_params=dynamics_params,
-            scatter_params=scatter_params,
+            dynamics_params={**dynamics_params},
+            scatter_params={'sigma': sigma, **scatter_params},
             max_allowed_subdivisions=max_allowed_subdivisions,
             bootstrap_steps=bootstrap_steps,
         )
