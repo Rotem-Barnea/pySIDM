@@ -30,7 +30,7 @@ if __name__ == '__main__':
     dt = dm_distribution.Tdyn / 1000
     save_every_time = 10 * dm_distribution.Tdyn
     hard_save = True
-    save_path = Path(os.environ['SAVE_PATH']) / 'run results' / os.environ.get('SAVE_NAME', 'full test run 2')
+    save_path = Path(os.environ['SAVE_PATH']) / 'run results' / os.environ.get('SAVE_NAME', 'run 1')
     cleanup_nullish_particles = True
     cleanup_particles_by_radius = True
 
@@ -55,6 +55,6 @@ if __name__ == '__main__':
         )
 
     halo.evolve(
-        until_t=Quantity(12, 'Gyr'),
+        until_t=Quantity(13, 'Gyr'),
         tqdm_kwargs={'mininterval': 60},
     )
