@@ -22,7 +22,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from . import plot, utils, physics, run_units
+from . import plot, utils, report, physics, run_units
 from .tqdm import tqdm
 from .types import ParticleType
 from .physics import sidm, leapfrog
@@ -546,6 +546,68 @@ class Halo:
         time_array = (time_array // time_bin_size) / n_bins * time_array.max()
         return time_array
 
+    def max_core_time(
+        self,
+        time_binning: Quantity['time'] = Quantity(100, 'Myr'),
+        smoothing_sigma: int | None = 1,
+    ) -> Quantity['time']:
+        """Calculate the time at which the halo reaches maximum core.
+
+        The number of scattering events is aggregated over a fixed bin size and smoothed using a Gaussian filter, and then the argmin is taken.
+
+        Parameters:
+            time_binning: The binning resolution to aggregate the number of scattering events.
+            smoothing_sigma: The smoothing factor over the number of scattering events.
+
+        Returns:
+            The maximal core time
+        """
+        n = int(time_binning / self.dt)
+        time = np.hstack(self.scatter_track_time)
+        scatters = np.add.reduceat(self.n_scatters, np.arange(0, len(self.n_scatters), n))
+        if smoothing_sigma is not None:
+            scatters = scipy.ndimage.gaussian_filter1d(scatters, sigma=smoothing_sigma)
+        return cast(
+            Quantity,
+            time[
+                scipy.interpolate.interp1d(
+                    time[::n].value,
+                    scatters,
+                    kind='cubic',
+                    bounds_error=False,
+                    fill_value=np.inf,
+                )(time).argmin()
+            ],
+        )
+
+    def core_collapse_start_time(
+        self,
+        time_binning: Quantity['time'] = Quantity(100, 'Myr'),
+        cutoff: int | float = 1e5,
+    ) -> Quantity['time']:
+        """Calculate the time at which the halo reaches maximum core.
+
+        Defined as the time at which the halo first reaches `cutoff` scatters per `time_binning` time.
+
+        Parameters:
+            time_binning: The binning resolution to aggregate the number of scattering events.
+            cutoff: The number of scatters per `time_binning` time at which the core collapse is considered to have started.
+
+        Returns:
+            The core collapse start time
+        """
+        n = int(time_binning / self.dt)
+        return Quantity(
+            scipy.interpolate.interp1d(
+                np.add.reduceat(self.n_scatters, np.arange(0, len(self.n_scatters), n)),
+                np.hstack(self.scatter_track_time).value[::n],
+                kind='cubic',
+                bounds_error=False,
+                fill_value=np.inf,
+            )(cutoff),
+            self.dt.unit,
+        )
+
     #####################
     ##Dynamic evolution
     #####################
@@ -951,26 +1013,124 @@ class Halo:
             return self.time_step
         return unit
 
-    def print_energy_change_summary(self, filter_particle_type: ParticleType | None = None) -> str:
+    def print_energy_change_summary(self, filter_particle_type: ParticleType | None = None, **kwargs: Any) -> str:
         """Print a summary of the energy change during the simulation."""
         initial = self.initial_particles.copy()
         final = self.particles.copy()
         if filter_particle_type is not None:
             initial = utils.slice_closest(initial, value=filter_particle_type, key='particle_type')
             final = utils.slice_closest(final, value=filter_particle_type, key='particle_type')
-        return f"""After {self.current_step} steps with dt={self.dt:.4f} | {self.time:.1f}
-Total energy at the start:        {initial['E'].sum():.1f}
-Total energy at the end:          {final['E'].sum():.1f}
-Energy change:                    {np.abs(final['E'].sum() - initial['E'].sum()):.1f}
-Energy change per step:           {np.abs(final['E'].sum() - initial['E'].sum()) / self.current_step:.1e}
-Energy change per dt:             {np.abs(final['E'].sum() - initial['E'].sum()) / self.dt:.1e}
-Relative energy change:           {np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum():.3%}
-Relative energy change per step:  {np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum() / self.current_step:.1e}
-Relative energy change per dt:    {np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum() / self.dt:.3%}
-Mean velocity change:             {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second'):.1f}
-Mean velocity change per step:    {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.current_step:.1e}
-Mean velocity change per dt:      {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.dt:.1e}
-Relative Mean velocity change:    {np.abs(final['v_norm'].mean() - initial['v_norm'].mean()) / initial['v_norm'].mean():.3%}"""
+
+        return report.compile(
+            header=f'After {self.current_step} steps with dt={self.dt:.4f} | {self.time:.1f}',
+            report=[
+                report.Line(title='Total energy at the start', value=initial['E'].sum(), format='.1f'),
+                report.Line(title='Total energy at the end', value=final['E'].sum(), format='.1f'),
+                report.Line(
+                    title='Energy change',
+                    value=np.abs(final['E'].sum() - initial['E'].sum()),
+                    format='.1f',
+                ),
+                report.Line(
+                    title='Energy change per step',
+                    value=np.abs(final['E'].sum() - initial['E'].sum()) / self.current_step,
+                    format='.1e',
+                ),
+                report.Line(
+                    title='Energy change per dt',
+                    value=np.abs(final['E'].sum() - initial['E'].sum()) / self.dt,
+                    format='.1e',
+                ),
+                report.Line(
+                    title='Relative energy change',
+                    value=np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum(),
+                    format='.3%',
+                ),
+                report.Line(
+                    title='Relative energy change per step',
+                    value=np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum() / self.current_step,
+                    format='.1e',
+                ),
+                report.Line(
+                    title='Relative energy change per dt',
+                    value=np.abs(final['E'].sum() - initial['E'].sum()) / initial['E'].sum() / self.dt,
+                    format='.3%',
+                ),
+                report.Line(
+                    title='Mean velocity change',
+                    value=np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second'),
+                    format='.1f',
+                ),
+                report.Line(
+                    title='Mean velocity change per step',
+                    value=np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.current_step,
+                    format='.1e',
+                ),
+                report.Line(
+                    title='Mean velocity change per dt',
+                    value=np.abs(final['v_norm'].mean() - initial['v_norm'].mean()).to('km/second') / self.dt,
+                    format='.1e',
+                ),
+                report.Line(
+                    title='Relative Mean velocity change',
+                    value=np.abs(final['v_norm'].mean() - initial['v_norm'].mean()) / initial['v_norm'].mean(),
+                    format='.3%',
+                ),
+            ],
+            **kwargs,
+        )
+
+    def print_scatter_report(self, **kwargs: Any) -> str:
+        """Print a summary of the scattering during the simulation."""
+        core_collapse_start_time = self.core_collapse_start_time()
+        max_core_time = self.max_core_time()
+        n_scatter_cumsum = self.n_scatters.cumsum()
+        scatters_to_collapse_start = n_scatter_cumsum[
+            (np.hstack(self.scatter_track_time) <= core_collapse_start_time).argmin()
+        ]
+        n_scattering_particles = len(np.unique(np.hstack(self.scatter_track_index)))
+        return report.compile(
+            report=[
+                report.Line(title='Maximal core time', value=max_core_time.to('Gyr'), format='.1f'),
+                report.Line(
+                    title='Core collapse start time',
+                    value=core_collapse_start_time.to('Gyr'),
+                    format='.2f',
+                ),
+                report.Line(
+                    title='Number of scatter events until core collapse started',
+                    value=scatters_to_collapse_start,
+                    format='',
+                ),
+                report.Line(
+                    title='Number of scatter events after core collapse started',
+                    value=n_scatter_cumsum[-1] - scatters_to_collapse_start,
+                    format='',
+                ),
+                report.Line(title='Overall number of scatter events', value=n_scatter_cumsum[-1], format=''),
+                report.Line(
+                    title='Participating particles',
+                    value=f'{n_scattering_particles}/{self.n_particles["dm"]}',
+                    format='',
+                ),
+                report.Line(
+                    title='Participating particles fraction',
+                    value=n_scattering_particles / self.n_particles['dm'],
+                    format='.1%',
+                ),
+                report.Line(
+                    title='Average number of scatter events per particle until core collapse started',
+                    value=scatters_to_collapse_start / self.n_particles['dm'],
+                    format='.1f',
+                ),
+                report.Line(
+                    title='Average number of scatter events per scattering particle until core collapse started',
+                    value=scatters_to_collapse_start / n_scattering_particles,
+                    format='.1f',
+                ),
+            ],
+            **kwargs,
+        )
 
     def plot_r_kde_over_time(
         self,

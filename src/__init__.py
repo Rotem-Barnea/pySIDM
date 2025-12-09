@@ -4,6 +4,7 @@ from . import (
     plot,
     types,
     utils,
+    report,
     nsphere,
     physics,
     run_units,
@@ -13,15 +14,16 @@ from . import (
 )
 
 __all__ = [
+    'rng',
+    'halo',
+    'plot',
+    'types',
     'utils',
+    'report',
+    'nsphere',
+    'physics',
+    'run_units',
+    'background',
     'distribution',
     'spatial_approximation',
-    'halo',
-    'run_units',
-    'physics',
-    'nsphere',
-    'background',
-    'types',
-    'plot',
-    'rng',
 ]
