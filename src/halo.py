@@ -550,6 +550,7 @@ class Halo:
         self,
         time_binning: Quantity['time'] = Quantity(100, 'Myr'),
         smoothing_sigma: int | None = 1,
+        kind: str = 'cubic',
     ) -> Quantity['time']:
         """Calculate the time at which the halo reaches maximum core.
 
@@ -558,6 +559,7 @@ class Halo:
         Parameters:
             time_binning: The binning resolution to aggregate the number of scattering events.
             smoothing_sigma: The smoothing factor over the number of scattering events.
+            kind: The kind of interpolation to use.
 
         Returns:
             The maximal core time
@@ -573,7 +575,7 @@ class Halo:
                 scipy.interpolate.interp1d(
                     time[::n].value,
                     scatters,
-                    kind='cubic',
+                    kind=kind,
                     bounds_error=False,
                     fill_value=np.inf,
                 )(time).argmin()
@@ -584,14 +586,16 @@ class Halo:
         self,
         time_binning: Quantity['time'] = Quantity(100, 'Myr'),
         cutoff: int | float = 1e5,
+        kind: str = 'linear',
     ) -> Quantity['time']:
-        """Calculate the time at which the halo reaches maximum core.
+        """Calculate the time at which the halo starts major core collapse.
 
         Defined as the time at which the halo first reaches `cutoff` scatters per `time_binning` time.
 
         Parameters:
             time_binning: The binning resolution to aggregate the number of scattering events.
             cutoff: The number of scatters per `time_binning` time at which the core collapse is considered to have started.
+            kind: The kind of interpolation to use.
 
         Returns:
             The core collapse start time
@@ -599,9 +603,13 @@ class Halo:
         n = int(time_binning / self.dt)
         return Quantity(
             scipy.interpolate.interp1d(
-                np.add.reduceat(self.n_scatters, np.arange(0, len(self.n_scatters), n)),
-                self.scatter_times.value[::n],
-                kind='cubic',
+                *utils.joint_clean(
+                    arrays=[
+                        np.add.reduceat(self.n_scatters, np.arange(0, len(self.n_scatters), n)),
+                        self.scatter_times.value[::n],
+                    ]
+                ),
+                kind=kind,
                 bounds_error=False,
                 fill_value=np.inf,
             )(cutoff),
@@ -1001,8 +1009,8 @@ class Halo:
         """Saves the plot."""
         if save_kwargs is None:
             return
-        if 'stem' in save_kwargs:
-            save_kwargs['save_path'] = self.results_path / save_kwargs.pop('stem')
+        if 'name' in save_kwargs:
+            save_kwargs['save_path'] = self.results_path / save_kwargs.pop('name')
         plot.save_plot(fig=fig, **save_kwargs)
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
@@ -2698,6 +2706,8 @@ class Halo:
             save_path = Path(save_kwargs.pop('save_path'))
         else:
             save_path = self.results_path
+        if 'name' in save_kwargs:
+            save_path = save_path / save_kwargs.pop('name')
 
         for i, (distribution, xlim_, ylim_) in enumerate(zip(self.distributions, xlim, ylim)):
             bins = cast(

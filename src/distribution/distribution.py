@@ -302,9 +302,7 @@ class Distribution:
     def quantile_function(self, p: FloatOrArray) -> Quantity['length']:
         """Mass quantile function (inversed cdf) interpolated at a given radius `r` (memoized)."""
         if 'quantile_function' not in self.memoization:
-            rs, cdf = utils.joint_clean(
-                [self.geomspace_grid.value, self.mass_cdf(self.geomspace_grid)], ['rs', 'cdf'], 'cdf'
-            )
+            cdf, rs = utils.joint_clean(arrays=[self.mass_cdf(self.geomspace_grid), self.geomspace_grid.value])
             self.memoization['quantile_function'] = scipy.interpolate.interp1d(
                 cdf, rs, kind='cubic', bounds_error=False, fill_value=(self.Rmin.value, self.Rmax.value)
             )

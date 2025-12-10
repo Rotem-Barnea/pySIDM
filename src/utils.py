@@ -77,9 +77,26 @@ def split_3d(
     return x, y, radial
 
 
-def joint_clean(arrays: list[NDArray[Any]], keys: list[str], clean_by: str) -> NDArray[Any]:
-    """Clean a list of arrays by removing duplicates and sorting them by a given key."""
+def joint_clean(
+    arrays: list[NDArray[Any]],
+    keys: list[str] | None = None,
+    clean_by: str | int = 0,
+) -> NDArray[Any]:
+    """Clean a list of arrays by removing duplicates and sorting them by a given key.
+
+    Parameters:
+        arrays: The arrays to clean.
+        keys: Names for each array, to be used with `clean_by`. If `None` defaults to "column_{i}".
+        clean_by: The column to sort and drop duplicates by. If 'str' must match `keys`. If `int` must be smaller than the number of columns, and the value will be treated as the selected index. Defaults to 0 (the first column).
+
+    Returns:
+        The cleaned arrays.
+    """
+    if keys is None:
+        keys = [f'column_{i}' for i in range(len(arrays))]
     data = pd.DataFrame(dict(zip(keys, arrays)))
+    if isinstance(clean_by, int):
+        clean_by = data.columns[clean_by]
     data = data.drop_duplicates(clean_by).sort_values(clean_by)
     return data.to_numpy().T
 
