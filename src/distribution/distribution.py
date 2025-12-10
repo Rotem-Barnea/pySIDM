@@ -1,4 +1,4 @@
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import numpy as np
 import scipy
@@ -472,11 +472,31 @@ class Distribution:
 
     ## Roll initial setup
 
-    def sample_r(self, n_particles: int | float, generator: np.random.Generator | None = None) -> Quantity['length']:
-        """Sample particle positions from the distribution quantile function."""
-        if generator is None:
-            generator = rng.generator
-        return self.quantile_function(generator.random(int(n_particles)))
+    def sample_r(
+        self,
+        n_particles: int | float,
+        sampling_method: Literal['random', 'uniform', 'uniform with boundaries'] = 'random',
+        generator: np.random.Generator | None = None,
+    ) -> Quantity['length']:
+        """Sample particle positions from the distribution quantile function.
+
+        Parameters:
+            n_particles: Number of particles to sample.
+            sampling_method: Sampling method to space the quantiles before applying the inverse CDF. If 'random' sample from a uniform random distribution. If 'uniform' use a uniform grid in the range (0,1). If 'uniform with boundaries' use a uniform grid in the range [0,1].
+            generator: If not provided, use the default generator defined in `rng.generator`.
+
+        Returns:
+            Sampled particle positions.
+        """
+        if sampling_method == 'random':
+            if generator is None:
+                generator = rng.generator
+            points = generator.random(int(n_particles))
+        elif sampling_method == 'uniform':
+            points = cast(NDArray[np.float64], np.linspace(0, 1, int(n_particles + 1), endpoint=False)[1:])
+        elif sampling_method == 'uniform with boundaries':
+            points = cast(NDArray[np.float64], np.linspace(0, 1, int(n_particles)))
+        return cast(Quantity, np.sort(self.quantile_function(points)))
 
     @staticmethod
     @njit(parallel=True)
@@ -554,6 +574,7 @@ class Distribution:
     def sample_old(
         self,
         n_particles: int | float,
+        sampling_method: Literal['random', 'uniform', 'uniform with boundaries'] = 'random',
         num: int = 1000,
         generator: np.random.Generator | None = None,
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
@@ -563,6 +584,7 @@ class Distribution:
 
         Parameters:
             n_particles: Number of particles to sample.
+            sampling_method: Sampling method to space the quantiles before applying the inverse CDF. If 'random' sample from a uniform random distribution. If 'uniform' use a uniform grid in the range (0,1). If 'uniform with boundaries' use a uniform grid in the range [0,1].
             num: Resolution parameters, defines the number of steps to use in the df integral.
             generator: If not provided, use the default generator defined in `rng.generator`.
 
@@ -571,14 +593,14 @@ class Distribution:
                 Sampled radius values for each particle, shaped `(num_particles,)`
                 Corresponding 3d velocities for each particle, shaped `(num_particles,3)`.
         """
-        r = self.sample_r(n_particles, generator=generator).to(run_units.length)
+        r = self.sample_r(n_particles, sampling_method=sampling_method, generator=generator).to(run_units.length)
         v = self.sample_v(r, num=num, generator=generator).to(run_units.velocity)
         return r, v
 
     def sample(
         self,
         n_particles: int | float,
-        radius_min_value: Quantity['length'] = Quantity(1e-4, 'kpc'),
+        radius_min_value: Quantity['length'] | None = None,
         radius_max_value: Quantity['length'] | None = None,
         velocity_min_value: Quantity['velocity'] = Quantity(0, 'km/second'),
         velocity_max_value: Quantity['velocity'] = Quantity(100, 'km/second'),
@@ -586,8 +608,8 @@ class Distribution:
         velocity_resolution: int | float = 10000,
         radius_range: Quantity['length'] | None = None,
         velocity_range: Quantity['velocity'] | None = None,
-        radius_noise: float = 0.1,
-        velocity_noise: float = 0.1,
+        radius_noise: float = 1,
+        velocity_noise: float = 1,
         generator: np.random.Generator | None = None,
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
         """Sample particles from the joint phase space distribution:
@@ -599,15 +621,15 @@ class Distribution:
 
         Parameters:
             n_particles: Number of particles to sample.
-            radius_min_value: Minimum radius value to consider for the phase space distribution.
-            radius_max_value: Maximum radius value to consider for the phase space distribution. If `None` use the `Rmax` value of the distribution. Regardless, this value is capped by `Rmax` even if provided.
+            radius_min_value: Minimum radius value to consider for the phase space distribution. If `None` use the quantile value for `2/n_particles`. Regardless, this value is capped by `Rmin` even if provided.
+            radius_max_value: Maximum radius value to consider for the phase space distribution. If `None` use the quantile value for `1-2/n_particles`. Regardless, this value is capped by `Rmax` even if provided.
             velocity_min_value: Minimum velocity norm value to consider for the phase space distribution.
             velocity_max_value: Maximum velocity norm value to consider for the phase space distribution.
             radius_resolution: Resolution of the radius grid.
             velocity_resolution: Resolution of the velocity grid.
             radius_range: Radius bins to use. If provided override the `radius_min_value`, `radius_max_value`, and `radius_resolution` parameters. If `None` ignores.
             velocity_range: Velocity bins to use. If provided override the `velocity_min_value`, `velocity_max_value`, and `velocity_resolution` parameters. If `None` ignores.
-            radius_noise: Noise factor for the sampled radius values. The samples are perturbed by a uniform distribution in a symmetric interval with half-width `radius_noise` * `r` (i.e. every particle is pertubed by a relative noise of `radius_noise`), and at most the actual radius resolution in `radius_range`.
+            radius_noise: Noise factor for the sampled radius values. The samples are perturbed by a uniform distribution in a symmetric interval with half-width `radius_noise * pixel width / 2`.
             velocity_noise: Noise factor for the sampled velocity values. Same logic as `radius_noise`.
             generator: If not provided, use the default generator defined in `rng.generator`.
 
@@ -619,39 +641,53 @@ class Distribution:
         if generator is None:
             generator = rng.generator
         if radius_range is None:
+            if radius_min_value is None:
+                radius_min_value = self.quantile_function(1 / n_particles)
+            radius_min_value = max(radius_min_value, self.Rmin)
             if radius_max_value is None:
-                radius_max_value = self.Rmax
-            else:
-                radius_max_value = cast(Quantity, np.min(radius_max_value, self.Rmax))
+                radius_max_value = self.quantile_function(1 - 1 / n_particles)
+            radius_max_value = min(radius_max_value, self.Rmax)
             radius_range = Quantity(np.linspace(radius_min_value, radius_max_value, int(radius_resolution)))
         if velocity_range is None:
             velocity_range = Quantity(np.linspace(velocity_min_value, velocity_max_value, int(velocity_resolution)))
 
-        r_grid, v_grid = cast(tuple[Quantity, Quantity], np.meshgrid(radius_range[:-1], velocity_range[:-1]))
+        r_grid, v_grid = cast(
+            tuple[Quantity, Quantity], np.meshgrid(radius_range[:-1], velocity_range[:-1], indexing='ij')
+        )
 
-        drdv = np.prod(np.meshgrid(radius_range.diff(), velocity_range.diff()), axis=0)
-        grid = np.array(16 * np.pi * r_grid**2 * v_grid**2 * self.f(self.E(r_grid, v_grid)) * drdv)
-        grid /= grid.sum()
-        flat_grid = grid.ravel()
-        if (grid < 0).any():
+        drdv = np.prod(np.meshgrid(radius_range.diff(), velocity_range.diff(), indexing='ij'), axis=0)
+        probability_grid = np.array(16 * np.pi * r_grid**2 * v_grid**2 * self.f(self.E(r_grid, v_grid)) * drdv)
+        probability_grid /= probability_grid.sum()
+        flat_probability_grid = probability_grid.ravel()
+        if (probability_grid < 0).any():
             raise ValueError(f'Negative probability density encountered, {self}')
         indices = np.unravel_index(
-            generator.choice(a=flat_grid.size, size=int(n_particles), p=flat_grid),
-            grid.shape,
+            generator.choice(a=flat_probability_grid.size, size=int(n_particles), p=flat_probability_grid),
+            probability_grid.shape,
         )
 
-        jittered_indices = indices + np.array(
-            [generator.uniform(0, f, size=int(n_particles)) for f in [radius_noise, velocity_noise]]
+        r_indices, v_indices = indices + generator.uniform(
+            [[min(1 - radius_noise, 0)], [min(1 - velocity_noise, 0)]],
+            [[radius_noise], [velocity_noise]],
+            (2, int(n_particles)),
         )
 
-        radius, velocity = tuple(
-            Quantity(scipy.ndimage.map_coordinates(grid, jittered_indices, order=1, mode='nearest'), grid.unit)
-            for grid in [r_grid, v_grid]
+        r_indices, v_indices = np.abs(r_indices), np.abs(v_indices)
+        r_indices[r_indices > radius_resolution - 2] = (
+            2 * (radius_resolution - 2) - r_indices[r_indices > radius_resolution - 2]
         )
+        v_indices[v_indices > velocity_resolution - 2] = (
+            2 * (velocity_resolution - 2) - v_indices[v_indices > velocity_resolution - 2]
+        )
+
+        r_interp = scipy.interpolate.interp1d(np.arange(radius_resolution - 1), radius_range[:-1])
+        v_interp = scipy.interpolate.interp1d(np.arange(velocity_resolution - 1), velocity_range[:-1])
+
+        velocity = Quantity(v_interp(v_indices), velocity_range.unit)
 
         return (
-            cast(Quantity, np.abs(radius)),
-            cast(Quantity, np.vstack(utils.split_3d(np.abs(velocity), generator=generator)).T),
+            Quantity(r_interp(r_indices), radius_range.unit),
+            cast(Quantity, np.vstack(utils.split_3d(velocity, generator=generator)).T),
         )
 
     ##Plots

@@ -13,7 +13,8 @@ if __name__ == '__main__':
     from src.distribution.hernquist import Hernquist
 
     print('Setup distributions')
-    b_Mtot = Quantity(1e5, 'Msun')
+    # b_Mtot = Quantity(1e5, 'Msun')
+    b_Mtot = Quantity(1e-1, 'Msun')
     dm_distribution = NFW(particle_type='dm')
     b_distribution = Hernquist(rho_s=None, Mtot=b_Mtot, particle_type='baryon')
 
