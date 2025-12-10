@@ -30,7 +30,7 @@ if __name__ == '__main__':
     max_allowed_subdivisions = 1
     bootstrap_steps = 100
     dynamics_params = {'raise_warning': False}
-    scatter_params = {'kappa': 0.002, 'disable_tqdm': True}
+    scatter_params = {'disable_tqdm': True}
 
     print('Setup complete, starting halo initialization')
 
