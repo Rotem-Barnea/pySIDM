@@ -642,10 +642,10 @@ class Distribution:
             generator = rng.generator
         if radius_range is None:
             if radius_min_value is None:
-                radius_min_value = self.quantile_function(1 / n_particles)
+                radius_min_value = self.quantile_function(2 / n_particles)
             radius_min_value = max(radius_min_value, self.Rmin)
             if radius_max_value is None:
-                radius_max_value = self.quantile_function(1 - 1 / n_particles)
+                radius_max_value = self.quantile_function(1 - 2 / n_particles)
             radius_max_value = min(radius_max_value, self.Rmax)
             radius_range = Quantity(np.linspace(radius_min_value, radius_max_value, int(radius_resolution)))
         if velocity_range is None:
