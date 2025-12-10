@@ -223,6 +223,7 @@ class Halo:
         distributions: list[Distribution],
         n_particles: list[int | float],
         seed: int | None = None,
+        sample_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> Self:
         """Initialize a Halo object from a given set of distributions.
@@ -232,6 +233,7 @@ class Halo:
             n_particles: List of number of particles for each particle type.
             seed: Seed for the random number generator.
             generator: If `None` use the default generator from `rng.generator`.
+            sample_kwargs: Additional keyword argumants to pass ot the sampling function.
             kwargs: Additional keyword arguments, passed to the constructor.
 
         Returns:
@@ -243,7 +245,7 @@ class Halo:
         for distribution, n in zip(distributions, n_particles):
             # r_sub = distribution.sample_r(int(n)).to(run_units.length)
             # v_sub = distribution.sample_v(r_sub).to(run_units.velocity)
-            r_sub, v_sub = distribution.sample(n, generator=generator)
+            r_sub, v_sub = distribution.sample(n, generator=generator, **sample_kwargs)
             r += [r_sub]
             v += [v_sub]
             particle_type += [[distribution.particle_type] * int(n)]

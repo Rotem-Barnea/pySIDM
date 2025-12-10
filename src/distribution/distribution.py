@@ -476,8 +476,7 @@ class Distribution:
         """Sample particle positions from the distribution quantile function."""
         if generator is None:
             generator = rng.generator
-        rolls = generator.random(int(n_particles))
-        return self.quantile_function(rolls)
+        return self.quantile_function(generator.random(int(n_particles)))
 
     @staticmethod
     @njit(parallel=True)
@@ -551,6 +550,30 @@ class Distribution:
         return cast(
             Quantity, np.vstack(utils.split_3d(self.sample_v_norm(r, generator=generator), generator=generator)).T
         )
+
+    def sample_old(
+        self,
+        n_particles: int | float,
+        num: int = 1000,
+        generator: np.random.Generator | None = None,
+    ) -> tuple[Quantity['length'], Quantity['velocity']]:
+        """Sample particles In two steps:
+            - Sample radius from the inversed CDF.
+            - Calculate the velocity CDF for every particle's sampled radius, and sample from it's inverse.
+
+        Parameters:
+            n_particles: Number of particles to sample.
+            num: Resolution parameters, defines the number of steps to use in the df integral.
+            generator: If not provided, use the default generator defined in `rng.generator`.
+
+        Returns:
+            A tuple of two vectors:
+                Sampled radius values for each particle, shaped `(num_particles,)`
+                Corresponding 3d velocities for each particle, shaped `(num_particles,3)`.
+        """
+        r = self.sample_r(n_particles, generator=generator).to(run_units.length)
+        v = self.sample_v(r, num=num, generator=generator).to(run_units.velocity)
+        return r, v
 
     def sample(
         self,
