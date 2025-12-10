@@ -41,7 +41,7 @@ default_params: Params = {
     'max_allowed_rounds': 10000,
     'max_allowed_scatters': None,
     'record_underestimation': True,
-    'kappa': 0.02,
+    'kappa': 0.002,
     'sigma': Quantity(0, run_units.cross_section),
     'disable_tqdm': False,
     'tqdm_cutoff': None,
