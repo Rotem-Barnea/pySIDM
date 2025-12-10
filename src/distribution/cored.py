@@ -27,7 +27,13 @@ class Cored(Distribution):
     """
 
     def __init__(
-        self, rc: Quantity['length'] | None = None, r_max_factor: float | None = None, c: float = 85, **kwargs: Any
+        self,
+        rho_s: Quantity['mass density'] | None = Quantity(3.52e07, 'Msun/kpc**3'),
+        Rs: Quantity['length'] | None = Quantity(23, 'kpc'),
+        Rvir: Quantity['length'] | None = Quantity(85, 'kpc'),
+        rc: Quantity['length'] | None = None,
+        r_max_factor: Quantity['length'] | None = None,
+        **kwargs: Any,
     ):
         # Rs: core radius rc
         # c: cutoff parameter (r_max = c × rc)
@@ -35,12 +41,10 @@ class Cored(Distribution):
         # rho_s: central density ρ₀ (normalized from M_total)
 
         if rc is not None:
-            kwargs['Rs'] = rc
+            Rs = rc
         if r_max_factor is not None:
-            kwargs['c'] = r_max_factor
-        else:
-            kwargs['c'] = c
-        super().__init__(**kwargs)
+            Rvir = r_max_factor
+        super().__init__(rho_s=rho_s, Rs=Rs, Rvir=Rvir, **kwargs)
         self.title = 'Cored'
 
         # Physical parameters
@@ -67,5 +71,5 @@ class Cored(Distribution):
             Parameter names (rho_s, Rs) follow Distribution class convention.
             For Cored: rho_s represents ρ₀ (actual density at r=0).
         """
-        rho = rho_s / (1 + (r / Rs) ** 2) ** 3
+        rho = rho_s / (1 + (r / Rs) ** 2) ** 3 / (1 + (r / Rvir) ** 4)
         return rho

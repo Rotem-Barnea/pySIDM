@@ -23,7 +23,7 @@ class Distribution:
         Rmin: Quantity['length'] = Quantity(1e-4, 'kpc'),
         Rmax: Quantity['length'] | None = None,
         Rs: Quantity['length'] | None = None,
-        c: float | None = None,
+        c: int | float | None = None,
         Rvir: Quantity['length'] | None = None,
         Mtot: Quantity['mass'] | None = None,
         rho_s: Quantity['mass density'] | None = None,

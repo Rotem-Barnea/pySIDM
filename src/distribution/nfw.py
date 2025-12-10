@@ -11,8 +11,14 @@ from .distribution import Distribution
 class NFW(Distribution):
     """NFW density profile."""
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(
+        self,
+        rho_s: Quantity['mass density'] | None = Quantity(2.73e7, 'Msun/kpc**3'),
+        Rs: Quantity['length'] | None = Quantity(1.18, 'kpc'),
+        c: int | float | None = 19,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(rho_s=rho_s, Rs=Rs, c=c, **kwargs)
         self.title = 'NFW'
 
     @staticmethod
