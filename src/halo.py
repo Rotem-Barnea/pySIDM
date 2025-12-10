@@ -47,8 +47,8 @@ class Halo:
         distributions: list[Distribution] | None = None,
         scatter_rounds: deque[int] | None = None,
         scatter_rounds_underestimated: deque[int] | None = None,
-        ministep_size: deque[Quantity['time']] | None = None,
-        scatter_track_time: deque[Quantity['time']] | None = None,
+        ministep_size: deque[float] | None = None,
+        scatter_track_time: deque[float] | None = None,
         scatter_track_index: deque[NDArray[np.int64]] | None = None,
         scatter_track_radius: deque[NDArray[np.float64]] | None = None,
         time: Quantity['time'] = 0 * run_units.time,
@@ -151,8 +151,8 @@ class Halo:
         self.subdivide_on_scatter_chance: bool = subdivide_on_scatter_chance
         self.subdivide_on_gravitational_step: bool = subdivide_on_gravitational_step
         self.subdivide_on_startup: bool = subdivide_on_startup
-        self.ministep_size: deque[Quantity] = utils.handle_default(ministep_size, deque())
-        self.scatter_track_time: deque[Quantity] = utils.handle_default(scatter_track_time, deque())
+        self.ministep_size: deque[float] = utils.handle_default(ministep_size, deque())
+        self.scatter_track_time: deque[float] = utils.handle_default(scatter_track_time, deque())
         self.scatter_track_index: deque[NDArray[np.int64]] = utils.handle_default(scatter_track_index, deque())
         self.scatter_track_radius: deque[NDArray[np.float64]] = utils.handle_default(scatter_track_radius, deque())
         self._initial_particles = self._particles.copy()
@@ -523,15 +523,15 @@ class Halo:
         return self.rng.bit_generator.state
 
     @property
+    def scatter_times(self) -> Quantity['time']:
+        """Wrap `self.scatter_track_time` as a Quantity."""
+        return Quantity(np.hstack(self.scatter_track_time), run_units.time)
+
+    @property
     def scatter_track_time_raveled(self) -> Quantity['time']:
         """Get a raveled array with the scatter time matching each particle in the hstack-ed `self.scatter_track_index`."""
         return Quantity(
-            np.hstack(
-                [
-                    [t.to(run_units.time).value] * len(i)
-                    for i, t in zip(self.scatter_track_index, self.scatter_track_time)
-                ]
-            ),
+            np.hstack([[t.value] * len(i) for i, t in zip(self.scatter_track_index, self.scatter_times)]),
             run_units.time,
         )
 
@@ -563,7 +563,7 @@ class Halo:
             The maximal core time
         """
         n = int(time_binning / self.dt)
-        time = np.hstack(self.scatter_track_time)
+        time = self.scatter_times
         scatters = np.add.reduceat(self.n_scatters, np.arange(0, len(self.n_scatters), n))
         if smoothing_sigma is not None:
             scatters = scipy.ndimage.gaussian_filter1d(scatters, sigma=smoothing_sigma)
@@ -600,7 +600,7 @@ class Halo:
         return Quantity(
             scipy.interpolate.interp1d(
                 np.add.reduceat(self.n_scatters, np.arange(0, len(self.n_scatters), n)),
-                np.hstack(self.scatter_track_time).value[::n],
+                self.scatter_times.value[::n],
                 kind='cubic',
                 bounds_error=False,
                 fill_value=np.inf,
@@ -737,7 +737,7 @@ class Halo:
                     **self.scatter_params,
                 )
                 self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
-                self.scatter_track_time += [self.time.copy()]
+                self.scatter_track_time += [self.time.value]
                 self.scatter_track_radius += [self.r[mask][indices]]
                 self.scatter_rounds += [scatter_rounds]
                 self.scatter_rounds_underestimated += [scatter_rounds_underestimated]
@@ -752,7 +752,7 @@ class Halo:
             self.runtime_track_leapfrog += [time.perf_counter() - t0]
             if not in_bootstrap:
                 self.time += dt
-                self.ministep_size += [dt]
+                self.ministep_size += [dt.value]
                 self.steps += 1
             self.runtime_track_full_step += [time.perf_counter() - t_start]
 
@@ -1085,9 +1085,7 @@ class Halo:
         core_collapse_start_time = self.core_collapse_start_time()
         max_core_time = self.max_core_time()
         n_scatter_cumsum = self.n_scatters.cumsum()
-        scatters_to_collapse_start = n_scatter_cumsum[
-            (np.hstack(self.scatter_track_time) <= core_collapse_start_time).argmin()
-        ]
+        scatters_to_collapse_start = n_scatter_cumsum[(self.scatter_times <= core_collapse_start_time).argmin()]
         n_scattering_particles = len(np.unique(np.hstack(self.scatter_track_index)))
         return report.Report(
             body_lines=[
@@ -2384,7 +2382,7 @@ class Halo:
             ax_set=ax_set,
             **kwargs,
         )
-        x = np.hstack(self.scatter_track_time).to(time_unit)
+        x = self.scatter_times.to(time_unit)
         y = self.n_scatters.cumsum()
         if undersample is not None:
             x = x[::undersample]
@@ -2839,7 +2837,7 @@ class Halo:
             title += f' ({title_suffix})'
 
         index_track = (
-            list(self.scatter_track_index)[: np.argmin(np.hstack(self.scatter_track_time) < time)]
+            list(self.scatter_track_index)[: np.argmin(self.scatter_times < time)]
             if only_past_scatters
             else self.scatter_track_index
         )
@@ -2952,7 +2950,7 @@ class Halo:
             fig, ax.
         """
 
-        time_array = np.hstack(self.scatter_track_time)
+        time_array = self.scatter_times
         values = []
         time_bins = []
         for time_range in tqdm(list(zip(bin_edges[:-1], bin_edges[1:]))):
