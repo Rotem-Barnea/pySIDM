@@ -58,6 +58,6 @@ if __name__ == '__main__':
         )
 
     halo.evolve(
-        until_t=Quantity(13, 'Gyr'),
+        until_t=Quantity(13.5, 'Gyr'),
         tqdm_kwargs={'mininterval': 60},
     )
