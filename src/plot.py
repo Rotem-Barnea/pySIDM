@@ -877,7 +877,7 @@ def save_images(
     images[0].save(save_path, save_all=True, append_images=images[1:], duration=duration, loop=loop, **kwargs)
 
 
-def save_plot(fig: Figure, save_path: str | Path | None, bbox_inches: str = 'tight', **kwargs: Any) -> None:
+def save_plot(fig: Figure, save_path: str | Path | None = None, bbox_inches: str = 'tight', **kwargs: Any) -> None:
     """Save the figure.
 
     Parameters:
