@@ -472,7 +472,7 @@ class Distribution:
 
     ## Roll initial setup
 
-    def roll_r(self, n_particles: int | float, generator: np.random.Generator | None = None) -> Quantity['length']:
+    def sample_r(self, n_particles: int | float, generator: np.random.Generator | None = None) -> Quantity['length']:
         """Sample particle positions from the distribution quantile function."""
         if generator is None:
             generator = rng.generator
@@ -481,7 +481,7 @@ class Distribution:
 
     @staticmethod
     @njit(parallel=True)
-    def roll_v_fast(
+    def sample_v_norm_fast(
         Psi: NDArray[np.float64],
         E_grid: NDArray[np.float64],
         f_grid: NDArray[np.float64],
@@ -507,7 +507,7 @@ class Distribution:
             output[particle] = vs[i]
         return output
 
-    def roll_v(
+    def sample_v_norm(
         self,
         r: Quantity['length'],
         num: int = 1000,
@@ -527,7 +527,7 @@ class Distribution:
         if generator is None:
             generator = rng.generator
         return Quantity(
-            self.roll_v_fast(
+            self.sample_v_norm_fast(
                 Psi=self.Psi_interpolate(r).to(run_units.specific_energy),
                 E_grid=self.E_grid,
                 f_grid=self.f_grid,
@@ -537,7 +537,7 @@ class Distribution:
             run_units.velocity,
         )
 
-    def roll_v_3d(
+    def sample_v(
         self,
         r: Quantity['length'],
         num: int = 1000,
@@ -548,13 +548,11 @@ class Distribution:
         The velocity is split into radial and perpendicular components by a uniform cosine distributed angle, and then the perpendicular component is split into x and y components by a uniform angle.
         See `roll_v()` for parameter details.
         """
-        return cast(Quantity, np.vstack(utils.split_3d(self.roll_v(r, generator=generator), generator=generator)).T)
+        return cast(
+            Quantity, np.vstack(utils.split_3d(self.sample_v_norm(r, generator=generator), generator=generator)).T
+        )
 
-    def roll_initial_angle(self, n_particles: int, generator: np.random.Generator | None = None) -> NDArray[np.float64]:
-        """Sample initial angle off the radial direction from a uniform cosine distribution."""
-        return utils.random_angle(n_particles, acos=True, generator=generator)
-
-    def roll_joint_phase_space(
+    def sample(
         self,
         n_particles: int | float,
         radius_min_value: Quantity['length'] = Quantity(1e-4, 'kpc'),

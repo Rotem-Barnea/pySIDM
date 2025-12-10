@@ -241,9 +241,9 @@ class Halo:
         generator = np.random.default_rng(seed)
         Distribution.merge_distribution_grids(distributions)
         for distribution, n in zip(distributions, n_particles):
-            # r_sub = distribution.roll_r(int(n)).to(run_units.length)
-            # v_sub = distribution.roll_v_3d(r_sub).to(run_units.velocity)
-            r_sub, v_sub = distribution.roll_joint_phase_space(n, generator=generator)
+            # r_sub = distribution.sample_r(int(n)).to(run_units.length)
+            # v_sub = distribution.sample_v(r_sub).to(run_units.velocity)
+            r_sub, v_sub = distribution.sample(n, generator=generator)
             r += [r_sub]
             v += [v_sub]
             particle_type += [[distribution.particle_type] * int(n)]
