@@ -13,12 +13,9 @@ if __name__ == '__main__':
     from src.distribution.hernquist import Hernquist
 
     print('Setup distributions')
-    dm_rho_s = Quantity(2.73e7, 'Msun/kpc^3')
-    Rs = Quantity(1.18, 'kpc')
-    c = 19
     b_Mtot = Quantity(1e5, 'Msun')
-    dm_distribution = NFW(Rs=Rs, c=c, rho_s=dm_rho_s, particle_type='dm')
-    b_distribution = Hernquist(Rs=Rs, c=c, Mtot=b_Mtot, particle_type='baryon')
+    dm_distribution = NFW(particle_type='dm')
+    b_distribution = Hernquist(rho_s=None, Mtot=b_Mtot, particle_type='baryon')
 
     print('Setup parameters')
     dm_n_particles = 1e5
@@ -55,6 +52,7 @@ if __name__ == '__main__':
             scatter_params={'sigma': sigma, **scatter_params},
             max_allowed_subdivisions=max_allowed_subdivisions,
             bootstrap_steps=bootstrap_steps,
+            sample_kwargs={'radius_min_value': Quantity(1e-3, 'kpc')},
         )
 
     halo.evolve(
