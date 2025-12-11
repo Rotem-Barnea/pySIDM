@@ -342,7 +342,18 @@ class Halo:
         )
         return data
 
-    def get_particle_states(self, now: bool = True, snapshots: bool = True, initial: bool = True):
+    def particles_by_type(self) -> dict[str, table.QTable]:
+        """Return the `particles` QTable split by particle type (as a dictionary)."""
+        groups = self.particles.group_by('particle_type').groups
+        return dict(zip(np.array(dict(groups.keys)['particle_type']), groups))
+
+    def get_particle_states(
+        self,
+        now: bool = True,
+        snapshots: bool = True,
+        initial: bool = True,
+        filter_particle_type: ParticleType | None = None,
+    ) -> table.QTable:
         """Return a table of particle snapshots, potentially including the initial and current states."""
         assert now or snapshots or initial, 'At least one of now, snapshots, or initial must be True'
         data_tables = []
@@ -352,7 +363,10 @@ class Halo:
             data_tables += [self.snapshots]
         if initial:
             data_tables += [self.initial_particles]
-        return table.QTable(table.vstack(data_tables))
+        data = table.QTable(table.vstack(data_tables))
+        if filter_particle_type is not None:
+            data = utils.slice_closest(data=data, value=filter_particle_type, key='particle_type')
+        return data
 
     @property
     def dynamics_params(self) -> leapfrog.Params:
@@ -482,6 +496,21 @@ class Halo:
                 self.scatter_params.get('max_radius_j', sidm.default_params.get('max_radius_j', 10)),
             ),
         )
+
+    @property
+    def local_density_by_type(self) -> dict[str, Quantity['mass density']]:
+        """The local mass density around the particle. Split by particle type."""
+        return {
+            particle_type: cast(
+                Quantity['mass density'],
+                physics.utils.local_density(
+                    data['r'],
+                    data['m'],
+                    self.scatter_params.get('max_radius_j', sidm.default_params.get('max_radius_j', 10)),
+                ),
+            )
+            for particle_type, data in self.particles_by_type.items()
+        }
 
     @property
     def n_scatters(self) -> NDArray[np.int64]:
