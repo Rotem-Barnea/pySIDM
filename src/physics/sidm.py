@@ -16,8 +16,7 @@ class Params(TypedDict, total=False):
     Attributes:
         max_radius_j: Maximum index radius for partners for scattering.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
-        max_allowed_scatters: Maximum number of allowed scatter events.
-        record_underestimation: Whether to record the amount of rounds underestimated (due to `max_allowed_rounds`).
+        max_allowed_scatters: Maximum number of allowed scatter events per particle per time step.
         kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
         sigma: Scattering cross-section.
         disable_tqdm: Whether to disable tqdm progress bar.
@@ -28,7 +27,6 @@ class Params(TypedDict, total=False):
     max_radius_j: int
     max_allowed_rounds: int | None
     max_allowed_scatters: int | None
-    record_underestimation: bool
     kappa: float
     sigma: Quantity[run_units.cross_section]
     disable_tqdm: bool
@@ -40,7 +38,6 @@ default_params: Params = {
     'max_radius_j': 10,
     'max_allowed_rounds': 10000,
     'max_allowed_scatters': None,
-    'record_underestimation': True,
     'kappa': 0.002,
     'sigma': Quantity(0, run_units.cross_section),
     'disable_tqdm': False,
@@ -351,7 +348,6 @@ def scatter(
     max_radius_j: int = default_params['max_radius_j'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
-    record_underestimation: bool = default_params['record_underestimation'],
     max_allowed_scatters: int | None = default_params['max_allowed_scatters'],
     disable_tqdm: bool = default_params['disable_tqdm'],
     tqdm_cutoff: int | None = default_params['tqdm_cutoff'],
@@ -382,7 +378,6 @@ def scatter(
         max_radius_j: Maximum index radius for partners for scattering.
         kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
-        record_underestimation: Whether to record the amount of rounds underestimated (due to `max_allowed_rounds`).
         disable_tqdm: Whether to disable tqdm progress bar.
         tqdm_cutoff: Disable the tqdm progress bar if the number of scattering rounds is less than this value.
         tqdm_cutoff_ratio: Disable the tqdm progress bar if the number of scattering rounds is less than the maximum allowed times by this value.
@@ -433,7 +428,7 @@ def scatter(
     max_scatter_rounds = scatter_rounds.max()
     underestimation: int = (
         fast_scatter_rounds(scatter_chance=scatter_chance, kappa=kappa, max_allowed_rounds=-1).max()
-        if record_underestimation and max_scatter_rounds == max_allowed_rounds
+        if max_scatter_rounds == max_allowed_rounds
         else 0
     )
     round_dt = dt.value / scatter_rounds

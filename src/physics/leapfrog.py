@@ -14,7 +14,20 @@ G = constants.G.to(run_units.G_units).value
 
 
 class Params(TypedDict, total=False):
-    """Parameter dictionary for the leapfrog integrator."""
+    """Parameter dictionary for the leapfrog integrator.
+
+    Attributes:
+        max_minirounds: Maximum number of mini-rounds to perform.
+        r_convergence_threshold: Convergence threshold for the radius.
+        vr_convergence_threshold: Convergence threshold for the radial velocity.
+        first_mini_round: First mini-round to perform (i.e. start with a non-trivial subdivision).
+        richardson_extrapolation: Whether to use Richardson extrapolation.
+        adaptive: Whether to use adaptive mini-rounds.
+        grid_window_radius: Radius of the grid window for updating the enclosed mass during the run.
+        raise_warning: Whether to raise a warning if the integrator fails to converge.
+        levi_civita_mode: Mode for the Levi-Civita correction.
+        levi_civita_condition_coefficient: Coefficient for the Levi-Civita condition.
+    """
 
     max_minirounds: int
     r_convergence_threshold: float
