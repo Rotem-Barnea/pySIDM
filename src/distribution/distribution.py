@@ -489,7 +489,7 @@ class Distribution:
     def sample_r(
         self,
         n_particles: int | float,
-        sampling_method: Literal['random', 'uniform', 'uniform with boundaries'] = 'random',
+        sampling_method: Literal['random', 'uniform'] = 'random',
         generator: np.random.Generator | None = None,
     ) -> Quantity['length']:
         """Sample particle positions from the distribution quantile function.
@@ -507,8 +507,6 @@ class Distribution:
                 generator = rng.generator
             points = generator.random(int(n_particles))
         elif sampling_method == 'uniform':
-            points = cast(NDArray[np.float64], np.linspace(0, 1, int(n_particles + 1), endpoint=False)[1:])
-        elif sampling_method == 'uniform with boundaries':
             points = cast(NDArray[np.float64], np.linspace(0, 1, int(n_particles)))
         return cast(Quantity, np.sort(self.quantile_function(points)))
 
@@ -588,7 +586,7 @@ class Distribution:
     def sample_old(
         self,
         n_particles: int | float,
-        sampling_method: Literal['random', 'uniform', 'uniform with boundaries'] = 'random',
+        sampling_method: Literal['random', 'uniform'] = 'random',
         num: int = 1000,
         generator: np.random.Generator | None = None,
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
@@ -635,8 +633,8 @@ class Distribution:
 
         Parameters:
             n_particles: Number of particles to sample.
-            radius_min_value: Minimum radius value to consider for the phase space distribution. If `None` use the quantile value for `2/n_particles`. Regardless, this value is capped by `Rmin` even if provided.
-            radius_max_value: Maximum radius value to consider for the phase space distribution. If `None` use the quantile value for `1-2/n_particles`. Regardless, this value is capped by `Rmax` even if provided.
+            radius_min_value: Minimum radius value to consider for the phase space distribution. If `None` use the quantile value for `0`. Regardless, this value is capped by `Rmin` even if provided.
+            radius_max_value: Maximum radius value to consider for the phase space distribution. If `None` use the quantile value for `1`. Regardless, this value is capped by `Rmax` even if provided.
             velocity_min_value: Minimum velocity norm value to consider for the phase space distribution.
             velocity_max_value: Maximum velocity norm value to consider for the phase space distribution.
             radius_resolution: Resolution of the radius grid.
@@ -656,10 +654,10 @@ class Distribution:
             generator = rng.generator
         if radius_range is None:
             if radius_min_value is None:
-                radius_min_value = self.quantile_function(2 / n_particles)
+                radius_min_value = self.quantile_function(0)
             radius_min_value = max(radius_min_value, self.Rmin)
             if radius_max_value is None:
-                radius_max_value = self.quantile_function(1 - 2 / n_particles)
+                radius_max_value = self.quantile_function(1)
             radius_max_value = min(radius_max_value, self.Rmax)
             radius_range = Quantity(np.linspace(radius_min_value, radius_max_value, int(radius_resolution)))
         if velocity_range is None:

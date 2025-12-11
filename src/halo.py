@@ -342,6 +342,7 @@ class Halo:
         )
         return data
 
+    @property
     def particles_by_type(self) -> dict[str, table.QTable]:
         """Return the `particles` QTable split by particle type (as a dictionary)."""
         groups = self.particles.group_by('particle_type').groups
@@ -504,8 +505,8 @@ class Halo:
             particle_type: cast(
                 Quantity['mass density'],
                 physics.utils.local_density(
-                    data['r'],
-                    data['m'],
+                    cast(Quantity, data['r']),
+                    cast(Quantity, data['m']),
                     self.scatter_params.get('max_radius_j', sidm.default_params.get('max_radius_j', 10)),
                 ),
             )

@@ -53,7 +53,6 @@ if __name__ == '__main__':
             scatter_params={'sigma': sigma, **scatter_params},
             max_allowed_subdivisions=max_allowed_subdivisions,
             bootstrap_steps=bootstrap_steps,
-            sample_kwargs={'radius_min_value': Quantity(1e-3, 'kpc')},
         )
 
     halo.evolve(
