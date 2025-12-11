@@ -430,16 +430,30 @@ class Distribution:
     def f_grid(self) -> Quantity['specific energy']:
         """Calculate the distribution function (`f`) on the `internal energy grid` (memoized)."""
         if 'f_grid' not in self.memoization:
-            self.memoization['f_grid'] = self.calculate_f(self.E_grid, 10000).to(run_units.f_units)
+            self.memoization['f_grid'] = self.calculate_f(E=self.E_grid).to(run_units.f_units)
         return self.memoization['f_grid']
 
-    def f(self, E: Quantity['specific energy']) -> Quantity:
-        """Interpolate the distribution function (`f`) based on the `internal energy grid` (memoized)."""
+    def f(self, E: Quantity['specific energy'], edge: int = 2) -> Quantity:
+        """Interpolate the distribution function (`f`) based on the `internal energy grid` (memoized).
+
+        Points that are too close to the edges are calculated directly to avoid interpolation errors.
+
+        Parameters:
+            E: The specific energy at which to evaluate the distribution function.
+            edge: The number of grid points to exclude from the interpolation at the edges (corresponding to low radius only).
+
+        Returns:
+            The value of f at the given energies.
+        """
         if 'f' not in self.memoization:
             self.memoization['f'] = scipy.interpolate.interp1d(
                 self.E_grid, self.f_grid, bounds_error=False, fill_value=0
             )
-        return Quantity(self.memoization['f'](E.to(self.E_grid.unit)), self.f_grid.unit)
+        edge_mask = np.searchsorted(self.E_grid, E) >= len(self.E_grid) - edge
+        output = Quantity(np.zeros(E.shape), run_units.f_units)
+        output[~edge_mask] = Quantity(self.memoization['f'](E[~edge_mask].to(self.E_grid.unit)), self.f_grid.unit)
+        output[edge_mask] = self.calculate_f(E=cast(Quantity, E[edge_mask]))
+        return output
 
     def Psi_interpolate(self, r: Quantity['length']) -> Quantity['specific energy']:
         """Interpolate the relative gravitational potential (`Psi`) based on the  `internal logarithmic grid` (memoized)."""
@@ -679,6 +693,8 @@ class Distribution:
         v_indices[v_indices > velocity_resolution - 2] = (
             2 * (velocity_resolution - 2) - v_indices[v_indices > velocity_resolution - 2]
         )
+
+        r_indices, v_indices = r_indices[np.argsort(r_indices)], v_indices[np.argsort(r_indices)]
 
         r_interp = scipy.interpolate.interp1d(np.arange(radius_resolution - 1), radius_range[:-1])
         v_interp = scipy.interpolate.interp1d(np.arange(velocity_resolution - 1), velocity_range[:-1])
