@@ -1,4 +1,5 @@
 from . import (
+    cli,
     rng,
     halo,
     plot,
@@ -14,6 +15,7 @@ from . import (
 )
 
 __all__ = [
+    'cli',
     'rng',
     'halo',
     'plot',
