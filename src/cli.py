@@ -94,10 +94,10 @@ for i, default_distribution in enumerate(default_distributions):
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--virial_radius_units_{i + 1}',
-        metavar=f'-rvir_u{i + 1}',
-        help=f'Units for `virial_radius_{i + 1}`. Must be acceptable by astropy.units',
-        type=partial(parse_unit, required_physical_type='kpc'),
+        f'--total_mass_units_{i + 1}',
+        metavar=f'-mtot_u{i + 1}',
+        help=f'Units for `total_mass_{i + 1}`. Must be acceptable by astropy.units',
+        type=partial(parse_unit, required_physical_type='mass'),
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
@@ -248,12 +248,6 @@ parser.add_argument(
     '--dynamics_r_convergence_threshold',
     metavar='-dyn_r_thr',
     help='Convergence threshold for the radius in the adaptive leapfrog integrator',
-    type=float,
-)
-parser.add_argument(
-    '--dynamics_vr_convergence_threshold',
-    metavar='-dyn_vr_thr',
-    help='Convergence threshold for the radial velocity in the adaptive leapfrog integrator',
     type=float,
 )
 parser.add_argument(
