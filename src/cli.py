@@ -1,11 +1,15 @@
 import argparse
+from typing import Any
 from pathlib import Path
 from functools import partial
 
-from astropy.units import Unit
+import regex
+from astropy.units import Unit, Quantity
+
+from . import utils, distribution
 
 
-def parse_unit(x: str, whitelist: list[str] | None = None, required_physical_type: str | None = None):
+def parse_unit(x: str, whitelist: list[str] | None = None, required_physical_type: str | None = None) -> Unit | str:
     """Checks if the value is a valid unit"""
     if whitelist is not None and x in whitelist:
         return x
@@ -18,6 +22,61 @@ def parse_unit(x: str, whitelist: list[str] | None = None, required_physical_typ
             f'Value is not of the right unit type, got {x} with physical type {unit.physical_type}, required {required_physical_type}'
         )
     return unit
+
+
+def parse_from_args(
+    whitelist_prefix: str | None = None,
+    blacklist_prefix: list[str] | None = None,
+    **kwargs: Any,
+) -> dict[str, Any]:
+    """Cleanup keyword arguments read through `parser.parse_args()`."""
+    params = utils.drop_None(**kwargs)
+    if blacklist_prefix is not None:
+        for prefix in blacklist_prefix:
+            params = {k: v for k, v in params.items() if not k.startswith(prefix)}
+    if whitelist_prefix is not None:
+        params = {
+            regex.sub(f'^{whitelist_prefix}_?', '', k): v
+            for k, v in params.items()
+            if k.startswith(f'{whitelist_prefix}_') or k == whitelist_prefix
+        }
+    unit_prarms = [regex.sub('_units$', '', k) for k in params if k.endswith('_units')]
+    for k in unit_prarms:
+        unit = params.pop(f'{k}_units')
+        if k in params:
+            params[k] = Quantity(params[k], unit)
+    return params
+
+
+def setup_distribution(i: int, **kwargs: Any) -> tuple[distribution.distribution.Distribution, int]:
+    """Setup a distribution from keyword arguments read through `parser.parse_args()`"""
+    params = parse_from_args(whitelist_prefix=f'distribution_{i}', **kwargs)
+    if 'n_particles' in params:
+        n_particles = params.pop('n_particles')
+    else:
+        n_particles = 0
+    if 'scale_radius' in params:
+        params['Rs'] = params.pop('scale_radius')
+    if 'virial_radius' in params:
+        params['Rvir'] = params.pop('virial_radius')
+    if 'total_mass' in params:
+        params['Mtot'] = params.pop('total_mass')
+    if 'density_scale' in params:
+        params['rho_s'] = params.pop('density_scale')
+    if 'concentration' in params:
+        params['c'] = params.pop('concentration')
+
+    distribution_type = params.pop('')
+
+    if distribution_type == 'NFW':
+        dist = distribution.nfw.NFW(**params)
+    elif distribution_type == 'Hernquist':
+        dist = distribution.hernquist.Hernquist(**params)
+    elif distribution_type == 'Cored':
+        dist = distribution.cored.Cored(**params)
+    else:
+        raise argparse.ArgumentTypeError('Cannot recognize distribution type')
+    return dist, n_particles
 
 
 parser = argparse.ArgumentParser(description='SIDM simulation')
@@ -42,7 +101,7 @@ for i, default_distribution in enumerate(default_distributions):
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--distribution_particle_type_{i + 1}',
+        f'--distribution_{i + 1}_particle_type',
         metavar=f'-p{i + 1}',
         help=f'Particle type for distribution {i + 1}',
         default=default_distribution['particle_type'],
@@ -51,7 +110,7 @@ for i, default_distribution in enumerate(default_distributions):
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--n_particles_{i + 1}',
+        f'--distribution_{i + 1}_n_particles',
         metavar=f'-n{i + 1}',
         help=f'Number of particles from distribution {i + 1}',
         default=default_distribution['n_particles'],
@@ -59,63 +118,63 @@ for i, default_distribution in enumerate(default_distributions):
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--scale_radius_{i + 1}',
+        f'--distribution_{i + 1}_scale_radius',
         metavar=f'-rc{i + 1}',
         help=f'Scale radius for distribution {i + 1}. Uneeded if both `virial_radius_{i + 1}` and `concentration_{i + 1}` are provided',
         type=float,
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--scale_radius_units_{i + 1}',
+        f'--distribution_{i + 1}_scale_radius_units',
         metavar=f'-rc_u{i + 1}',
         help=f'Units for `scale_radius_{i + 1}`. Must be acceptable by astropy.units',
         type=partial(parse_unit, required_physical_type='kpc'),
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--virial_radius_{i + 1}',
+        f'--distribution_{i + 1}_virial_radius',
         metavar=f'-rvir{i + 1}',
         help=f'Virial radius for distribution {i + 1}. Uneeded if both `scale_radius_{i + 1}` and `concentration_{i + 1}` are provided',
         type=float,
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--virial_radius_units_{i + 1}',
+        f'--distribution_{i + 1}_virial_radius_units',
         metavar=f'-rvir_u{i + 1}',
         help=f'Units for `virial_radius_{i + 1}`. Must be acceptable by astropy.units',
         type=partial(parse_unit, required_physical_type='kpc'),
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--total_mass_{i + 1}',
+        f'--distribution_{i + 1}_total_mass',
         metavar=f'-mtot{i + 1}',
         help=f'Total mass for distribution {i + 1}. Uneeded if `rho_s_{i + 1}` is provided',
         type=float,
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--total_mass_units_{i + 1}',
+        f'--distribution_{i + 1}_total_mass_units',
         metavar=f'-mtot_u{i + 1}',
         help=f'Units for `total_mass_{i + 1}`. Must be acceptable by astropy.units',
         type=partial(parse_unit, required_physical_type='mass'),
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--density_scale_{i + 1}',
+        f'--distribution_{i + 1}_density_scale',
         metavar=f'-rho_s{i + 1}',
         help=f'Density scale for distribution {i + 1}. Uneeded if `total_mass_{i + 1}` is provided',
         type=float,
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--density_scale_units_{i + 1}',
+        f'--distribution_{i + 1}_density_scale_units',
         metavar=f'-rho_s_u{i + 1}',
         help=f'Units for `density_scale_{i + 1}`. Must be acceptable by astropy.units',
         type=partial(parse_unit, required_physical_type='mass density'),
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--concentration_{i + 1}',
+        f'--distribution_{i + 1}_concentration',
         metavar=f'-c{i + 1}',
         help=f'Concentration parameter for distribution {i + 1}. Uneeded if both `scale_radius_{i + 1}` and `virial_radius_{i + 1}` are provided',
         type=float,
