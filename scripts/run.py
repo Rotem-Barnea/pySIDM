@@ -14,9 +14,10 @@ if __name__ == '__main__':
 
     print('Setup distributions')
     # b_Mtot = Quantity(1e5, 'Msun')
-    b_Mtot = Quantity(1e-1, 'Msun')
+    # b_Mtot = Quantity(1e-1, 'Msun')
     dm_distribution = NFW(particle_type='dm')
-    b_distribution = Hernquist(rho_s=None, Mtot=b_Mtot, particle_type='baryon')
+    b_distribution = Hernquist(rho_s=Quantity(125400000, 'Msun/kpc^3'), particle_type='baryon')
+    # b_distribution = Hernquist(rho_s=None, Mtot=b_Mtot, particle_type='baryon')
 
     print('Setup parameters')
     dm_n_particles = 1e5
