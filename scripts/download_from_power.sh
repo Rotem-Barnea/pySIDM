@@ -1,7 +1,7 @@
 #!/bin/bash
 USER="rotembarnea"
 REMOTE_HOST="slurmlogin.tau.ac.il"
-REMOTE_BASE="/scratch200/rotembarnea/SIDM/pySIDM/run results/run_7590998"
+REMOTE_BASE="/scratch200/rotembarnea/SIDM/pySIDM/run results/run_7614004"
 LOCAL_BASE="$HOME/Documents/SIDM/pySIDM/run results"
 
 REMOTE_END=$(basename "$REMOTE_BASE")

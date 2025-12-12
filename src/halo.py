@@ -1169,6 +1169,30 @@ class Halo:
             **kwargs,
         )
 
+    def add_automatic_guidelines(
+        self,
+        manual_times: Quantity['time'] = Quantity([], 'Myr'),
+        manual_labels: list[str] = [],
+        time_units: UnitLike = 'Gyr',
+    ) -> tuple[Quantity['time'], list[str]]:
+        """Automatically pull max core and collapse times for use in plotting."""
+        time_units = self.fill_time_unit(time_units)
+        times = []
+        labels = []
+        for t, label in zip(
+            [Quantity(0, time_units), self.max_core_time(), self.core_collapse_start_time(), self.time],
+            ['start', 'max core', 'core collapse (start)', 'core collapse (deep)'],
+        ):
+            if t == np.inf:
+                break
+            times += [t.to(time_units)]
+            labels += [label]
+        output = pd.DataFrame(
+            {'time': np.hstack([manual_times.to(time_units), *times]), 'label': manual_labels + labels}
+        )
+        times, labels = output.drop_duplicates().sort_values('time').to_numpy().T
+        return Quantity(times, time_units), labels.tolist()
+
     def plot_r_kde_over_time(
         self,
         include_start: bool = True,
@@ -2634,11 +2658,12 @@ class Halo:
 
     def plot_distributions_over_time(
         self,
-        times: Quantity['time'] = Quantity([0, 1, 11, 14.5], 'Gyr'),
         data: table.QTable | None = None,
         include_start: bool = True,
         include_now: bool = False,
-        labels: list[str] = ['start', 'max core', 'core collapse (start)', 'core collapse (deep)'],
+        automatic_times: bool = True,
+        times: Quantity['time'] = Quantity([], 'Gyr'),
+        labels: list[str] = [],
         radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
         limit_radius_by_Rvir: bool = True,
         distributions: list[int] | None = None,
@@ -2652,10 +2677,11 @@ class Halo:
         """Plot the density profiles of the halo over time.
 
         Parameters:
-            times: The times at which to plot the density profiles.
             data: The data to plot. If `None` the data will be loaded from the halo snapshots.
             include_start: Whether to include the initial particle distribution in the data. Ignored if `data` is provided.
             include_now: Whether to include the current particle distribution in the data. Ignored if `data` is provided.
+            automatic_times: Whether to automatically determine the times at which to plot the density profiles.
+            times: The times at which to plot the density profiles.
             labels: The labels for the density profiles.
             radius_bins: The radius bins for the density profile calculations.
             limit_radius_by_Rvir: Whether to limit the radius bins by the virial radius.
@@ -2674,6 +2700,9 @@ class Halo:
             data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         fig, ax = plot.setup_plot(fig=fig, ax=ax, ax_set=ax_set, **setup_kwargs)
         add_distribution_label = distributions is None or len(distributions) > 1
+
+        if automatic_times:
+            times, labels = self.add_automatic_guidelines(times, labels, time_units=cast(Unit, times.unit))
 
         for i, distribution in enumerate(self.distributions):
             if distributions is not None and i not in distributions:
@@ -2754,24 +2783,6 @@ class Halo:
             if distributions is not None and i not in distributions:
                 continue
 
-            if density_guidelines_kwargs is not None:
-                unique_times = np.unique(
-                    cast(
-                        NDArray[np.float64],
-                        data[data['particle_type'] == distribution.particle_type]['time'],
-                    )
-                )
-                multiplicity_table = table.QTable(
-                    {'time': unique_times, 'factor': np.ones(len(unique_times), dtype=np.int64)}
-                )
-                for t in density_guidelines_kwargs['times']:
-                    multiplicity_table['factor'][np.abs(multiplicity_table['time'] - t).argmin()] = (
-                        multiplicity_guidelines
-                    )
-                multiplicity = np.array(multiplicity_table['factor'], dtype=np.int64)
-            else:
-                multiplicity = None
-
             plot.save_images(
                 images=plot.to_images(
                     iterator=data[data['particle_type'] == distribution.particle_type].group_by('time').groups,
@@ -2796,7 +2807,6 @@ class Halo:
                         )[0],
                         ax=guidelines[1],
                     ),
-                    multiplicity=multiplicity,
                     tqdm_kwargs={'desc': distribution.label},
                 ),
                 save_path=save_path.with_stem(f'{save_path.stem} {distribution.label}'),
