@@ -2737,7 +2737,6 @@ class Halo:
         label_units: UnitLike = 'Gyr',
         label_format: str = '.1f',
         density_guidelines_kwargs: dict[str, Any] | None = {
-            'times': Quantity([0, 1, 12], 'Gyr'),
             'line_kwargs': {'linestyle': '--'},
         },
         multiplicity_guidelines: int | None = 10,
