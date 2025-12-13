@@ -247,8 +247,8 @@ class Halo:
             r_sub, v_sub = distribution.sample(n_particles=n, generator=generator, **sample_kwargs)
             r += [r_sub]
             v += [v_sub]
-            particle_type += [[distribution.particle_type] * int(n)]
-            m += [np.ones(int(n)) * distribution.Mtot / n]
+            particle_type += [[distribution.particle_type] * len(r_sub)]
+            m += [np.ones(len(r_sub)) * distribution.Mtot / len(r_sub)]
 
         return cls(
             r=cast(Quantity, np.hstack(r)),

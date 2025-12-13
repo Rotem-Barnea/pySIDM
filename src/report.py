@@ -1,7 +1,7 @@
-from typing import Any, TypedDict
+from typing import Any, Required, TypedDict
 
 
-class Line(TypedDict):
+class Line(TypedDict, total=False):
     """A line in a report. Will be printed as `title: {value:format}`
 
     Parameters:
@@ -10,9 +10,10 @@ class Line(TypedDict):
         format: The format of the line.
     """
 
-    title: str
-    value: Any
+    title: Required[str]
+    value: Required[Any]
     format: str
+    prefix_buffer: str
 
 
 class Report:
@@ -21,6 +22,7 @@ class Report:
     def __init__(
         self,
         body_lines: list[Line],
+        body_prefix: str | None = None,
         header: str | None = None,
         body_title_buffer: int = 4,
         add_thousands_separator: bool = True,
@@ -38,6 +40,7 @@ class Report:
         """
 
         self.body_lines = body_lines
+        self.body_prefix = body_prefix or ''
         self.header: str = header or ''
         self.body_title_buffer = body_title_buffer
         self.add_thousands_separator = add_thousands_separator
@@ -65,36 +68,8 @@ class Report:
 
     def prepare_line(self, line: Line) -> str:
         """Prepares a line for the report, by adjusting its formats and constructing it into a string."""
+        line_prefix = f'{self.body_prefix}{line.get("prefix_buffer", "")}'
         title = f'{line["title"]}:'
         add_thousands_separator = self.add_thousands_separator and not isinstance(line['value'], str)
-        value_format = (',' if add_thousands_separator else '') + line['format']
-        return f'{title:{self.body_title_format}} {line["value"]:{value_format}}'
-
-
-def compile(
-    report: list[Line],
-    header: str | None = None,
-    title_buffer: int = 4,
-    add_thousands_separator: bool = True,
-) -> str:
-    """Compile a report from a list of dictionaries.
-
-    Parameters:
-        report: The report to compile.
-        header: The header to add at the start of the report.
-        title_buffer: The buffer to add between the title and the value.
-        add_thousands_separator: Whether to add a thousands separator to all values.
-
-    Returns:
-        The compiled report.
-    """
-    buffer = max([len(line['title']) for line in report]) + title_buffer
-    body = '\n'.join(
-        [
-            f'{line["title"] + ":":{buffer}} {line["value"]:{',' if add_thousands_separator else ''}{line['format']}}'
-            for line in report
-        ]
-    )
-    if header is not None:
-        return header + '\n' + body
-    return body
+        value_format = (',' if add_thousands_separator else '') + line.get('format', '')
+        return f'{line_prefix}{title:{self.body_title_format}} {line["value"]:{value_format}}'

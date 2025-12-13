@@ -11,7 +11,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from .. import rng, plot, utils, run_units
+from .. import rng, plot, utils, report, run_units
 from ..types import FloatOrArray, ParticleType
 
 
@@ -92,18 +92,25 @@ class Distribution:
             getattr(self, grid)
 
     def __repr__(self):
-        return f"""{self.title} density function
-  - particle_type = {self.particle_type}
-  - Rs = {self.Rs:.4f}
-  - c = {self.c:.1f}
-  - Rvir = {self.Rvir:.4f}
-  - Mtot = {self.Mtot:.3e}
-  - rho_s = {self.rho_s:.4f}
-  - Tdyn = {(1 * self.Tdyn).to(run_units.time):.4f}
-
-  - Rmin = {self.Rmin:.4f}
-  - Rmax = {self.Rmax:.4f}
-  - space_steps = {self.space_steps:.0e}"""
+        warn = '' if self.physical else 'WARNING: This distribution is not physical.\n\n'
+        return str(
+            report.Report(
+                body_lines=[
+                    report.Line(title='particle type', value=self.particle_type),
+                    report.Line(title='Rs', value=self.Rs, format='.4f'),
+                    report.Line(title='c', value=self.c, format='.1f'),
+                    report.Line(title='Rvir', value=self.Rvir, format='.4f'),
+                    report.Line(title='Mtot', value=self.Mtot, format='.3e'),
+                    report.Line(title='rho_s', value=self.rho_s, format='.4f'),
+                    report.Line(title='Tdyn', value=(1 * self.Tdyn).to(run_units.time), format='.4f'),
+                    report.Line(title='Rmin', value=self.Rmin, format='.4f'),
+                    report.Line(title='Rmax', value=self.Rmax, format='.4f'),
+                    report.Line(title='space steps', value=self.space_steps, format='.0e'),
+                ],
+                header=f'{warn}{self.title} density function',
+                body_prefix='  - ',
+            )
+        )
 
     def __call__(self, r: Quantity['length']) -> Quantity['mass density']:
         """Calculate `rho(r)`"""
@@ -126,6 +133,11 @@ class Distribution:
     @label.setter
     def label(self, label: str) -> None:
         self._label = label
+
+    @property
+    def physical(self) -> bool:
+        """Return whether the profile is physical."""
+        return True
 
     @property
     def Tdyn(self) -> Unit:
@@ -478,10 +490,11 @@ class Distribution:
     @staticmethod
     def merge_distribution_grids(distributions: list['Distribution'], grid_base_name: list[str] = ['Psi']):
         """Merges the grid values of the given distributions of the given types. Used to combine the potentials of multiple distributions to sample via Eddington's inversion."""
+        physical_distributions = [density for density in distributions if density.physical]
         for grid_name in grid_base_name:
             for suffix in ['', '_h', '_2h']:
-                grid = sum([getattr(density, f'{grid_name}_grid{suffix}') for density in distributions])
-                for distribution in distributions:
+                grid = sum([getattr(density, f'{grid_name}_grid{suffix}') for density in physical_distributions])
+                for distribution in physical_distributions:
                     distribution.memoization[f'{grid_name}_grid{suffix}'] = grid
 
     ## Roll initial setup
