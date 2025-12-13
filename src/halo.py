@@ -1590,9 +1590,9 @@ class Halo:
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Velocity',
         title: str | None = 'Final {value_statistic} {value_key_title} of {filter_particle_type} after {time}',
-        autotitle: bool = True,
         title_time_units: UnitLike = 'Gyr',
         title_time_format: str = '.1f',
+        cbar_label: str | None = 'Final {value_statistic} {value_key_title}',
         x_units: UnitLike = 'kpc',
         y_units: UnitLike = 'km/second',
         adjust_data_to_EL: bool = False,
@@ -1619,9 +1619,9 @@ class Halo:
             xlabel: The label of the x-axis.
             ylabel: The label of the y-axis.
             title: The title of the plot.
-            autotitle: Whether to automatically construct the title to match the value key.
             title_time_units: Units to use for time in the title.
             title_time_format: Format string for time in the title.
+            cbar_label: The label for the cbar.
             x_units: Units to use for the x-axis.
             y_units: Units to use for the y-axis.
             return_grid: Return the grid+extent variables instead of plotting.
@@ -1701,14 +1701,18 @@ class Halo:
         if title is not None:
             title = title.format(
                 value_statistic=value_statistic,
-                value_key_title=(
-                    plot.default_plot_text(key=value_key, lower=True).get('xlabel', value_key)
-                    if autotitle
-                    else value_key
-                ),
+                value_key_title=plot.default_plot_text(key=value_key, lower=True).get('xlabel', value_key),
                 filter_particle_type=filter_particle_type,
                 time=time_final.to(title_time_units).to_string(format='latex', formatter=title_time_format),
             )
+
+        if cbar_label is not None:
+            cbar_label = cbar_label.format(
+                value_statistic=value_statistic,
+                value_key_title=plot.default_plot_text(key=value_key, lower=True).get('xlabel', value_key),
+            )
+        if 'cbar_units' not in kwargs:
+            kwargs['cbar_units'] = grid.units
 
         fig, ax = plot.plot_2d(
             grid=grid,
@@ -1721,6 +1725,7 @@ class Halo:
             cmap=cmap,
             transparent_value=transparent_value,
             cbar_label_autosuffix=False,
+            cbar_label=cbar_label,
             **kwargs,
         )
         self.save_plot(fig=fig, **kwargs)
