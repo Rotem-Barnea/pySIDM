@@ -369,6 +369,45 @@ class Halo:
             data = utils.slice_closest(data=data, value=filter_particle_type, key='particle_type')
         return data
 
+    def preprocess_particle_states(
+        self,
+        data: table.QTable,
+        filter_particle_type: ParticleType | None = None,
+        filter_interacting: bool | None = None,
+        mask: NDArray[np.bool_] | None = None,
+        filter_indices: NDArray[np.int64] | list[int] | None = None,
+        time: Quantity['time'] | Literal['start', 'end'] | None = None,
+    ) -> table.QTable:
+        """Preprocess particle data by applying filters and masks.
+
+        Parameters:
+            data: The data to plot.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
+            filter_interacting: Whether to filter to only plot interacting/non-interacting particles based on `self.scatter_track_index`. If `None` ignores.
+            filter_indices: Keep only the specified indices in `data` (based on the `particle_index` column).
+            mask: Any additional mask to apply to the data. Must match the shape of the `data` (pre any other filtration).
+
+        Returns:
+            Preprocessed data table.
+        """
+        if mask is not None:
+            data = cast(table.QTable, data[mask]).copy()
+        if filter_particle_type is not None:
+            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
+        if filter_interacting is not None:
+            indices = np.unique(np.hstack(self.scatter_track_index))
+            data = utils.filter_indices(data, indices)
+        if filter_indices is not None:
+            data = utils.filter_indices(data, filter_indices)
+        if time is not None:
+            if time == 'start':
+                data = utils.slice_closest(data, value=data['time'].min())
+            elif time == 'end':
+                data = utils.slice_closest(data, value=data['time'].max())
+            else:
+                data = utils.slice_closest(data, value=time)
+        return data
+
     @property
     def dynamics_params(self) -> leapfrog.Params:
         """Dynamics parameters of the halo, sent to the leapfrog integrator."""
@@ -1393,12 +1432,11 @@ class Halo:
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
-    def plot_phase_space_evolution(
+    def plot_phase_space_animation(
         self,
         include_start: bool = True,
         include_now: bool = False,
         filter_particle_type: ParticleType | None = None,
-        save_path: str | Path | None = None,
         frame_plot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
         **kwargs: Any,
@@ -1409,7 +1447,6 @@ class Halo:
             include_start: Whether to include the initial state.
             include_now: Whether to include the current state.
             filter_particle_type: Whether to filter to only plot the specified particle type.
-            save_path: Path to save the images. If `None` images are not saved.
             frame_plot_kwargs: Additional keyword arguments for the frame plot (`plot_phase_space()`).
             save_kwargs: Additional keyword arguments for saving the images (`plot.save_images()`).
             **kwargs: Additional keyword arguments for transforming the frames to images (`plot.to_images()`).
@@ -1435,8 +1472,9 @@ class Halo:
             ),
             **kwargs,
         )
-        if save_path is not None:
-            plot.save_images(images=images, save_path=save_path, **save_kwargs)
+        if 'name' in save_kwargs:
+            save_kwargs['save_path'] = self.results_path / save_kwargs.pop('name')
+        plot.save_images(images=images, **save_kwargs)
         return images
 
     def plot_phase_space(
@@ -1490,15 +1528,13 @@ class Halo:
             fig, ax.
         """
 
-        if mask is not None:
-            data = cast(table.QTable, data[mask]).copy()
-        if filter_particle_type is not None:
-            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
-        if filter_interacting is not None:
-            indices = np.unique(np.hstack(self.scatter_track_index))
-            data = utils.filter_indices(data, indices)
-        if filter_indices is not None:
-            data = utils.filter_indices(data, filter_indices)
+        data = self.preprocess_particle_states(
+            data=data,
+            filter_particle_type=filter_particle_type,
+            filter_interacting=filter_interacting,
+            mask=mask,
+            filter_indices=filter_indices,
+        )
 
         if adjust_data_to_EL:
             data['L'] = data['r'] * cast(Quantity, data['vp'])
@@ -1530,6 +1566,201 @@ class Halo:
         )
         self.save_plot(fig=fig, **kwargs)
         return fig, ax
+
+    def plot_value_by_phase_space(
+        self,
+        data: table.QTable | None = None,
+        time_initial: Quantity['time'] | Literal['start'] = 'start',
+        time_final: Quantity['time'] | Literal['end'] = 'end',
+        data_initial: table.QTable | None = None,
+        data_final: table.QTable | None = None,
+        filter_particle_type: ParticleType | None = None,
+        mask: NDArray[np.bool_] | None = None,
+        filter_indices: NDArray[np.int64] | list[int] | None = None,
+        x_bins: Quantity['length'] = Quantity(np.linspace(1e-2, 35, 200), 'kpc'),
+        y_bins: Quantity['velocity'] = Quantity(np.linspace(0, 60, 200), 'km/second'),
+        x_key: str = 'r',
+        y_key: str = 'v_norm',
+        value_key: str = 'r',
+        value_statistic: str = 'mean',
+        x_adjust_bins_edges_to_data: bool = False,
+        y_adjust_bins_edges_to_data: bool = False,
+        cmap: str = 'jet',
+        transparent_value: float | None = 0,
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = 'Velocity',
+        title: str | None = 'Final {value_statistic} {value_key_title} of {filter_particle_type} after {time}',
+        autotitle: bool = True,
+        title_time_units: UnitLike = 'Gyr',
+        title_time_format: str = '.1f',
+        x_units: UnitLike = 'kpc',
+        y_units: UnitLike = 'km/second',
+        adjust_data_to_EL: bool = False,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes] | tuple[Quantity, tuple[Quantity, Quantity, Quantity, Quantity]]:
+        """Plot the phase space distribution of the data.
+
+        Parameters:
+            data: The data to plot.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
+            filter_interacting: Whether to filter to only plot interacting/non-interacting particles based on `self.scatter_track_index`. If `None` ignores.
+            filter_indices: Keep only the specified indices in `data` (based on the `particle_index` column).
+            mask: Any additional mask to apply to the data. Must match the shape of the `data` (pre any other filtration).
+            x_bins: The bins for the x-axis (mainly - radius). Also used to define the range to consider.
+            y_bins: The bins for the y-axis (mainly - velocity). Also used to define the range to consider.
+            x_adjust_bins_edges_to_data: Overwrite `x_bins` edges to match the data range.
+            y_adjust_bins_edges_to_data: Overwrite `y_bins` edges to match the data range.
+            x_key: The key for the x-axis in `data` (mainly - radius).
+            y_key: The key for the y-axis in `data` (mainly - velocity).
+            value_key: The key to calculate the value statistic for.
+            value_statistic: The statistic to calculate for the value key. Must be acceptable by `scipy.stats.binned_statistic_2d`.
+            cmap: The colormap to use for the plot.
+            transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
+            xlabel: The label of the x-axis.
+            ylabel: The label of the y-axis.
+            title: The title of the plot.
+            autotitle: Whether to automatically construct the title to match the value key.
+            title_time_units: Units to use for time in the title.
+            title_time_format: Format string for time in the title.
+            x_units: Units to use for the x-axis.
+            y_units: Units to use for the y-axis.
+            return_grid: Return the grid+extent variables instead of plotting.
+            adjust_data_to_EL: Adds a specific angular momentum column to the data (`data['L'] = data['r'] * data['vp']`) and transforms the energy to specific energy.
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
+
+        Returns:
+            fig, ax.
+        """
+
+        if data is not None:
+            data_initial = self.preprocess_particle_states(
+                data=data,
+                filter_particle_type=filter_particle_type,
+                mask=mask,
+                filter_indices=filter_indices,
+                time=time_initial,
+            )
+            data_final = self.preprocess_particle_states(
+                data=data,
+                filter_particle_type=filter_particle_type,
+                mask=mask,
+                filter_indices=filter_indices,
+                time=time_final,
+            )
+        else:
+            assert data_initial is not None and data_final is not None, (
+                '`data_initial` and `data_final` must be provided if `data` is None.'
+            )
+            data_initial = self.preprocess_particle_states(
+                data=data_initial,
+                filter_particle_type=filter_particle_type,
+                mask=mask,
+                filter_indices=filter_indices,
+            )
+            data_final = self.preprocess_particle_states(
+                data=data_final,
+                filter_particle_type=filter_particle_type,
+                mask=mask,
+                filter_indices=filter_indices,
+            )
+        time_final = data_final['time'].max()
+
+        data = table.QTable(
+            (
+                d := pd.merge(
+                    data_initial.to_pandas()[[x_key, y_key, 'particle_index']],
+                    data_final.to_pandas()[['particle_index', value_key]],
+                    on='particle_index',
+                    suffixes=('', '_end'),
+                )
+            ).to_numpy(),
+            units={
+                x_key: data_initial[x_key].unit,
+                y_key: data_initial[y_key].unit,
+                'particle_index': data_initial['particle_index'].unit,
+                f'{value_key}_end': data_final[value_key].unit,
+            },
+            names=d.columns,
+        )
+
+        grid, extent = plot.aggregate_2d_data(
+            data=data,
+            x_key=x_key,
+            y_key=y_key,
+            x_bins=x_bins,
+            y_bins=y_bins,
+            x_adjust_bins_edges_to_data=x_adjust_bins_edges_to_data,
+            y_adjust_bins_edges_to_data=y_adjust_bins_edges_to_data,
+            data_x_units=x_units,
+            data_y_units=y_units,
+            output_type='value',
+            value_key=f'{value_key}_end',
+            value_statistic=value_statistic,
+        )
+
+        if title is not None:
+            title = title.format(
+                value_statistic=value_statistic,
+                value_key_title=(
+                    plot.default_plot_text(key=value_key, lower=True).get('xlabel', value_key)
+                    if autotitle
+                    else value_key
+                ),
+                filter_particle_type=filter_particle_type,
+                time=time_final.to(title_time_units).to_string(format='latex', formatter=title_time_format),
+            )
+
+        fig, ax = plot.plot_2d(
+            grid=grid,
+            extent=extent,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            x_units=x_units,
+            y_units=y_units,
+            title=title,
+            cmap=cmap,
+            transparent_value=transparent_value,
+            cbar_label_autosuffix=False,
+            **kwargs,
+        )
+        self.save_plot(fig=fig, **kwargs)
+        return fig, ax
+
+    def plot_value_by_phase_space_animation(
+        self,
+        include_start: bool = True,
+        include_now: bool = False,
+        frame_plot_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> list[Image.Image]:
+        """Animation of `plot_value_by_phase_space()`.
+
+        Parameters:
+            include_start: Whether to include the initial state.
+            include_now: Whether to include the current state.
+            frame_plot_kwargs: Additional keyword arguments for the frame plot (`plot_phase_space()`).
+            save_kwargs: Additional keyword arguments for saving the images (`plot.save_images()`).
+            **kwargs: Additional keyword arguments for transforming the frames to images (`plot.to_images()`).
+
+        Returns:
+            The list of frames.
+        """
+        data = self.get_particle_states(now=include_now, initial=include_start)
+        data_initial = self.preprocess_particle_states(data=data, time='start')
+        images = plot.evolution_to_images(
+            data=data,
+            plot_fn=lambda x: self.plot_value_by_phase_space(
+                data_initial=data_initial,
+                data_final=x,
+                **frame_plot_kwargs,
+            ),
+            **kwargs,
+        )
+        if 'name' in save_kwargs:
+            save_kwargs['save_path'] = self.results_path / save_kwargs.pop('name')
+        plot.save_images(images=images, **save_kwargs)
+        return images
 
     def plot_phase_space_by_scattering_amount(
         self,

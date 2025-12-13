@@ -158,6 +158,7 @@ def default_plot_text(
     title: str | None = None,
     x_units: UnitLike | None = None,
     y_units: UnitLike | None = None,
+    lower: bool = False,
 ) -> dict[str, str | None]:
     """Return default plot `title`/`xlabel`/`ylabel` for a given key and add the appropriate units.
 
@@ -168,11 +169,13 @@ def default_plot_text(
     elif key in ['vx', 'vy', 'vp']:
         output = {'title': 'Pendicular velocity distribution', 'xlabel': 'Pendicular velocity', 'ylabel': 'Density'}
     elif key == 'v_norm':
-        output = {'title': 'Pendicular velocity distribution', 'xlabel': 'Pendicular velocity', 'ylabel': 'Density'}
+        output = {'title': 'Velocity norm distribution', 'xlabel': 'Velocity norm', 'ylabel': 'Density'}
     elif key == 'r':
         output = {'title': 'Radius distribution', 'xlabel': 'Radius', 'ylabel': 'Density'}
     else:
         output = {}
+    if lower:
+        output = {k: v.lower() for k, v in output.items()}
     output = {**output, **utils.drop_None(xlabel=xlabel, ylabel=ylabel, title=title)}
     return utils.drop_None(
         title=output.get('title', None),
@@ -681,6 +684,9 @@ def aggregate_2d_data(
     y_bins: Quantity,
     x_adjust_bins_edges_to_data: bool = False,
     y_adjust_bins_edges_to_data: bool = False,
+    output_type: Literal['counts', 'value'] = 'counts',
+    value_key: str | None = None,
+    value_statistic: str | None = 'mean',
     row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
     data_x_units: UnitLike = '',
     data_y_units: UnitLike = '',
@@ -695,6 +701,7 @@ def aggregate_2d_data(
         y_bins: The bins for the y-axis. Also used to define the y-range to consider.
         x_adjust_bins_edges_to_data: Overwrite `x_bins` edges to match the data range.
         y_adjust_bins_edges_to_data: Overwrite `y_bins` edges to match the data range.
+        output_type: The type of calculation to fill each bin.
         row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
         data_x_units: The units for the x-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
         data_y_units: The units for the y-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
@@ -726,6 +733,27 @@ def aggregate_2d_data(
         cast(NDArray[np.float64], sub[x_key]), cast(NDArray[np.float64], sub[y_key]), (x_bins, y_bins)
     )[0].T
 
+    if output_type == 'counts':
+        grid = Quantity(
+            np.histogram2d(
+                cast(NDArray[np.float64], sub[x_key]), cast(NDArray[np.float64], sub[y_key]), (x_bins, y_bins)
+            )[0].T
+        )
+    else:
+        assert value_key is not None and value_statistic is not None, (
+            '`value_key` and `value_statistic` must be provided if `output_type=value`'
+        )
+        grid = Quantity(
+            scipy.stats.binned_statistic_2d(
+                x=data[x_key].to(x_bins.unit).value.astype(np.float64),
+                y=data[y_key].to(y_bins.unit).value.astype(np.float64),
+                values=data[value_key].value.astype(np.float64),
+                statistic=value_statistic,
+                bins=[x_bins.value, y_bins.value],
+            )[0].T,
+            data[value_key].unit,
+        )
+
     if row_normalization == 'max':
         grid /= grid.max(1, keepdims=True)
     elif type(row_normalization) is float:
@@ -735,7 +763,7 @@ def aggregate_2d_data(
     elif row_normalization == 'integral':
         grid /= np.expand_dims(np.trapezoid(y=grid, x=np.matlib.repmat(x_bins[:-1], len(grid), 1), axis=1), 1)
 
-    return Quantity(grid, ''), cast(tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_bins, y_bins))
+    return cast(Quantity, grid), cast(tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_bins, y_bins))
 
 
 def aggregate_phase_space_data(
