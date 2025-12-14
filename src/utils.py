@@ -299,7 +299,8 @@ def add_label_unit(label: str | None, plot_units: UnitLike | None = None) -> str
         return None
     if plot_units is None or plot_units == '':
         return label
-    return f'{label} [{Unit(cast(str, plot_units)):latex}]'
+    string_unit = f'{Unit(cast(str, plot_units)):latex}'
+    return rf'{label} $\left[{string_unit.strip("$")}\right]$'
 
 
 @njit(parallel=True)
