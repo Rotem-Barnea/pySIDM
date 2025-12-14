@@ -1712,7 +1712,7 @@ class Halo:
                 value_key_title=plot.default_plot_text(key=value_key, lower=True).get('xlabel', value_key),
             )
         if 'cbar_units' not in kwargs:
-            kwargs['cbar_units'] = grid.units
+            kwargs['cbar_units'] = grid.unit
 
         fig, ax = plot.plot_2d(
             grid=grid,
