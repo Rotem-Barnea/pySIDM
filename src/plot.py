@@ -710,7 +710,7 @@ def aggregate_2d_data(
         data, extent.
     """
     if isinstance(data, pd.DataFrame):
-        sub = table.QTable(data[[x_key, y_key]], units=[data_x_units, data_y_units])
+        sub = table.QTable.from_pandas(data[[x_key, y_key]], units=[data_x_units, data_y_units])
     else:
         sub = data[[x_key, y_key]]
         data_x_units = data[x_key].unit
