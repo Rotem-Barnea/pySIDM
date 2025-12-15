@@ -17,28 +17,10 @@ if __name__ == '__main__':
     print('Setup distributions')
     # b_Mtot = Quantity(1e5, 'Msun')
     # b_Mtot = Quantity(1e-1, 'Msun')
-    dm_distribution = NFW(particle_type='dm')
-
-    # Sague-1
-    b_distribution = Hernquist(
-        Rs=(1 + np.sqrt(2)) * Quantity(30, 'pc'),
-        Mtot=Quantity(5.8e2, 'Msun'),
-        particle_type='baryon',
-    )
-
-    # Draco
-    b_distribution = Hernquist(
-        Rs=(1 + np.sqrt(2)) * Quantity(200, 'pc'),
-        Mtot=Quantity(2e5, 'Msun'),
-        particle_type='baryon',
-    )
-
-    # Fornax
-    b_distribution = Hernquist(
-        Rs=(1 + np.sqrt(2)) * Quantity(700, 'pc'),
-        Mtot=Quantity(3e7, 'Msun'),
-        particle_type='baryon',
-    )
+    # dm_distribution = NFW.from_examples(name='default')
+    # b_distribution = Hernquist.from_examples(name='default')
+    dm_distribution = NFW.from_examples(name='Sague-1')
+    b_distribution = Hernquist.from_examples(name='Sague-1')
 
     print('Setup parameters')
     dm_n_particles = 1e5
