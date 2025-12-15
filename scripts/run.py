@@ -4,6 +4,8 @@ if __name__ == '__main__':
     import sys
     from pathlib import Path
 
+    import numpy as np
+
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
     from astropy.units import Quantity
@@ -13,11 +15,30 @@ if __name__ == '__main__':
     from src.distribution.hernquist import Hernquist
 
     print('Setup distributions')
-    b_Mtot = Quantity(1e5, 'Msun')
+    # b_Mtot = Quantity(1e5, 'Msun')
     # b_Mtot = Quantity(1e-1, 'Msun')
     dm_distribution = NFW(particle_type='dm')
-    # b_distribution = Hernquist(rho_s=Quantity(125400000, 'Msun/kpc^3'), particle_type='baryon')
-    b_distribution = Hernquist(rho_s=None, Mtot=b_Mtot, particle_type='baryon')
+
+    # Sague-1
+    b_distribution = Hernquist(
+        Rs=(1 + np.sqrt(2)) * Quantity(30, 'pc'),
+        Mtot=Quantity(5.8e2, 'Msun'),
+        particle_type='baryon',
+    )
+
+    # Draco
+    b_distribution = Hernquist(
+        Rs=(1 + np.sqrt(2)) * Quantity(200, 'pc'),
+        Mtot=Quantity(2e5, 'Msun'),
+        particle_type='baryon',
+    )
+
+    # Fornax
+    b_distribution = Hernquist(
+        Rs=(1 + np.sqrt(2)) * Quantity(700, 'pc'),
+        Mtot=Quantity(3e7, 'Msun'),
+        particle_type='baryon',
+    )
 
     print('Setup parameters')
     dm_n_particles = 1e5

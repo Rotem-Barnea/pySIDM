@@ -4,7 +4,7 @@ import numpy as np
 import scipy
 import seaborn as sns
 from numba import njit, prange
-from astropy import constants
+from astropy import constants, cosmology
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity, def_unit
 from matplotlib.axes import Axes
@@ -23,7 +23,7 @@ class Distribution:
         Rmin: Quantity['length'] = Quantity(1e-4, 'kpc'),
         Rmax: Quantity['length'] | None = None,
         Rs: Quantity['length'] | None = None,
-        c: int | float | None = None,
+        c: int | float | None | Literal['Dutton14'] = None,
         Rvir: Quantity['length'] | None = None,
         Mtot: Quantity['mass'] | None = None,
         rho_s: Quantity['mass density'] | None = None,
@@ -39,7 +39,7 @@ class Distribution:
             Rmin: Minimum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
             Rmax: Maximum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
             Rs: Scale radius of the distribution profile.
-            c: Concentration parameter of the distribution profile (such that Rvir = c * Rs).
+            c: Concentration parameter of the distribution profile (such that Rvir = c * Rs). If 'Dutton14', calculate it based on the total mass (must be provided via `Mtot`).
             Rvir: Virial radius of the distribution profile.
             rho_s: Scale density of the distribution profile. Either `Mtot` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
             Mtot: Total mass of the distribution profile. Either `Mtot` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
@@ -51,6 +51,10 @@ class Distribution:
         Returns:
             General mass distribution object.
         """
+
+        if c == 'Dutton14':
+            assert Mtot is not None, 'Mtot must be provided when using Dutton14'
+            c = self.c_from_M_Dutton14(Mtot)
 
         assert sum([Rs is not None, Rvir is not None, c is not None]) == 2, (
             'Exactly two of Rs, Rvir, and c must be specified'
@@ -119,6 +123,11 @@ class Distribution:
     def to_scale(self, x: Quantity['length']) -> Quantity['dimensionless']:
         """Scale the distance, i.e. `x/Rs`"""
         return x.to(self.Rs.unit) / self.Rs
+
+    @staticmethod
+    def c_from_M_Dutton14(M: Quantity['mass']) -> float:
+        """Calculate the concentration parameter `c` from the total mass `M` based on Dutton & Maccio (2014)."""
+        return 10 ** (1.025 - 0.097 * np.log10((M.to('Msun') / 1e12 * cosmology.Planck18.H0).value))
 
     @property
     def label(self) -> str:
