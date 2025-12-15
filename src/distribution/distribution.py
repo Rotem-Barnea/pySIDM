@@ -726,6 +726,7 @@ class Distribution:
         velocity_units: UnitLike = 'km/second',
         cmap: str = 'jet',
         transparent_value: float | None = 0,
+        fix_negative_values: bool = True,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the phase space distribution of the density profile.
@@ -736,6 +737,7 @@ class Distribution:
             velocity_units: Units to use for the velocity axis.
             cmap: The colormap to use for the plot.
             transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
+            fix_negative_values: Whether to fix negative values by interpolating them.
             kwargs: Additional keyword arguments to pass to `plot.plot_phase_space()`.
 
         Returns:
@@ -744,7 +746,19 @@ class Distribution:
         r, v = cast(tuple[Quantity, Quantity], np.meshgrid(r_range, v_range))
         f = self.f(self.E(r, v))
         grid = 16 * np.pi * r**2 * v**2 * f
-        fig, ax = plot.plot_phase_space(
+
+        if fix_negative_values and (grid < 0).any():
+            y, x = np.indices(grid.shape)
+            mask = grid < 0
+
+            grid[mask] = Quantity(
+                scipy.interpolate.griddata(
+                    points=(x[~mask], y[~mask]), values=grid[~mask], xi=(x[mask], y[mask]), method='linear'
+                ),
+                grid.unit,
+            )
+
+        return plot.plot_phase_space(
             grid,
             r_range,
             v_range,
@@ -753,7 +767,6 @@ class Distribution:
             transparent_value=transparent_value,
             **kwargs,
         )
-        return fig, ax
 
     def add_plot_R_markers(self, ax: Axes, ymax: float, x_units: UnitLike = 'kpc') -> Axes:
         """Add markers for the scale radius and virial radius to the plot."""
