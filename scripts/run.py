@@ -17,8 +17,8 @@ if __name__ == '__main__':
     # b_Mtot = Quantity(1e-1, 'Msun')
     # dm_distribution = NFW.from_examples(name='default')
     # b_distribution = Hernquist.from_examples(name='default')
-    dm_distribution = NFW.from_examples(name='Draco')
-    b_distribution = Hernquist.from_examples(name='Draco')
+    dm_distribution = NFW.from_examples(name='Fornax')
+    b_distribution = Hernquist.from_examples(name='Fornax')
 
     print('Setup parameters')
     dm_n_particles = 1e5
