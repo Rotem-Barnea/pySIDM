@@ -47,6 +47,7 @@ class Hernquist(Distribution):
                 Mtot=Quantity(5.8e2, 'Msun'),
                 c=100,
                 particle_type='baryon',
+                name=name,
                 **kwargs,
             )
         elif name == 'Draco':
@@ -55,6 +56,7 @@ class Hernquist(Distribution):
                 Mtot=Quantity(2e5, 'Msun'),
                 c=100,
                 particle_type='baryon',
+                name=name,
                 **kwargs,
             )
         elif name == 'Fornax':
@@ -63,6 +65,7 @@ class Hernquist(Distribution):
                 Mtot=Quantity(3e7, 'Msun'),
                 c=100,
                 particle_type='baryon',
+                name=name,
                 **kwargs,
             )
         return cls(
@@ -70,5 +73,6 @@ class Hernquist(Distribution):
             rho_s=Quantity(1.1e4, 'Msun/kpc**3'),
             c=19,
             particle_type='baryon',
+            name=name,
             **kwargs,
         )

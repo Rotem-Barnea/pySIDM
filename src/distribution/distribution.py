@@ -32,6 +32,7 @@ class Distribution:
         initialize_grids: list[str] = [],
         label: str = '',
         particle_type: ParticleType = 'dm',
+        name: str = '',
     ) -> None:
         """General mass distribution profile.
 
@@ -47,6 +48,7 @@ class Distribution:
             h: Radius step size for numerical differentiation.
             initialize_grid: Grids to initialize at startup, otherwise they will only be calculated at runtime as needed.
             label: Label for the density profile.
+            name: Additional name for the distribution profile.
 
         Returns:
             General mass distribution object.
@@ -79,6 +81,7 @@ class Distribution:
         self.title = 'General'
         self.particle_type: ParticleType = particle_type
         self._label: str = label
+        self.name: str = name
         self.h: Quantity['length'] = h.to(run_units.length)
         self.Rmin: Quantity['length'] = Rmin.to(run_units.length)
         self.Rmax: Quantity['length'] = (Rmax if Rmax is not None else 85 * self.Rs).to(run_units.length)
@@ -100,6 +103,7 @@ class Distribution:
         return str(
             report.Report(
                 body_lines=[
+                    report.Line(title='name', value=self.name),
                     report.Line(title='particle type', value=self.particle_type),
                     report.Line(title='Rs', value=self.Rs, format='.4f'),
                     report.Line(title='c', value=self.c, format='.1f'),
@@ -420,9 +424,15 @@ class Distribution:
             \frac{\rho^{\prime\prime}}{\left(\Psi^\prime\right)^2} - \frac{\rho^{\prime}\Psi^{\prime\prime}}{\left(\Psi^\prime\right)^3}$
         """
         if 'd2rho_dPsi2_grid' not in self.memoization:
-            self.memoization['d2rho_dPsi2_grid'] = Quantity(
-                self.d2rho_dr2_grid / self.dPsi_dr_grid**2
-                - self.drho_dr_grid / self.dPsi_dr_grid**3 * self.d2Psi_dr2_grid
+            self.memoization['d2rho_dPsi2_grid'] = cast(
+                Quantity,
+                utils.smooth_holes_1d(
+                    x=self.Psi_grid,
+                    y=Quantity(
+                        self.d2rho_dr2_grid / self.dPsi_dr_grid**2
+                        - self.drho_dr_grid / self.dPsi_dr_grid**3 * self.d2Psi_dr2_grid
+                    ),
+                ),
             )
         return self.memoization['d2rho_dPsi2_grid']
 
@@ -451,7 +461,13 @@ class Distribution:
     def f_grid(self) -> Quantity['specific energy']:
         """Calculate the distribution function (`f`) on the `internal energy grid` (memoized)."""
         if 'f_grid' not in self.memoization:
-            self.memoization['f_grid'] = self.calculate_f(E=self.E_grid).to(run_units.f_units)
+            self.memoization['f_grid'] = cast(
+                Quantity,
+                utils.smooth_holes_1d(
+                    x=self.E_grid,
+                    y=self.calculate_f(E=self.E_grid).to(run_units.f_units),
+                ),
+            )
         return self.memoization['f_grid']
 
     def f(self, E: Quantity['specific energy'], edge: int = 2) -> Quantity:
@@ -637,13 +653,14 @@ class Distribution:
         radius_min_value: Quantity['length'] | None = None,
         radius_max_value: Quantity['length'] | None = None,
         velocity_min_value: Quantity['velocity'] = Quantity(0, 'km/second'),
-        velocity_max_value: Quantity['velocity'] = Quantity(100, 'km/second'),
+        velocity_max_value: Quantity['velocity'] | None = None,
         radius_resolution: int | float = 10000,
         velocity_resolution: int | float = 10000,
         radius_range: Quantity['length'] | None = None,
         velocity_range: Quantity['velocity'] | None = None,
         radius_noise: float = 1,
         velocity_noise: float = 1,
+        fail_on_negative: bool = False,
         generator: np.random.Generator | None = None,
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
         """Sample particles from the joint phase space distribution:
@@ -658,13 +675,14 @@ class Distribution:
             radius_min_value: Minimum radius value to consider for the phase space distribution. If `None` use the quantile value for `0`. Regardless, this value is capped by `Rmin` even if provided.
             radius_max_value: Maximum radius value to consider for the phase space distribution. If `None` use the quantile value for `1`. Regardless, this value is capped by `Rmax` even if provided.
             velocity_min_value: Minimum velocity norm value to consider for the phase space distribution.
-            velocity_max_value: Maximum velocity norm value to consider for the phase space distribution.
+            velocity_max_value: Maximum velocity norm value to consider for the phase space distribution. If `None` use 1.5x the square maximum energy grid value.
             radius_resolution: Resolution of the radius grid.
             velocity_resolution: Resolution of the velocity grid.
             radius_range: Radius bins to use. If provided override the `radius_min_value`, `radius_max_value`, and `radius_resolution` parameters. If `None` ignores.
             velocity_range: Velocity bins to use. If provided override the `velocity_min_value`, `velocity_max_value`, and `velocity_resolution` parameters. If `None` ignores.
             radius_noise: Noise factor for the sampled radius values. The samples are perturbed by a uniform distribution in a symmetric interval with half-width `radius_noise * pixel width / 2`.
             velocity_noise: Noise factor for the sampled velocity values. Same logic as `radius_noise`.
+            fail_on_negative: Whether to raise an error if the df grid is negative at any values, otherwise fill holes and continue.
             generator: If not provided, use the default generator defined in `rng.generator`.
 
         Returns:
@@ -683,6 +701,8 @@ class Distribution:
             radius_max_value = min(radius_max_value, self.Rmax)
             radius_range = Quantity(np.linspace(radius_min_value, radius_max_value, int(radius_resolution)))
         if velocity_range is None:
+            if velocity_max_value is None:
+                velocity_max_value = 1.5 * Quantity(np.sqrt(self.E_grid.max()))
             velocity_range = Quantity(np.linspace(velocity_min_value, velocity_max_value, int(velocity_resolution)))
 
         r_grid, v_grid = cast(
@@ -694,7 +714,11 @@ class Distribution:
         probability_grid /= probability_grid.sum()
         flat_probability_grid = probability_grid.ravel()
         if (probability_grid < 0).any():
-            raise ValueError(f'Negative probability density encountered, {self}')
+            if fail_on_negative:
+                raise ValueError(f'Negative probability density encountered, {self}')
+            else:
+                probability_grid = cast(NDArray[np.float64], utils.smooth_holes_2d(probability_grid))
+                probability_grid[probability_grid < 0] = 0
         indices = np.unravel_index(
             generator.choice(a=flat_probability_grid.size, size=int(n_particles), p=flat_probability_grid),
             probability_grid.shape,

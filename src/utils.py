@@ -1,6 +1,7 @@
 from typing import Any, Callable, cast
 
 import numpy as np
+import scipy
 import pandas as pd
 from numba import njit, prange
 from astropy import table
@@ -9,7 +10,7 @@ from astropy.units import Unit, Quantity
 from astropy.units.typing import UnitLike
 
 from . import rng
-from .types import FloatOrArray
+from .types import FloatOrArray, QuantityOrArray
 
 
 def random_angle(
@@ -429,3 +430,72 @@ def handle_default(value: Any, default: Any) -> Any:
     if value is None:
         return default
     return value
+
+
+def smooth_holes_1d(
+    x: QuantityOrArray,
+    y: QuantityOrArray,
+    mask: NDArray[np.bool_] | None = None,
+    assume_sorted: bool = False,
+    bounds_error: bool = False,
+    fill_value: str = 'extrapolate',
+    **kwargs: Any,
+) -> QuantityOrArray:
+    """Smooths holes in a 1D array, defined by the provided mask.
+
+    Smoothing is done by interpolating the values around the holes.
+
+    Parameters:
+        x: The x values used for the interpolation.
+        y: The y values used for the interpolation.
+        mask: The mask indicating the holes to be smoothed. If `None` treat all negative values as holes.
+        assume_sorted: Whether the x values are sorted.
+        bounds_error: Whether to raise an error if the x values are out of bounds.
+        fill_value: The value to use for extrapolation. Must be accepted by zscipy.interpolate.interp1d()`.
+        kwargs: Additional keyword arguments to pass to the interpolation function.
+
+    Returns:
+        The smoothed y values.
+    """
+    if mask is None:
+        mask = np.array(y) < 0
+    smoothed = np.array(y).copy()
+    smoothed[mask] = scipy.interpolate.interp1d(
+        x=np.array(x[~mask]),
+        y=np.array(y[~mask]),
+        assume_sorted=assume_sorted,
+        bounds_error=bounds_error,
+        fill_value=fill_value,
+        **kwargs,
+    )(np.array(x[mask]))
+    if isinstance(y, Quantity):
+        return Quantity(smoothed, y.unit)
+    return smoothed
+
+
+def smooth_holes_2d(data: QuantityOrArray, mask: NDArray[np.bool_] | None = None, **kwargs: Any) -> QuantityOrArray:
+    """Smooths holes in a 2D array, defined by the provided mask.
+
+    Smoothing is done by interpolating the values around the holes.
+
+    Parameters:
+        data: The data to be smoothed.
+        mask: The mask indicating the holes to be smoothed. If `None` treat all negative values as holes.
+        kwargs: Additional keyword arguments to pass to the interpolation function.
+
+    Returns:
+        The smoothed data values.
+    """
+    if mask is None:
+        mask = np.array(data) < 0
+    smoothed = np.array(data).copy()
+    y, x = np.indices(data.shape)
+    smoothed[mask] = scipy.interpolate.griddata(
+        points=(x[~mask], y[~mask]),
+        values=data[~mask],
+        xi=(x[mask], y[mask]),
+        **kwargs,
+    )
+    if isinstance(data, Quantity):
+        return Quantity(smoothed, data.unit)
+    return smoothed

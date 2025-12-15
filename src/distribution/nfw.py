@@ -58,6 +58,7 @@ class NFW(Distribution):
                 Rvir=cls.calculate_theoretical_Rvir(Mtot),
                 c=cls.c_from_M_Dutton14(Mtot),
                 particle_type='dm',
+                name=name,
                 **kwargs,
             )
         elif name == 'Draco':
@@ -66,6 +67,7 @@ class NFW(Distribution):
                 Rvir=cls.calculate_theoretical_Rvir(Mtot),
                 c=cls.c_from_M_Dutton14(Mtot),
                 particle_type='dm',
+                name=name,
                 **kwargs,
             )
         elif name == 'Fornax':
@@ -74,6 +76,7 @@ class NFW(Distribution):
                 Rvir=cls.calculate_theoretical_Rvir(Mtot),
                 c=cls.c_from_M_Dutton14(Mtot),
                 particle_type='dm',
+                name=name,
                 **kwargs,
             )
         return cls(
@@ -81,5 +84,6 @@ class NFW(Distribution):
             Rs=Quantity(1.18, 'kpc'),
             c=19,
             particle_type='dm',
+            name=name,
             **kwargs,
         )
