@@ -1,7 +1,15 @@
 #!/bin/bash
+
+# Check if filename argument is provided
+if [ $# -eq 0 ]; then
+    echo "Error: No filename provided"
+    echo "Usage: $0 <filename>"
+    exit 1
+fi
+
 USER="rotembarnea"
 REMOTE_HOST="slurmlogin.tau.ac.il"
-REMOTE_BASE="/scratch200/rotembarnea/SIDM/pySIDM/run results/7682425"
+REMOTE_BASE="/scratch200/rotembarnea/SIDM/pySIDM/run results/$1"
 LOCAL_BASE="$HOME/Documents/SIDM/pySIDM/run results"
 
 REMOTE_END=$(basename "$REMOTE_BASE")
