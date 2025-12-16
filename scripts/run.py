@@ -6,6 +6,8 @@ if __name__ == '__main__':
 
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
+    from typing import cast, get_args
+
     from astropy.units import Quantity
 
     from src.halo import Halo
@@ -17,8 +19,12 @@ if __name__ == '__main__':
     # b_Mtot = Quantity(1e-1, 'Msun')
     # dm_distribution = NFW.from_examples(name='default')
     # b_distribution = Hernquist.from_examples(name='default')
-    dm_distribution = NFW.from_examples(name='Sague-1')
-    b_distribution = Hernquist.from_examples(name='Sague-1')
+    name = os.environ.get('NAME', 'default')
+    known_examples = NFW.from_examples.__annotations__['name']
+    assert name in get_args(NFW.from_examples.__annotations__['name'])
+    name = cast(type(known_examples), name)
+    dm_distribution = NFW.from_examples(name=name)
+    b_distribution = Hernquist.from_examples(name=name)
     # dm_distribution = NFW.from_examples(name='Draco')
     # b_distribution = Hernquist.from_examples(name='Draco')
     # dm_distribution = NFW.from_examples(name='Fornax')
