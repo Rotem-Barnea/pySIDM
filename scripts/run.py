@@ -23,6 +23,7 @@ if __name__ == '__main__':
     known_examples = NFW.from_examples.__annotations__['name']
     assert name in get_args(NFW.from_examples.__annotations__['name'])
     name = cast(type(known_examples), name)
+    print('running example', name)
     dm_distribution = NFW.from_examples(name=name)
     b_distribution = Hernquist.from_examples(name=name)
     # dm_distribution = NFW.from_examples(name='Draco')
