@@ -1,4 +1,5 @@
-from typing import Any, Callable, cast
+import datetime
+from typing import Any, Literal, Callable, cast
 
 import numpy as np
 import scipy
@@ -499,3 +500,17 @@ def smooth_holes_2d(data: QuantityOrArray, mask: NDArray[np.bool_] | None = None
     if isinstance(data, Quantity):
         return Quantity(smoothed, data.unit)
     return smoothed
+
+
+def make_id(id: Any | None = None, method: Literal['timestamp'] = 'timestamp') -> int:
+    """Generates a unique identifier.
+
+    Parameters:
+        method: The method to use for generating the ID. Currently only 'timestamp' is supported.
+
+    Returns:
+        A unique identifier.
+    """
+    if id is not None:
+        return id
+    return int(datetime.datetime.now().timestamp() * 1000)

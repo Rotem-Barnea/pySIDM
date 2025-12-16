@@ -42,6 +42,7 @@ class Halo:
         v: Quantity['velocity'],
         m: Quantity['mass'],
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
+        distribution_id: list[int] | NDArray[np.int64] | None = None,
         Tdyn: Quantity['time'] | None = None,
         Phi0: Quantity['energy'] | None = None,
         distributions: list[Distribution] | None = None,
@@ -88,6 +89,7 @@ class Halo:
             v: Velocity of the halo particles, of shape `(n_particles, 3)`, `(vx,vy,vr)` with `vx`,`vy` the two perpendicular components of the off-radial plane.
             m: Mass of the halo particles.
             particle_type: Type of the halo particles. Should comply with ParticleType (i.e. `dm` or `baryon`).
+            distribution_id: ID of the relevant distribution that sourced the particles.
             Tdyn: Dynamical time of the halo. If `None` calculates from the first density.
             Phi0: Potential at infinity of the halo. If `None` calculates from the first density.
             distributions: List of distributions of the halo.
@@ -125,7 +127,7 @@ class Halo:
         Returns:
             Halo object.
         """
-        self._particles = self.to_dataframe(r, v, m, particle_type)
+        self._particles = self.to_dataframe(r=r, v=v, m=m, particle_type=particle_type, distribution_id=distribution_id)
         self._particles.sort_values('r', inplace=True)
         self.time: Quantity['time'] = time.to(run_units.time)
         self.steps: int = int(steps)
@@ -239,7 +241,7 @@ class Halo:
         Returns:
             Halo object.
         """
-        r, v, particle_type, m = [], [], [], []
+        r, v, particle_type, m, distribution_id = [], [], [], [], []
         generator = np.random.default_rng(seed)
         Distribution.merge_distribution_grids(distributions)
         for distribution, n in zip(distributions, n_particles):
@@ -249,12 +251,14 @@ class Halo:
             v += [v_sub]
             particle_type += [[distribution.particle_type] * len(r_sub)]
             m += [np.ones(len(r_sub)) * distribution.Mtot / len(r_sub)]
+            distribution_id += [np.ones(len(r_sub)) * distribution.id]
 
         return cls(
             r=cast(Quantity, np.hstack(r)),
             v=cast(Quantity, np.vstack(v)),
             m=cast(Quantity, np.hstack(m)),
             particle_type=np.hstack(particle_type),
+            distribution_id=np.hstack(distribution_id),
             distributions=distributions,
             generator=generator,
             **kwargs,
@@ -266,6 +270,7 @@ class Halo:
         v: Quantity['velocity'],
         m: Quantity['mass'],
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
+        distribution_id: list[int] | NDArray[np.int64] | None = None,
         particle_index: NDArray[np.int_] | None = None,
     ) -> pd.DataFrame:
         """Convert particle data to a `DataFrame`."""
@@ -279,6 +284,7 @@ class Halo:
                 'm': m.to(run_units.mass),
                 'particle_type': particle_type if particle_type is not None else np.full(len(r), 'dm'),
                 'particle_index': particle_index if particle_index is not None else np.arange(len(r)),
+                'distribution_id': distribution_id if distribution_id is not None else np.full(len(r), 0),
             }
         )
         data['interacting'] = data['particle_type'] == 'dm'
@@ -1895,7 +1901,7 @@ class Halo:
         )
         sns.lineplot(
             x=np.array(Quantity(agg_data['time'], data_time_units).to(time_units)),
-            y=agg_data['in_radius'],
+            y=agg_data['in_radius'].to_numpy(),
             ax=ax,
             label=label,
             **line_kwargs,
@@ -2902,7 +2908,7 @@ class Halo:
         labels: list[str] = [],
         radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
         limit_radius_by_Rvir: bool = True,
-        distributions: list[int] | None = None,
+        distributions: list[Distribution] | list[int] | None = None,
         ax_set: dict[str, Any] = {'xscale': 'log', 'yscale': 'log'},
         fig: Figure | None = None,
         ax: Axes | None = None,
@@ -2921,7 +2927,7 @@ class Halo:
             labels: The labels for the density profiles.
             radius_bins: The radius bins for the density profile calculations.
             limit_radius_by_Rvir: Whether to limit the radius bins by the virial radius.
-            distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions.
+            distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions. If a list of distribution objects, filter the particles by the distribution ID.
             ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
             fig: The figure to plot on.
             ax: The axes to plot on.
@@ -2940,11 +2946,23 @@ class Halo:
         if automatic_times:
             times, labels = self.add_automatic_guidelines(times, labels, time_units=cast(Unit, times.unit))
 
+        if distributions is None:
+            index_blacklist = []
+        else:
+            distribution_ids = [d.id for d in distributions if isinstance(d, Distribution)]
+            index_blacklist = [
+                i for i, d in enumerate(self.distributions) if i not in distributions and d.id not in distribution_ids
+            ]
+
         for i, distribution in enumerate(self.distributions):
-            if distributions is not None and i not in distributions:
+            if i in index_blacklist:
                 continue
             for label, t in zip(labels, times):
-                sub = utils.slice_closest(utils.slice_closest(data, value=t), value='dm', key='particle_type')
+                sub = utils.slice_closest(
+                    utils.slice_closest(data, value=t),
+                    value=distribution.particle_type,
+                    key='particle_type',
+                )
                 fig, ax = plot.plot_density(
                     cast(Quantity, sub['r']),
                     unit_mass=self.unit_mass(distribution),
@@ -2954,9 +2972,9 @@ class Halo:
                     label=f'{distribution.label} {label}' if add_distribution_label else label,
                     fig=fig,
                     ax=ax,
+                    early_quit=False,
                     **kwargs,
                 )
-        assert fig is not None and ax is not None
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 

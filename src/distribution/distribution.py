@@ -33,6 +33,7 @@ class Distribution:
         label: str = '',
         particle_type: ParticleType = 'dm',
         name: str = '',
+        id: int | None = None,
     ) -> None:
         """General mass distribution profile.
 
@@ -49,6 +50,7 @@ class Distribution:
             initialize_grid: Grids to initialize at startup, otherwise they will only be calculated at runtime as needed.
             label: Label for the density profile.
             name: Additional name for the distribution profile.
+            id: Unique identifier for the distribution profile.
 
         Returns:
             General mass distribution object.
@@ -98,6 +100,8 @@ class Distribution:
         for grid in initialize_grids:
             getattr(self, grid)
 
+        self.id = utils.make_id(id)
+
     def __repr__(self):
         warn = '' if self.physical else 'WARNING: This distribution is not physical.\n\n'
         return str(
@@ -115,7 +119,7 @@ class Distribution:
                     report.Line(title='Rmax', value=self.Rmax, format='.4f'),
                     report.Line(title='space steps', value=self.space_steps, format='.0e'),
                 ],
-                header=f'{warn}{self.title} density function',
+                header=f'{warn}{self.title} density function (ID={self.id})',
                 body_prefix='  - ',
             )
         )
