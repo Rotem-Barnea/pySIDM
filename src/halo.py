@@ -18,6 +18,7 @@ from PIL import Image
 from astropy import table
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity, def_unit
+from pandas._typing import SortKind
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
@@ -78,6 +79,7 @@ class Halo:
         runtime_track_sidm: deque[float] | None = None,
         runtime_track_leapfrog: deque[float] | None = None,
         runtime_track_full_step: deque[float] | None = None,
+        sort_kind: SortKind = 'stable',
         generator: np.random.Generator | None = None,
         seed: int | None = None,
         generator_state: Mapping[str, Any] | None = None,
@@ -127,8 +129,9 @@ class Halo:
         Returns:
             Halo object.
         """
+        self.sort_kind: SortKind = sort_kind
         self._particles = self.to_dataframe(r=r, v=v, m=m, particle_type=particle_type, distribution_id=distribution_id)
-        self._particles.sort_values('r', inplace=True)
+        self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
         self.time: Quantity['time'] = time.to(run_units.time)
         self.steps: int = int(steps)
         self.dt: Quantity['time'] = dt.to(run_units.time)
@@ -338,7 +341,7 @@ class Halo:
             particle_type: Type of particle.
             particle_index: Index of particle.
         """
-        self._particles.sort_values('r', inplace=True)
+        self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
         data = table.QTable(
             {
                 'r': self.r,
@@ -799,7 +802,7 @@ class Halo:
             self.runtime_realtime_track += [datetime.now().timestamp()]
             t_start = time.perf_counter()
             t0 = time.perf_counter()
-            self._particles.sort_values('r', inplace=True)
+            self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
             self.runtime_track_sort += [time.perf_counter() - t0]
             t0 = time.perf_counter()
             self.cleanup_particles()
