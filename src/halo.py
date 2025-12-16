@@ -264,6 +264,14 @@ class Halo:
             **kwargs,
         )
 
+    @property
+    def name(self) -> str:
+        """If the halo is made out of a physical example, return it's name"""
+        unique_names = np.unique([distribution.name for distribution in self.distributions])
+        if len(unique_names) == 1 and unique_names[0] != '':
+            return unique_names[0]
+        return ''
+
     @staticmethod
     def to_dataframe(
         r: Quantity['length'],
