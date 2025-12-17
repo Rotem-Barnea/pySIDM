@@ -921,3 +921,61 @@ def save_plot(fig: Figure, save_path: str | Path | None = None, bbox_inches: str
         return
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(save_path, bbox_inches=bbox_inches, **kwargs)
+
+
+def plot_phase_space_energy_lines(
+    Psi_fn: Callable[[Quantity['length']], Quantity['specific energy']],
+    E: Quantity['specific energy'],
+    r_range: Quantity['length'] = Quantity([1e-3, 35], 'kpc'),
+    v_range: Quantity['velocity'] | None = None,
+    steps: int = 100,
+    length_units: UnitLike = 'kpc',
+    velocity_units: UnitLike = 'km/second',
+    autolabel: bool = True,
+    autolabel_format: str = '.1f',
+    autolabel_units: UnitLike = 'km^2/second^2',
+    fig: Figure | None = None,
+    ax: Axes | None = None,
+    lineplot_kwargs: dict[str, Any] = {},
+    save_kwargs: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> tuple[Figure, Axes]:
+    """Plot constant-energy lines on an r-v phase space.
+
+    Parameters:
+        Psi_fn: Function that computes the potential energy.
+        E: Array of energy values to plot.
+        r_range: Range of radius values to plot on. Only the minimum and maximum values are used.
+        v_range: Range of velocities to limit the plot to. Only the minimum and maximum values are used. If `None` ignores.
+        steps: Number of grid points.
+        length_units: Units for the radius axis.
+        velocity_units: Units for the velocity axis.
+        autolabel: Whether to automatically label the lines by the energy.
+        autolabel_format: Format string for the labels.
+        autolabel_units: Units for the labels.
+        fig: Figure to plot on.
+        ax: Axes to plot on.
+        lineplot_kwargs: Keyword arguments to pass to `sns.lineplot()`.
+        save_kwargs: Keyword arguments to pass to `save_plot()`. If `None` ignores saving.
+        kwargs: Additional keyword arguments to pass to `setup_plot()`.
+
+    Returns:
+        fig, ax.
+    """
+    r = cast(Quantity, np.linspace(r_range.min(), r_range.max(), steps))
+    Psi = Psi_fn(r)
+    fig, ax = setup_plot(fig=fig, ax=ax, **kwargs)
+    for e in E:
+        mask = np.ones(len(Psi), dtype=np.bool_)
+        v = Quantity(np.zeros(len(Psi)), velocity_units)
+        v = 2 * np.sqrt(Psi - e, where=Psi > e).to(velocity_units)
+        if v_range is not None:
+            mask = (v >= v_range.min()) * (v <= v_range.max())
+        if autolabel:
+            lineplot_kwargs['label'] = (
+                f'E={e.to(autolabel_units).to_string(format="latex", formatter=autolabel_format)}'
+            )
+        sns.lineplot(x=r[mask], y=v[mask], ax=ax, **lineplot_kwargs)
+    if save_kwargs is not None:
+        save_plot(fig=fig, **save_kwargs)
+    return fig, ax
