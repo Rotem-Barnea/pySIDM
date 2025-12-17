@@ -63,7 +63,7 @@ class NFW(Distribution):
             )
         elif name == 'Draco':
             return cls(
-                Mtot=(Mtot := Quantity(1e9, 'Msun')),
+                Mtot=(Mtot := Quantity(5e8, 'Msun')),
                 Rvir=cls.calculate_theoretical_Rvir(Mtot),
                 c=cls.c_from_M_Dutton14(Mtot),
                 particle_type='dm',
