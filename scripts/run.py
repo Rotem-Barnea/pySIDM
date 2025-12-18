@@ -11,32 +11,22 @@ if __name__ == '__main__':
     from astropy.units import Quantity
 
     from src.halo import Halo
-    from src.distribution.nfw import NFW
-    from src.distribution.hernquist import Hernquist
+    from src.distribution import physical_examples
 
     print('Setup distributions')
-    # b_Mtot = Quantity(1e5, 'Msun')
-    # b_Mtot = Quantity(1e-1, 'Msun')
-    # dm_distribution = NFW.from_examples(name='default')
-    # b_distribution = Hernquist.from_examples(name='default')
     name = os.environ.get('NAME', 'default')
-    known_examples = NFW.from_examples.__annotations__['name']
-    assert name in get_args(NFW.from_examples.__annotations__['name'])
+    known_examples = physical_examples.from_examples.__annotations__['name']
+    assert name in get_args(physical_examples.from_examples.__annotations__['name'])
     name = cast(type(known_examples), name)
     print('running example', name)
-    dm_distribution = NFW.from_examples(name=name)
-    b_distribution = Hernquist.from_examples(name=name)
-    # dm_distribution = NFW.from_examples(name='Draco')
-    # b_distribution = Hernquist.from_examples(name='Draco')
-    # dm_distribution = NFW.from_examples(name='Fornax')
-    # b_distribution = Hernquist.from_examples(name='Fornax')
+    dm_distribution, b_distribution = physical_examples.from_examples(name=name)
 
     print('Setup parameters')
     dm_n_particles = 1e5
     b_n_particles = 1e5
     sigma = Quantity(50, 'cm^2/gram')
-    dt = dm_distribution.Tdyn / 1000 / 2
-    save_every_time = 10 * dm_distribution.Tdyn
+    dt = 1 / 1000 / 4
+    save_every_time = 10 / 5
     hard_save = True
     save_path = Path(os.environ['SAVE_PATH']) / 'run results' / os.environ.get('SAVE_NAME', 'run 1')
     cleanup_nullish_particles = True
@@ -69,6 +59,6 @@ if __name__ == '__main__':
         )
 
     halo.evolve(
-        until_t=Quantity(13.5, 'Gyr'),
+        until_t=Quantity(15, 'Gyr'),
         tqdm_kwargs={'mininterval': 60},
     )
