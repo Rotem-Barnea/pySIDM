@@ -19,7 +19,7 @@ if __name__ == '__main__':
     assert name in get_args(physical_examples.by_name.__annotations__['name'])
     name = cast(type(known_examples), name)
     print('running example', name)
-    dm_distribution, b_distribution = physical_examples.from_examples(name=name)
+    dm_distribution, b_distribution = physical_examples.by_name(name=name)
 
     print('Setup parameters')
     dm_n_particles = 1e5
