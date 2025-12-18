@@ -15,8 +15,8 @@ if __name__ == '__main__':
 
     print('Setup distributions')
     name = os.environ.get('NAME', 'default')
-    known_examples = physical_examples.from_examples.__annotations__['name']
-    assert name in get_args(physical_examples.from_examples.__annotations__['name'])
+    known_examples = physical_examples.by_name.__annotations__['name']
+    assert name in get_args(physical_examples.by_name.__annotations__['name'])
     name = cast(type(known_examples), name)
     print('running example', name)
     dm_distribution, b_distribution = physical_examples.from_examples(name=name)
