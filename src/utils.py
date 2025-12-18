@@ -266,7 +266,7 @@ def aggregate_QTable(
     groupby: str | list[str],
     keys: str | list[str],
     agg_fn: str | Callable[[Any], Any],
-    final_units: dict[str, UnitLike] | None = None,
+    final_unit: dict[str, UnitLike] | None = None,
 ) -> table.QTable:
     """Shorthand for aggregating a QTable function by transforming to a pandas DataFrame and back.
 
@@ -283,25 +283,25 @@ def aggregate_QTable(
         groupby: The column(s) to group by.
         keys: The column(s) to aggregate.
         agg_fn: The aggregation function. Anything acceptable by `pandas.DataFrame.agg()`.
-        final_units: The units to set for the aggregated columns (otherwise will be left unitless).
+        final_unit: The units to set for the aggregated columns (otherwise will be left unitless).
 
     Returns:
         The aggregated QTable.
     """
     return table.QTable(
         table.Table.from_pandas(
-            pd.DataFrame(data.to_pandas().groupby(groupby)[keys].agg(agg_fn)), index=True, units=final_units
+            pd.DataFrame(data.to_pandas().groupby(groupby)[keys].agg(agg_fn)), index=True, units=final_unit
         )
     )
 
 
-def add_label_unit(label: str | None, plot_units: UnitLike | None = None) -> str | None:
+def add_label_unit(label: str | None, plot_unit: UnitLike | None = None) -> str | None:
     """Add the units to the `label` in a latex formatted string and enclosed in brackets. Ignore if label is `None`."""
     if label is None:
         return None
-    if plot_units is None or plot_units == '':
+    if plot_unit is None or plot_unit == '':
         return label
-    string_unit = f'{Unit(cast(str, plot_units)):latex}'
+    string_unit = f'{Unit(cast(str, plot_unit)):latex}'
     return rf'{label} $\left[{string_unit.strip("$")}\right]$'
 
 
@@ -320,8 +320,8 @@ def fast_norm(x: NDArray[np.float64], square: bool = False) -> NDArray[np.float6
 
 def fast_quantity_norm(x: Quantity, square: bool = False) -> Quantity:
     """Compute the norm of each row in the array `x`. Wrapper around `fast_norm()`."""
-    out_units = cast(Unit, x.unit) ** 2 if square else x.unit
-    return Quantity(fast_norm(x.value, square=square), unit=out_units)
+    out_unit = cast(Unit, x.unit) ** 2 if square else x.unit
+    return Quantity(fast_norm(x.value, square=square), unit=out_unit)
 
 
 @njit(parallel=True)

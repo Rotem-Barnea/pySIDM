@@ -156,8 +156,8 @@ def default_plot_text(
     xlabel: str | None = None,
     ylabel: str | None = None,
     title: str | None = None,
-    x_units: UnitLike | None = None,
-    y_units: UnitLike | None = None,
+    x_unit: UnitLike | None = None,
+    y_unit: UnitLike | None = None,
     lower: bool = False,
 ) -> dict[str, str | None]:
     """Return default plot `title`/`xlabel`/`ylabel` for a given key and add the appropriate units.
@@ -179,12 +179,12 @@ def default_plot_text(
     output = {**output, **utils.drop_None(xlabel=xlabel, ylabel=ylabel, title=title)}
     return utils.drop_None(
         title=output.get('title', None),
-        xlabel=utils.add_label_unit(output.get('xlabel', None), x_units),
-        ylabel=utils.add_label_unit(output.get('ylabel', None), y_units),
+        xlabel=utils.add_label_unit(output.get('xlabel', None), x_unit),
+        ylabel=utils.add_label_unit(output.get('ylabel', None), y_unit),
     )
 
 
-def default_plot_unit_type(key: str, plot_unit: UnitLike | None = None) -> UnitLike:
+def default_unit_type(key: str, plot_unit: UnitLike | None = None) -> UnitLike:
     """Return the appropriate unit type for a given `key`. If `plot_unit` is provided, return it instead."""
     if plot_unit is not None:
         return plot_unit
@@ -195,7 +195,7 @@ def default_plot_unit_type(key: str, plot_unit: UnitLike | None = None) -> UnitL
     return ''
 
 
-def plot_trace(
+def trace(
     key: str,
     data: table.QTable,
     particle_index: int,
@@ -204,9 +204,9 @@ def plot_trace(
     ylabel: str | None = None,
     title: str | None = 'Trace of particle id={particle_index}, initial position={r}',
     label: str | None = 'particle id={particle_index}, initial position={r}',
-    time_units: UnitLike = 'Gyr',
-    y_units: UnitLike | None = None,
-    length_units: UnitLike = 'kpc',
+    time_unit: UnitLike = 'Gyr',
+    y_unit: UnitLike | None = None,
+    length_unit: UnitLike = 'kpc',
     length_format: str = '.1f',
     save_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -221,22 +221,22 @@ def plot_trace(
         xlabel: Label for the x-axis.
         ylabel: Label for the y-axis. If not provided, the label will be automatically generated based on the key and units. To disable this set to `''`.
         title: Title for the plot.
-        time_units: Units for the x-axis.
-        y_units: Units for the y-axis.
-        length_units: Units for the length.
+        time_unit: Units for the x-axis.
+        y_unit: Units for the y-axis.
+        length_unit: Units for the length.
         length_format: Format string for length.
-        save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
+        save_kwargs: Keyword arguments to pass to `save()`. Must include `save_path`. If `None` ignores saving.
         kwargs: Additional keyword arguments to pass to the plot function (`setup_plot()`).
 
     Returns:
         fig, ax.
     """
-    xlabel = utils.add_label_unit(xlabel, time_units)
+    xlabel = utils.add_label_unit(xlabel, time_unit)
     particle = data[data['particle_index'] == particle_index].copy()
-    x = particle['time'].to(time_units)
+    x = particle['time'].to(time_unit)
     y = particle[key]
-    if y_units is not None:
-        y = y.to(y_units)
+    if y_unit is not None:
+        y = y.to(y_unit)
     if relative == 'change':
         y = y - cast(Quantity, y[0])
         if ylabel is None:
@@ -247,33 +247,33 @@ def plot_trace(
             ylabel = rf'$\%\Delta {key}$'
     elif ylabel is None:
         ylabel = f'${key}$'
-    ylabel = utils.add_label_unit(ylabel, y_units)
+    ylabel = utils.add_label_unit(ylabel, y_unit)
     if title is not None:
         title = title.format(
             particle_index=particle_index,
-            r=particle['r'][0].to(length_units).to_string(format='latex', formatter=length_format),
+            r=particle['r'][0].to(length_unit).to_string(format='latex', formatter=length_format),
         )
     if label is not None:
         label = label.format(
             particle_index=particle_index,
-            r=particle['r'][0].to(length_units).to_string(format='latex', formatter=length_format),
+            r=particle['r'][0].to(length_unit).to_string(format='latex', formatter=length_format),
         )
     fig, ax = setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
     sns.lineplot(x=x, y=np.array(y), ax=ax, label=label)
     if save_kwargs is not None:
-        save_plot(fig=fig, **save_kwargs)
+        save(fig=fig, **save_kwargs)
     return fig, ax
 
 
-def plot_2d(
+def heatmap(
     grid: Quantity,
     extent: tuple[Quantity, Quantity, Quantity, Quantity] | None = None,
     plot_method: Literal['imshow', 'pcolormesh'] = 'imshow',
     x_range: Quantity | None = None,
     y_range: Quantity | None = None,
-    x_units: UnitLike = run_units.length,
-    y_units: UnitLike = run_units.velocity,
-    cbar_units: UnitLike = '',
+    x_unit: UnitLike = run_units.length,
+    y_unit: UnitLike = run_units.velocity,
+    cbar_unit: UnitLike = '',
     transparent_value: float | None = None,
     transparent_range: tuple[float, float] | None = None,
     x_nbins: int | None = 6,
@@ -309,9 +309,9 @@ def plot_2d(
         plot_method: Method to use for plotting.
         x_range: Range of x values to plot, used to define the extent. Must be provided if `plot_method` is `pcolormesh` or if `extent` is `None`, otherwise ignored.
         y_range: Range of y values to plot, used to define the extent. Must be provided if `plot_method` is `pcolormesh` or if `extent` is `None`, otherwise ignored.
-        x_units: Units to use for the x-axis.
-        y_units: Units to use for the y-axis.
-        cbar_units: Units to use for the value of each grid cell.
+        x_unit: Units to use for the x-axis.
+        y_unit: Units to use for the y-axis.
+        cbar_unit: Units to use for the value of each grid cell.
         transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
         transparent_range: Range of values to turn transparent (i.e. plot as `NaN`). If `None` ignores.
         x_nbins: Number of bins to use for the x-axis.
@@ -336,7 +336,7 @@ def plot_2d(
         fig: Figure to plot on.
         ax: Axes to plot on.
         setup_kwargs: Additional keyword arguments to pass to `setup_plot()`.
-        save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
+        save_kwargs: Keyword arguments to pass to `save()`. Must include `save_path`. If `None` ignores saving.
         kwargs: Additional keyword arguments to pass to `plt.imshow()` or `plt.pcolormesh()`.
 
     Returns:
@@ -345,13 +345,13 @@ def plot_2d(
     if extent is None:
         assert x_range is not None and y_range is not None, 'x_range and y_range must be provided if extent is None'
         extent = cast(
-            tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_range.to(x_units), y_range.to(y_units))
+            tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_range.to(x_unit), y_range.to(y_unit))
         )
     extent_value = (
-        float(extent[0].to(x_units).value),
-        float(extent[1].to(x_units).value),
-        float(extent[2].to(y_units).value),
-        float(extent[3].to(y_units).value),
+        float(extent[0].to(x_unit).value),
+        float(extent[1].to(x_unit).value),
+        float(extent[2].to(y_unit).value),
+        float(extent[3].to(y_unit).value),
     )
 
     if x_log:
@@ -364,14 +364,14 @@ def plot_2d(
         ax=ax,
         grid=False,
         title=title,
-        xlabel=utils.add_label_unit(xlabel, x_units),
-        ylabel=utils.add_label_unit(ylabel, y_units),
+        xlabel=utils.add_label_unit(xlabel, x_unit),
+        ylabel=utils.add_label_unit(ylabel, y_unit),
         **setup_kwargs,
     )
     grid = grid.copy()
-    if cbar_units != '':
-        grid = grid.to(cbar_units)
-    cbar_units = Unit(str(grid.unit))
+    if cbar_unit != '':
+        grid = grid.to(cbar_unit)
+    cbar_unit = Unit(str(grid.unit))
 
     if log_scale and grid.std() != 0:
         kwargs.update(norm=colors.LogNorm())
@@ -405,7 +405,7 @@ def plot_2d(
         elif grid_row_normalization == 'integral':
             cbar_label = f'{cbar_label} density per unit length'
 
-    cbar_label = utils.add_label_unit(cbar_label, cbar_units)
+    cbar_label = utils.add_label_unit(cbar_label, cbar_unit)
     if cbar_label:
         cbar.set_label(cbar_label)
 
@@ -457,39 +457,39 @@ def plot_2d(
             text['transform'] = ax.transAxes
         ax.text(**text)
     if save_kwargs is not None:
-        save_plot(fig=fig, **save_kwargs)
+        save(fig=fig, **save_kwargs)
     return fig, ax
 
 
-def plot_phase_space(
+def phase_space(
     grid: Quantity,
     r_range: Quantity['length'] | None = Quantity([1e-2, 50], 'kpc'),
     v_range: Quantity['velocity'] | None = Quantity([0, 100], 'km/second'),
-    length_units: UnitLike = run_units.length,
-    velocity_units: UnitLike = run_units.velocity,
+    length_unit: UnitLike = run_units.length,
+    velocity_unit: UnitLike = run_units.velocity,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
-    """Plot the phase space distribution. Wrapper for `plot_2d()` to provide convenient defaults and variable names (i.e. `r` and `v`)."""
-    return plot_2d(
+    """Plot the phase space distribution. Wrapper for `heatmap()` to provide convenient defaults and variable names (i.e. `r` and `v`)."""
+    return heatmap(
         grid,
         xlabel='Radius',
         ylabel='Velocity',
-        x_units=length_units,
-        y_units=velocity_units,
+        x_unit=length_unit,
+        y_unit=velocity_unit,
         **utils.drop_None(x_range=r_range, y_range=v_range),
         **kwargs,
     )
 
 
-def plot_density(
+def density(
     data: Quantity['length'],
     bins: int | NDArray[np.float64] | str = 100,
     unit_mass: Quantity['mass'] = Quantity(1, 'Msun'),
     xlabel: str | None = 'Radius',
     ylabel: str | None = r'$\rho$',
     title: str | None = None,
-    length_units: UnitLike = 'kpc',
-    density_units: UnitLike = 'Msun/kpc^3',
+    length_unit: UnitLike = 'kpc',
+    density_unit: UnitLike = 'Msun/kpc^3',
     ax_set: dict[str, Any] = {'xscale': 'log', 'yscale': 'log'},
     minorticks: bool = True,
     label: str | None = None,
@@ -509,15 +509,15 @@ def plot_density(
         xlabel: Label for the x-axis.
         ylabel: Label for the y-axis.
         title: Title for the plot.
-        length_units: Units to use for the x-axis.
-        density_units: Number of bins to use for the y-axis.
+        length_unit: Units to use for the x-axis.
+        density_unit: Number of bins to use for the y-axis.
         ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
         minorticks: Whether to add the grid for the minor ticks.
         label: label to add to the plot legend.
         cleanup_nonpositive: drop non-positive values from the plot, to avoid "pits" in the log plot.
         smooth_sigma: sigma for smoothing the density distribution.
         add_J: Multiply the density by the spherical jacobian (4*pi*r^2).
-        save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
+        save_kwargs: Keyword arguments to pass to `save()`. Must include `save_path`. If `None` ignores saving.
         line_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
         kwargs: Additional keyword arguments to pass to `setup_plot()`.
 
@@ -526,23 +526,21 @@ def plot_density(
         fig, ax.
     """
     counts, bin_edges = np.histogram(data, bins=bins)
-    histogram_bins = Quantity(list(map(Quantity, zip(bin_edges, bin_edges[1:])))).to(length_units)
+    histogram_bins = Quantity(list(map(Quantity, zip(bin_edges, bin_edges[1:])))).to(length_unit)
     bin_centers = cast(Quantity, histogram_bins.mean(1))
     volume = 4 / 3 * np.pi * (histogram_bins[:, 1] ** 3 - histogram_bins[:, 0] ** 3)
 
     density = counts / volume * unit_mass
     if add_J:
         density *= 4 * np.pi * bin_centers**2
-        density_units = Unit(cast(str, density_units)) * cast(Unit, bin_centers.unit) ** 2
+        density_unit = Unit(cast(str, density_unit)) * cast(Unit, bin_centers.unit) ** 2
         if ylabel is not None:
             ylabel = rf'{ylabel} $\cdot 4\pi r^2$'
-    density = density.to(density_units)
+    density = density.to(density_unit)
     fig, ax = setup_plot(
         ax_set=ax_set,
         minorticks=minorticks,
-        **default_plot_text(
-            'r', xlabel=xlabel, ylabel=ylabel, title=title, x_units=length_units, y_units=density_units
-        ),
+        **default_plot_text('r', xlabel=xlabel, ylabel=ylabel, title=title, x_unit=length_unit, y_unit=density_unit),
         **kwargs,
     )
     x = np.array(bin_centers)
@@ -555,7 +553,7 @@ def plot_density(
     if label is not None:
         ax.legend()
     if save_kwargs is not None:
-        save_plot(fig=fig, **save_kwargs)
+        save(fig=fig, **save_kwargs)
     return fig, ax
 
 
@@ -567,14 +565,14 @@ def aggregate_evolution_data(
     output_type: Literal['density', 'counts', 'temperature', 'specific heat flux'] = 'counts',
     row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
     v_axis: Literal['vx', 'vy', 'vr'] = 'vr',
-    density_units: UnitLike = run_units.density,
-    data_time_units: UnitLike = 'Gyr',
-    data_length_units: UnitLike = 'kpc',
-    data_specific_energy_units: UnitLike = 'kpc^2/Myr^2',
-    data_mass_units: UnitLike = 'Msun',
-    output_grid_units: UnitLike | None = None,
+    density_unit: UnitLike = run_units.density,
+    data_time_unit: UnitLike = 'Gyr',
+    data_length_unit: UnitLike = 'kpc',
+    data_specific_energy_unit: UnitLike = 'kpc^2/Myr^2',
+    data_mass_unit: UnitLike = 'Msun',
+    output_grid_unit: UnitLike | None = None,
 ) -> tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']]]:
-    """Prepares data to be plotted in a 2d evolution heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to `plot_2d()`.
+    """Prepares data to be plotted in a 2d evolution heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to `heatmap()`.
 
     Parameters:
         data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns `r` and `time`. If `output_type='temperature'` or `'specific heat flux'` must also contain the columns `vx`, `vy`, and `vr`.
@@ -584,11 +582,11 @@ def aggregate_evolution_data(
         output_type: The type of calculation to fill each bin.
         row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
         v_axis: The velocity to calculate the heat flux in. Only relevant if `output_type='specific heat flux'`.
-        density_units: The units for the density.
-        data_time_units: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
-        data_length_units: The units for the radius in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
-        data_specific_energy_units: The units for the specific energy in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
-        data_mass_units: The units for the mass in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        density_unit: The units for the density.
+        data_time_unit: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_length_unit: The units for the radius in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_specific_energy_unit: The units for the specific energy in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_mass_unit: The units for the mass in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
 
     Returns:
         data, extent.
@@ -600,29 +598,29 @@ def aggregate_evolution_data(
         sub = data[keep_columns]
     else:
         sub = data[keep_columns].to_pandas()
-        data_time_units = data['time'].unit
-        data_length_units = data['r'].unit
+        data_time_unit = data['time'].unit
+        data_length_unit = data['r'].unit
         if 'vx' in sub:
-            data_specific_energy_units = data['vx'].unit ** 2
+            data_specific_energy_unit = data['vx'].unit ** 2
         if 'm' in sub:
-            data_mass_units = data['m'].unit
+            data_mass_unit = data['m'].unit
 
     if time_range is not None:
-        sub = sub[sub['time'].between(*time_range.to(data_time_units).value)]
+        sub = sub[sub['time'].between(*time_range.to(data_time_unit).value)]
 
-    radius_bins = radius_bins.to(data_length_units)
+    radius_bins = radius_bins.to(data_length_unit)
     r_bin_volume = 4 / 3 * np.pi * (radius_bins[1:] ** 3 - radius_bins[:-1] ** 3)
     grid = np.empty((len(np.unique(np.array(sub['time']))), len(radius_bins) - 1), dtype=np.float64)
 
     for i, (_, group) in enumerate(sub.groupby('time')):
         if output_type == 'temperature':
             group_bins = pd.cut(
-                Quantity(group['r'], data_length_units).to(radius_bins.unit).value, bins=radius_bins.value
+                Quantity(group['r'], data_length_unit).to(radius_bins.unit).value, bins=radius_bins.value
             )
             grid[i] = group.groupby(group_bins, observed=False)[['vx', 'vy', 'vr']].var().sum(axis=1)
         elif output_type == 'specific heat flux':
             group_bins = pd.cut(
-                Quantity(group['r'], data_length_units).to(radius_bins.unit).value, bins=radius_bins.value
+                Quantity(group['r'], data_length_unit).to(radius_bins.unit).value, bins=radius_bins.value
             )
             centralized_group = group.groupby(group_bins, observed=False)[['vx', 'vy', 'vr']].apply(
                 lambda q: q - q.mean()
@@ -635,26 +633,26 @@ def aggregate_evolution_data(
                 / r_bin_volume
             )
         else:
-            counts, _ = np.histogram(Quantity(group['r'], data_length_units), bins=radius_bins)
+            counts, _ = np.histogram(Quantity(group['r'], data_length_unit), bins=radius_bins)
             if output_type == 'density':
                 grid[i] = counts / r_bin_volume * unit_mass
             else:
                 grid[i] = counts
 
     if output_type == 'density':
-        grid_units = Unit(str(data_mass_units)) / Unit(str(data_length_units))
+        grid_unit = Unit(str(data_mass_unit)) / Unit(str(data_length_unit))
     elif output_type == 'temperature':
-        grid_units = data_specific_energy_units
+        grid_unit = data_specific_energy_unit
     elif output_type == 'specific heat flux':
-        grid_units = Unit(str(data_specific_energy_units)) / (
-            Unit(str(data_length_units)) ** 2 * Unit(str(data_time_units))
+        grid_unit = Unit(str(data_specific_energy_unit)) / (
+            Unit(str(data_length_unit)) ** 2 * Unit(str(data_time_unit))
         )
     else:
-        grid_units = ''
+        grid_unit = ''
 
-    grid_quantity = Quantity(grid, grid_units)
-    if output_grid_units is not None:
-        grid_quantity = grid_quantity.to(output_grid_units)
+    grid_quantity = Quantity(grid, grid_unit)
+    if output_grid_unit is not None:
+        grid_quantity = grid_quantity.to(output_grid_unit)
 
     if row_normalization == 'max':
         grid_quantity /= grid_quantity.max(1, keepdims=True)
@@ -670,8 +668,8 @@ def aggregate_evolution_data(
     extent = (
         radius_bins.min(),
         radius_bins.max(),
-        Quantity(sub['time'].min(), data_time_units),
-        Quantity(sub['time'].max(), data_time_units),
+        Quantity(sub['time'].min(), data_time_unit),
+        Quantity(sub['time'].max(), data_time_unit),
     )
     return cast(Quantity, grid_quantity), extent
 
@@ -688,8 +686,8 @@ def aggregate_2d_data(
     value_key: str | None = None,
     value_statistic: str | None = 'mean',
     row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
-    data_x_units: UnitLike = '',
-    data_y_units: UnitLike = '',
+    data_x_unit: UnitLike = '',
+    data_y_unit: UnitLike = '',
 ) -> tuple[Quantity, tuple[Quantity, Quantity, Quantity, Quantity]]:
     """Prepares data to be plotted in a 2d heatmap plot, like a phase space plot.
 
@@ -703,32 +701,32 @@ def aggregate_2d_data(
         y_adjust_bins_edges_to_data: Overwrite `y_bins` edges to match the data range.
         output_type: The type of calculation to fill each bin.
         row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
-        data_x_units: The units for the x-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
-        data_y_units: The units for the y-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_x_unit: The units for the x-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_y_unit: The units for the y-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
 
     Returns:
         data, extent.
     """
     if isinstance(data, pd.DataFrame):
-        sub = table.QTable.from_pandas(data[[x_key, y_key]], units={x_key: data_x_units, y_key: data_y_units})
+        sub = table.QTable.from_pandas(data[[x_key, y_key]], units={x_key: data_x_unit, y_key: data_y_unit})
     else:
         sub = data[[x_key, y_key]]
-        data_x_units = data[x_key].unit
-        data_y_units = data[y_key].unit
+        data_x_unit = data[x_key].unit
+        data_y_unit = data[y_key].unit
 
-    if data_x_units is None:
-        data_x_units = ''
+    if data_x_unit is None:
+        data_x_unit = ''
 
-    if data_y_units is None:
-        data_y_units = ''
+    if data_y_unit is None:
+        data_y_unit = ''
 
     if x_adjust_bins_edges_to_data:
         x_bins = Quantity(np.linspace(sub[x_key].min(), sub[x_key].max(), len(x_bins)))
     if y_adjust_bins_edges_to_data:
         y_bins = Quantity(np.linspace(sub[y_key].min(), sub[y_key].max(), len(y_bins)))
 
-    x_bins = x_bins.to(data_x_units)
-    y_bins = y_bins.to(data_y_units)
+    x_bins = x_bins.to(data_x_unit)
+    y_bins = y_bins.to(data_y_unit)
     grid = np.histogram2d(
         cast(NDArray[np.float64], sub[x_key]), cast(NDArray[np.float64], sub[y_key]), (x_bins, y_bins)
     )[0].T
@@ -771,18 +769,18 @@ def aggregate_phase_space_data(
     radius_bins: Quantity['length'] = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
     velocity_bins: Quantity['velocity'] = Quantity(np.linspace(0, 100, 200), 'km/second'),
     row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
-    data_length_units: UnitLike = 'kpc',
-    data_velocity_units: UnitLike = 'km/second',
+    data_length_unit: UnitLike = 'kpc',
+    data_velocity_unit: UnitLike = 'km/second',
 ) -> tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['velocity'], Quantity['velocity']]]:
-    """Prepares data to be plotted in a 2d phase space heatmap plot, with radius x-axis and velocity y-axis. Intended to be passed on to `plot_2d()`.
+    """Prepares data to be plotted in a 2d phase space heatmap plot, with radius x-axis and velocity y-axis. Intended to be passed on to `heatmap()`.
 
     Parameters:
         data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns `r` and `v_norm`.
         radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
         velocity_bins: The bins for the velocity axis. Also used to define the velocity range to consider.
         row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
-        data_length_units: The units for the radius in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
-        data_velocity_units: The units for the velocity in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_length_unit: The units for the radius in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_velocity_unit: The units for the velocity in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
 
     Returns:
         data, extent.
@@ -794,19 +792,19 @@ def aggregate_phase_space_data(
         x_bins=radius_bins,
         y_bins=velocity_bins,
         row_normalization=row_normalization,
-        data_x_units=data_length_units,
-        data_y_units=data_velocity_units,
+        data_x_unit=data_length_unit,
+        data_y_unit=data_velocity_unit,
     )
 
 
-def plot_cumulative_scattering_amount_over_time(
+def cumulative_scattering_amount_over_time(
     cumulative_scatters: pd.Series | NDArray[np.float64],
     time: pd.Series | NDArray[np.float64] | Quantity['time'],
     time_unit: UnitLike = 'Gyr',
     xlabel: str | None = 'Time',
     ylabel: str | None = 'Cumulative number of scattering events',
     label: str | None = None,
-    data_time_units: UnitLike = 'Myr',
+    data_time_unit: UnitLike = 'Myr',
     lineplot_kwargs: dict[str, Any] = {},
     save_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -819,22 +817,22 @@ def plot_cumulative_scattering_amount_over_time(
         xlabel: Label for the x-axis.
         ylabel: Label for the y-axis.
         label: Label for the plot (legend).
-        data_time_units: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
+        data_time_unit: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
         lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
-        save_kwargs: Keyword arguments to pass to `save_plot()`. Must include `save_path`. If `None` ignores saving.
+        save_kwargs: Keyword arguments to pass to `save()`. Must include `save_path`. If `None` ignores saving.
         kwargs: Additional keyword arguments to pass to the plot function (`setup_plot()`).
 
     Returns:
         fig, ax.
     """
     if not isinstance(time, Quantity):
-        time = Quantity(time, data_time_units)
+        time = Quantity(time, data_time_unit)
     fig, ax = setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, **kwargs)
     sns.lineplot(x=time.to(time_unit).value, y=cumulative_scatters, ax=ax, label=label, **lineplot_kwargs)
     if label is not None:
         ax.legend()
     if save_kwargs is not None:
-        save_plot(fig=fig, **save_kwargs)
+        save(fig=fig, **save_kwargs)
     return fig, ax
 
 
@@ -905,7 +903,7 @@ def save_images(
     images[0].save(save_path, save_all=True, append_images=images[1:], duration=duration, loop=loop, **kwargs)
 
 
-def save_plot(fig: Figure, save_path: str | Path | None = None, bbox_inches: str = 'tight', **kwargs: Any) -> None:
+def save(fig: Figure, save_path: str | Path | None = None, bbox_inches: str = 'tight', **kwargs: Any) -> None:
     """Save the figure.
 
     Parameters:
@@ -923,17 +921,17 @@ def save_plot(fig: Figure, save_path: str | Path | None = None, bbox_inches: str
     fig.savefig(save_path, bbox_inches=bbox_inches, **kwargs)
 
 
-def plot_phase_space_energy_lines(
+def phase_space_energy_lines(
     Psi_fn: Callable[[Quantity['length']], Quantity['specific energy']],
     E: Quantity['specific energy'],
     r_range: Quantity['length'] = Quantity([1e-3, 35], 'kpc'),
     v_range: Quantity['velocity'] | None = None,
     steps: int = 100,
-    length_units: UnitLike = 'kpc',
-    velocity_units: UnitLike = 'km/second',
+    length_unit: UnitLike = 'kpc',
+    velocity_unit: UnitLike = 'km/second',
     autolabel: bool = True,
     autolabel_format: str = '.1f',
-    autolabel_units: UnitLike = 'km^2/second^2',
+    autolabel_unit: UnitLike = 'km^2/second^2',
     fig: Figure | None = None,
     ax: Axes | None = None,
     lineplot_kwargs: dict[str, Any] = {},
@@ -948,15 +946,15 @@ def plot_phase_space_energy_lines(
         r_range: Range of radius values to plot on. Only the minimum and maximum values are used.
         v_range: Range of velocities to limit the plot to. Only the minimum and maximum values are used. If `None` ignores.
         steps: Number of grid points.
-        length_units: Units for the radius axis.
-        velocity_units: Units for the velocity axis.
+        length_unit: Units for the radius axis.
+        velocity_unit: Units for the velocity axis.
         autolabel: Whether to automatically label the lines by the energy.
         autolabel_format: Format string for the labels.
         autolabel_units: Units for the labels.
         fig: Figure to plot on.
         ax: Axes to plot on.
         lineplot_kwargs: Keyword arguments to pass to `sns.lineplot()`.
-        save_kwargs: Keyword arguments to pass to `save_plot()`. If `None` ignores saving.
+        save_kwargs: Keyword arguments to pass to `save()`. If `None` ignores saving.
         kwargs: Additional keyword arguments to pass to `setup_plot()`.
 
     Returns:
@@ -967,15 +965,13 @@ def plot_phase_space_energy_lines(
     fig, ax = setup_plot(fig=fig, ax=ax, **kwargs)
     for e in E:
         mask = np.ones(len(Psi), dtype=np.bool_)
-        v = Quantity(np.zeros(len(Psi)), velocity_units)
-        v = 2 * np.sqrt(Psi - e, where=Psi > e).to(velocity_units)
+        v = Quantity(np.zeros(len(Psi)), velocity_unit)
+        v = 2 * np.sqrt(Psi - e, where=Psi > e, out=v).to(velocity_unit)
         if v_range is not None:
             mask = (v >= v_range.min()) * (v <= v_range.max())
         if autolabel:
-            lineplot_kwargs['label'] = (
-                f'E={e.to(autolabel_units).to_string(format="latex", formatter=autolabel_format)}'
-            )
+            lineplot_kwargs['label'] = f'E={e.to(autolabel_unit).to_string(format="latex", formatter=autolabel_format)}'
         sns.lineplot(x=r[mask], y=v[mask], ax=ax, **lineplot_kwargs)
     if save_kwargs is not None:
-        save_plot(fig=fig, **save_kwargs)
+        save(fig=fig, **save_kwargs)
     return fig, ax

@@ -10,7 +10,7 @@ from astropy.units import Quantity
 
 from .. import utils, run_units
 
-G = constants.G.to(run_units.G_units).value
+G = constants.G.to(run_units.G_unit).value
 
 
 class Params(TypedDict, total=False):

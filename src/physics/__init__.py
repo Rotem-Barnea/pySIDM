@@ -1,3 +1,3 @@
-from . import sidm, utils, leapfrog
+from . import sidm, utils, leapfrog, eddington
 
-__all__ = ['utils', 'leapfrog', 'sidm']
+__all__ = ['utils', 'leapfrog', 'sidm', 'eddington']

@@ -43,13 +43,14 @@ class UniformGrid(Distribution):
         radius_min_value: Quantity['length'] | None = None,
         radius_max_value: Quantity['length'] | None = None,
         velocity_min_value: Quantity['velocity'] = Quantity(0, 'km/second'),
-        velocity_max_value: Quantity['velocity'] = Quantity(100, 'km/second'),
+        velocity_max_value: Quantity['velocity'] | None = Quantity(100, 'km/second'),
         radius_resolution: int | float = 10000,
         velocity_resolution: int | float = 10000,
         radius_range: Quantity['length'] | None = None,
         velocity_range: Quantity['velocity'] | None = None,
         radius_noise: float = 1,
         velocity_noise: float = 1,
+        fail_on_negative: bool = False,
         generator: np.random.Generator | None = None,
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
         """Samples particles from a uniform grid. All parameters are ignored."""

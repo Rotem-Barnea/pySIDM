@@ -38,7 +38,7 @@ class Halo:
 
     def __init__(
         self,
-        dt: Quantity['time'],
+        dt: Quantity['time'] | float,
         r: Quantity['length'],
         v: Quantity['velocity'],
         m: Quantity['mass'],
@@ -57,7 +57,7 @@ class Halo:
         steps: int | float = 0,
         background: Mass_Distribution | None = None,
         last_saved_time: Quantity['time'] = 0 * run_units.time,
-        save_every_time: Quantity['time'] | None = None,
+        save_every_time: Quantity['time'] | float | None = None,
         save_every_n_steps: int | None = None,
         dynamics_params: leapfrog.Params | None = None,
         scatter_params: sidm.Params | None = None,
@@ -87,6 +87,7 @@ class Halo:
         """Initialize a Halo object.
 
         Parameters:
+            dt: Time step of the halo. If not a `Quantity`, assumed to be a factor multiplying the dynamical time of the first distribution in `distributions`.
             r: Radius of the halo particles.
             v: Velocity of the halo particles, of shape `(n_particles, 3)`, `(vx,vy,vr)` with `vx`,`vy` the two perpendicular components of the off-radial plane.
             m: Mass of the halo particles.
@@ -106,7 +107,7 @@ class Halo:
             steps: number of steps made in the simulation (should match `self.time/self.dt` but left as a sanity check).
             background: Background mass distribution of the halo.
             last_saved_time: Last time a snapshot was saved.
-            save_every_time: How often should a snapshot be saved, in time units.
+            save_every_time: How often should a snapshot be saved, in time units.  If not a `Quantity`, assumed to be a factor multiplying the dynamical time of the first distribution in `distributions`.
             save_every_n_steps: How often should a snapshot be saved, in time-step units (integer).
             dynamics_params: Dynamics parameters of the halo, sent to the leapfrog integrator.
             scatter_params: Scatter parameters of the halo, used in the SIDM calculation.
@@ -134,8 +135,10 @@ class Halo:
         self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
         self.time: Quantity['time'] = time.to(run_units.time)
         self.steps: int = int(steps)
-        self.dt: Quantity['time'] = dt.to(run_units.time)
         self.distributions: list[Distribution] = utils.handle_default(distributions, [])
+        self.dt: Quantity['time'] = (dt if isinstance(dt, Quantity) else self.distributions[0].Tdyn * dt).to(
+            run_units.time
+        )
         self.Tdyn: Quantity['time']
         if Tdyn is not None:
             self.Tdyn = Tdyn
@@ -147,9 +150,14 @@ class Halo:
         self.Phi0: Quantity['energy'] = Phi0 if Phi0 is not None else physics.utils.Phi(self.r, self.M, self.m)[-1]
         self.snapshots: table.QTable = utils.handle_default(snapshots, table.QTable())
         self.save_every_n_steps = save_every_n_steps
-        self.save_every_time: Quantity['time'] | None = (
-            save_every_time if save_every_time is None else save_every_time.to(run_units.time)
-        )
+        self.save_every_time: Quantity['time'] | None
+        if save_every_time is None:
+            self.save_every_time = None
+        elif isinstance(save_every_time, Quantity):
+            self.save_every_time = save_every_time.to(run_units.time)
+        else:
+            self.save_every_time = (self.distributions[0].Tdyn * save_every_time).to(run_units.time)
+
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
         self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
         self.max_allowed_subdivisions: int = max_allowed_subdivisions
@@ -229,6 +237,7 @@ class Halo:
         n_particles: list[int | float],
         seed: int | None = None,
         sample_kwargs: dict[str, Any] = {},
+        join_distributions: bool = True,
         **kwargs: Any,
     ) -> Self:
         """Initialize a Halo object from a given set of distributions.
@@ -239,6 +248,7 @@ class Halo:
             seed: Seed for the random number generator.
             generator: If `None` use the default generator from `rng.generator`.
             sample_kwargs: Additional keyword argumants to pass ot the sampling function.
+            join_distributions: If `True`, joining the distributions (`Distribution.merge_distribution_grids`). Use `False` if the distributions already had Eddington inversion calculated elsewhere.
             kwargs: Additional keyword arguments, passed to the constructor.
 
         Returns:
@@ -246,7 +256,8 @@ class Halo:
         """
         r, v, particle_type, m, distribution_id = [], [], [], [], []
         generator = np.random.default_rng(seed)
-        Distribution.merge_distribution_grids(distributions)
+        if join_distributions:
+            Distribution.merge_distribution_grids(distributions)
         for distribution, n in zip(distributions, n_particles):
             # r_sub, v_sub = distribution.sample_old(n_particles=n, generator=generator, **sample_kwargs)
             r_sub, v_sub = distribution.sample(n_particles=n, generator=generator, **sample_kwargs)
@@ -1098,7 +1109,7 @@ class Halo:
             return
         if 'name' in save_kwargs:
             save_kwargs['save_path'] = self.results_path / save_kwargs.pop('name')
-        plot.save_plot(fig=fig, **save_kwargs)
+        plot.save(fig=fig, **save_kwargs)
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
         """If the `unit` is `Tdyn` return `self.Tdyn`. If it's `time step` return `self.time_step`, otherwise return `unit`."""
@@ -1229,25 +1240,25 @@ class Halo:
         self,
         manual_times: Quantity['time'] = Quantity([], 'Myr'),
         manual_labels: list[str] = [],
-        time_units: UnitLike = 'Gyr',
+        time_unit: UnitLike = 'Gyr',
     ) -> tuple[Quantity['time'], list[str]]:
         """Automatically pull max core and collapse times for use in plotting."""
-        time_units = self.fill_time_unit(time_units)
+        time_unit = self.fill_time_unit(time_unit)
         times = []
         labels = []
         for t, label in zip(
-            [Quantity(0, time_units), self.max_core_time(), self.core_collapse_start_time(), self.time],
+            [Quantity(0, time_unit), self.max_core_time(), self.core_collapse_start_time(), self.time],
             ['start', 'max core', 'core collapse (start)', 'core collapse (deep)'],
         ):
             if t == np.inf:
                 break
-            times += [t.to(time_units)]
+            times += [t.to(time_unit)]
             labels += [label]
         output = pd.DataFrame(
-            {'time': np.hstack([manual_times.to(time_units), *times]), 'label': manual_labels + labels}
+            {'time': np.hstack([manual_times.to(time_unit), *times]), 'label': manual_labels + labels}
         )
         times, labels = output.drop_duplicates().sort_values('time').to_numpy().T
-        return Quantity(times, time_units), labels.tolist()
+        return Quantity(times, time_unit), labels.tolist()
 
     def plot_r_kde_over_time(
         self,
@@ -1256,8 +1267,8 @@ class Halo:
         filter_particle_type: ParticleType | None = None,
         x_range: Quantity['length'] | None = None,
         x_clip: Quantity['length'] | None = None,
-        x_units: UnitLike = 'kpc',
-        time_units: UnitLike = 'Tdyn',
+        x_unit: UnitLike = 'kpc',
+        time_unit: UnitLike = 'Tdyn',
         time_format: str = '.1f',
         title: str | None = 'Density progression over time',
         xlabel: str | None = 'Radius',
@@ -1275,7 +1286,7 @@ class Halo:
             filter_particle_type: Whether to filter to only plot the specified particle type.
             x_range: The radius range to clip the data to (hard slicing the source data prior to plotting). If `None`, ignores.
             x_clip: The radius range to clip the data to (using the `clip` keyword argument in `sns.kdeplot()`). If `None`, ignores.
-            time_units: The time units to use in the plot.
+            time_unit: The time units to use in the plot.
             time_format: Format string for time.
             title: The title of the plot.
             xlabel: The label for the x-axis.
@@ -1301,23 +1312,21 @@ class Halo:
 
         colors = sns.color_palette(color_palette, len(indices)) if color_palette is not None else None
 
-        time_units = self.fill_time_unit(time_units)
-        fig, ax = plot.setup_plot(
-            **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_units)), **kwargs
-        )
-        clip = tuple(x_clip.to(x_units).value) if x_clip is not None else None
+        time_unit = self.fill_time_unit(time_unit)
+        fig, ax = plot.setup_plot(**utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_unit)), **kwargs)
+        clip = tuple(x_clip.to(x_unit).value) if x_clip is not None else None
         for i, group in enumerate(data.group_by('time').groups):
             if i not in indices:
                 continue
-            sub = group['r'].to(x_units).value
+            sub = group['r'].to(x_unit).value
             if x_range is not None:
-                sub = sub[pd.Series(sub).between(*x_range.to(x_units).value)]
+                sub = sub[pd.Series(sub).between(*x_range.to(x_unit).value)]
             sns.kdeplot(
                 sub,
                 ax=ax,
                 clip=clip,
                 color=colors[indices.index(i)] if colors is not None else None,
-                label=group['time'][0].to(time_units).to_string(format='latex', formatter=time_format),
+                label=group['time'][0].to(time_unit).to_string(format='latex', formatter=time_format),
             )
         if legend_loc:
             fig.legend(loc=legend_loc)
@@ -1338,7 +1347,7 @@ class Halo:
         x_plot_range: Quantity | None = None,
         stat: str = 'density',
         plot_type: Literal['hist', 'kde'] = 'hist',
-        x_units: UnitLike | None = None,
+        x_unit: UnitLike | None = None,
         ylabel: str | None = None,
         label: str | None = None,
         fig: Figure | None = None,
@@ -1361,7 +1370,7 @@ class Halo:
             x_plot_range: The range to plot on the x-axis. If `None` uses the data range.
             stat: The type of statistic to plot. Gets passed to `sns.histplot()`. Only used if `plot_type` is `hist`.
             plot_type: The type of plot to create.
-            x_units: The x-axis units to use in the plot.
+            x_unit: The x-axis units to use in the plot.
             ylabel: The label for the y-axis.
             label: The label for the histogram (legend).
             fig: The figure to plot on.
@@ -1373,16 +1382,16 @@ class Halo:
         Returns:
             fig, ax.
         """
-        x_units = plot.default_plot_unit_type(key, x_units)
+        x_unit = plot.default_unit_type(key, x_unit)
         if filter_particle_type is not None:
             data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
-        x = data[key].to(x_units)
+        x = data[key].to(x_unit)
         if x_range is not None:
             x = x[(x > x_range[0]) * (x < x_range[1])]
         if absolute:
             x = np.abs(x)
         params = {
-            **plot.default_plot_text(key, x_units=x_units),
+            **plot.default_plot_text(key, x_unit=x_unit),
             **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel),
         }
         fig, ax = plot.setup_plot(fig, ax, **params, **kwargs)
@@ -1391,7 +1400,7 @@ class Halo:
         else:
             sns.histplot(x, cumulative=cumulative, ax=ax, stat=stat, label=label, **plt_kwargs)
         if x_plot_range is not None:
-            ax.set_xlim(*x_plot_range.to(x_units).value)
+            ax.set_xlim(*x_plot_range.to(x_unit).value)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
@@ -1400,7 +1409,7 @@ class Halo:
         data: table.QTable,
         cumulative: bool = False,
         add_density: int | None = 0,
-        x_units: UnitLike = 'kpc',
+        x_unit: UnitLike = 'kpc',
         x_range: Quantity | None = None,
         hist_label: str | None = None,
         density_label: str | None = None,
@@ -1413,7 +1422,7 @@ class Halo:
             data: The data to plot.
             cumulative: Whether to plot the cumulative distribution.
             add_density: Density distribution to plot on top of the plot (index from the distributions list). If `None` ignores.
-            x_units: The units to plot the x-axis in.
+            x_unit: The units to plot the x-axis in.
             x_range: The range of the x-axis.
             hist_label: The label for the histogram (legend).
             density_label: The label for the density distribution (legend).
@@ -1427,7 +1436,7 @@ class Halo:
             key='r',
             data=data,
             cumulative=cumulative,
-            x_units=x_units,
+            x_unit=x_unit,
             x_range=x_range,
             label=hist_label,
             **kwargs,
@@ -1440,7 +1449,7 @@ class Halo:
             )
             fig, ax = self.distributions[add_density].plot_radius_distribution(
                 cumulative=cumulative,
-                length_units=x_units,
+                length_unit=x_unit,
                 fig=fig,
                 ax=ax,
                 label=density_label,
@@ -1511,8 +1520,8 @@ class Halo:
         transparent_value: float | None = 0,
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Velocity',
-        x_units: UnitLike = 'kpc',
-        y_units: UnitLike = 'km/second',
+        x_unit: UnitLike = 'kpc',
+        y_unit: UnitLike = 'km/second',
         return_grid: bool = False,
         adjust_data_to_EL: bool = False,
         **kwargs: Any,
@@ -1535,11 +1544,11 @@ class Halo:
             transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
             xlabel: The label of the x-axis.
             ylabel: The label of the y-axis.
-            x_units: Units to use for the x-axis.
-            y_units: Units to use for the y-axis.
+            x_unit: Units to use for the x-axis.
+            y_unit: Units to use for the y-axis.
             return_grid: Return the grid+extent variables instead of plotting.
             adjust_data_to_EL: Adds a specific angular momentum column to the data (`data['L'] = data['r'] * data['vp']`) and transforms the energy to specific energy.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
 
         Returns:
             fig, ax.
@@ -1565,18 +1574,18 @@ class Halo:
             y_bins=y_bins,
             x_adjust_bins_edges_to_data=x_adjust_bins_edges_to_data,
             y_adjust_bins_edges_to_data=y_adjust_bins_edges_to_data,
-            data_x_units=x_units,
-            data_y_units=y_units,
+            data_x_unit=x_unit,
+            data_y_unit=y_unit,
         )
         if return_grid:
             return grid, extent
-        fig, ax = plot.plot_2d(
+        fig, ax = plot.heatmap(
             grid=grid,
             extent=extent,
             xlabel=xlabel,
             ylabel=ylabel,
-            x_units=x_units,
-            y_units=y_units,
+            x_unit=x_unit,
+            y_unit=y_unit,
             cmap=cmap,
             transparent_value=transparent_value,
             **kwargs,
@@ -1607,11 +1616,11 @@ class Halo:
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Velocity',
         title: str | None = 'Final {value_statistic} {value_key_title} of {filter_particle_type} after {time}',
-        title_time_units: UnitLike = 'Gyr',
+        title_time_unit: UnitLike = 'Gyr',
         title_time_format: str = '.1f',
         cbar_label: str | None = 'Final {value_statistic} {value_key_title}',
-        x_units: UnitLike = 'kpc',
-        y_units: UnitLike = 'km/second',
+        x_unit: UnitLike = 'kpc',
+        y_unit: UnitLike = 'km/second',
         adjust_data_to_EL: bool = False,
         **kwargs: Any,
     ) -> tuple[Figure, Axes] | tuple[Quantity, tuple[Quantity, Quantity, Quantity, Quantity]]:
@@ -1636,14 +1645,14 @@ class Halo:
             xlabel: The label of the x-axis.
             ylabel: The label of the y-axis.
             title: The title of the plot.
-            title_time_units: Units to use for time in the title.
+            title_time_unit: Units to use for time in the title.
             title_time_format: Format string for time in the title.
             cbar_label: The label for the cbar.
-            x_units: Units to use for the x-axis.
-            y_units: Units to use for the y-axis.
+            x_unit: Units to use for the x-axis.
+            y_unit: Units to use for the y-axis.
             return_grid: Return the grid+extent variables instead of plotting.
             adjust_data_to_EL: Adds a specific angular momentum column to the data (`data['L'] = data['r'] * data['vp']`) and transforms the energy to specific energy.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
 
         Returns:
             fig, ax.
@@ -1708,8 +1717,8 @@ class Halo:
             y_bins=y_bins,
             x_adjust_bins_edges_to_data=x_adjust_bins_edges_to_data,
             y_adjust_bins_edges_to_data=y_adjust_bins_edges_to_data,
-            data_x_units=x_units,
-            data_y_units=y_units,
+            data_x_unit=x_unit,
+            data_y_unit=y_unit,
             output_type='value',
             value_key=f'{value_key}_end',
             value_statistic=value_statistic,
@@ -1720,7 +1729,7 @@ class Halo:
                 value_statistic=value_statistic,
                 value_key_title=plot.default_plot_text(key=value_key, lower=True).get('xlabel', value_key),
                 filter_particle_type=filter_particle_type,
-                time=time_final.to(title_time_units).to_string(format='latex', formatter=title_time_format),
+                time=time_final.to(title_time_unit).to_string(format='latex', formatter=title_time_format),
             )
 
         if cbar_label is not None:
@@ -1728,16 +1737,16 @@ class Halo:
                 value_statistic=value_statistic,
                 value_key_title=plot.default_plot_text(key=value_key, lower=True).get('xlabel', value_key),
             )
-        if 'cbar_units' not in kwargs:
-            kwargs['cbar_units'] = grid.unit
+        if 'cbar_unit' not in kwargs:
+            kwargs['cbar_unit'] = grid.unit
 
-        fig, ax = plot.plot_2d(
+        fig, ax = plot.heatmap(
             grid=grid,
             extent=extent,
             xlabel=xlabel,
             ylabel=ylabel,
-            x_units=x_units,
-            y_units=y_units,
+            x_unit=x_unit,
+            y_unit=y_unit,
             title=title,
             cmap=cmap,
             transparent_value=transparent_value,
@@ -1840,7 +1849,7 @@ class Halo:
         include_now: bool = False,
         radius: Quantity['length'] = Quantity(0.2, 'kpc'),
         filter_particle_type: ParticleType | None = None,
-        time_units: UnitLike = 'Tdyn',
+        time_unit: UnitLike = 'Tdyn',
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Particles',
         title: str | None = 'Particles in inner core ({radius})',
@@ -1860,7 +1869,7 @@ class Halo:
             include_now: Whether to include the current particle distribution in the plot.
             radius: Radius of the inner core.
             filter_particle_type: Whether to filter to only plot the specified particle type.
-            time_units: The time units to use in the plot.
+            time_unit: The time units to use in the plot.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: Title for the plot.
@@ -1877,14 +1886,14 @@ class Halo:
             fig, ax.
         """
         base_data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
-        data_time_units = base_data['time'].unit
-        data_length_units = base_data['r'].unit
+        data_time_unit = base_data['time'].unit
+        data_length_unit = base_data['r'].unit
         data = base_data[['r', 'time', 'particle_type']].to_pandas()
 
         if filter_particle_type is not None:
             data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
-        time_units = self.fill_time_unit(time_units)
-        data['in_radius'] = data['r'] <= radius.to(data_length_units)
+        time_unit = self.fill_time_unit(time_unit)
+        data['in_radius'] = data['r'] <= radius.to(data_length_unit)
 
         if aggregation_type == 'amount':
             agg_func = 'sum'
@@ -1907,11 +1916,11 @@ class Halo:
         fig, ax = plot.setup_plot(
             fig,
             ax,
-            **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, time_units), ylabel=ylabel),
+            **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel),
             **kwargs,
         )
         sns.lineplot(
-            x=np.array(Quantity(agg_data['time'], data_time_units).to(time_units)),
+            x=np.array(Quantity(agg_data['time'], data_time_unit).to(time_unit)),
             y=agg_data['in_radius'].to_numpy(),
             ax=ax,
             label=label,
@@ -1927,8 +1936,8 @@ class Halo:
         filter_particle_type: ParticleType | None = None,
         radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
         time_range: Quantity | None = None,
-        length_units: UnitLike = 'kpc',
-        time_units: UnitLike = 'Tdyn',
+        length_unit: UnitLike = 'kpc',
+        time_unit: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = 'Particles',
@@ -1944,20 +1953,20 @@ class Halo:
             filter_particle_type: Whether to filter to only plot the specified particle type.
             radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
             time_range: Range of times to consider (filters the data).
-            length_units: Units to use for the radius axis.
-            time_units: Units to use for the time axis.
+            length_unit: Units to use for the radius axis.
+            time_unit: Units to use for the time axis.
             xlabel: Label for the radius axis.
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
             cmap: The colormap to use for the plot.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
 
         Returns:
             fig, ax.
         """
 
-        time_units = self.fill_time_unit(time_units)
+        time_unit = self.fill_time_unit(time_unit)
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
@@ -1969,11 +1978,11 @@ class Halo:
             row_normalization=row_normalization,
         )
 
-        fig, ax = plot.plot_2d(
+        fig, ax = plot.heatmap(
             grid=grid,
             extent=extent,
-            x_units=length_units,
-            y_units=time_units,
+            x_unit=length_unit,
+            y_unit=time_unit,
             xlabel=xlabel,
             ylabel=ylabel,
             cbar_label=cbar_label,
@@ -1991,9 +2000,9 @@ class Halo:
         filter_particle_type: ParticleType | None = None,
         radius_bins: Quantity = Quantity(np.linspace(1e-1, 5, 100), 'kpc'),
         time_range: Quantity | None = None,
-        specific_energy_units: UnitLike = 'km^2/second^2',
-        length_units: UnitLike = 'kpc',
-        time_units: UnitLike = 'Tdyn',
+        specific_energy_unit: UnitLike = 'km^2/second^2',
+        length_unit: UnitLike = 'kpc',
+        time_unit: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = r'$\propto$Temperature (velocity variance)',
@@ -2009,20 +2018,20 @@ class Halo:
             filter_particle_type: Whether to filter to only plot the specified particle type.
             radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
             time_range: Range of times to consider (filters the data).
-            specific_energy_units: Units to use for the specific energy.
-            length_units: Units to use for the radius axis.
-            time_units: Units to use for the time axis.
+            specific_energy_unit: Units to use for the specific energy.
+            length_unit: Units to use for the radius axis.
+            time_unit: Units to use for the time axis.
             xlabel: Label for the radius axis.
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
             cmap: The colormap to use for the plot.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
 
         Returns:
             fig, ax.
         """
-        time_units = self.fill_time_unit(time_units)
+        time_unit = self.fill_time_unit(time_unit)
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
@@ -2032,14 +2041,14 @@ class Halo:
             time_range=time_range,
             output_type='temperature',
             row_normalization=row_normalization,
-            output_grid_units=specific_energy_units,
+            output_grid_unit=specific_energy_unit,
         )
 
-        fig, ax = plot.plot_2d(
+        fig, ax = plot.heatmap(
             grid=grid,
             extent=extent,
-            x_units=length_units,
-            y_units=time_units,
+            x_unit=length_unit,
+            y_unit=time_unit,
             xlabel=xlabel,
             ylabel=ylabel,
             cbar_label=cbar_label,
@@ -2059,9 +2068,9 @@ class Halo:
         radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
         time_range: Quantity | None = None,
         v_axis: Literal['vx', 'vy', 'vr'] = 'vr',
-        heat_units: UnitLike = '1/Myr^3',
-        length_units: UnitLike = 'kpc',
-        time_units: UnitLike = 'Tdyn',
+        heat_unit: UnitLike = '1/Myr^3',
+        length_unit: UnitLike = 'kpc',
+        time_unit: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = 'Specific Heat flux',
@@ -2079,21 +2088,21 @@ class Halo:
             radius_bins: The bins for the radius axis. Also used to define the radius range to consider.
             time_range: Range of times to consider (filters the data).
             v_axis: The velocity to calculate the heat flux in.
-            velocity_units: Units to use for the velocity.
-            length_units: Units to use for the radius axis.
-            time_units: Units to use for the time axis.
+            velocity_unit: Units to use for the velocity.
+            length_unit: Units to use for the radius axis.
+            time_unit: Units to use for the time axis.
             xlabel: Label for the radius axis.
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
             cmap: The colormap to use for the plot.
             setup_kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
 
         Returns:
             fig, ax.
         """
-        time_units = self.fill_time_unit(time_units)
+        time_unit = self.fill_time_unit(time_unit)
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
@@ -2104,14 +2113,14 @@ class Halo:
             v_axis=v_axis,
             output_type='specific heat flux',
             row_normalization=row_normalization,
-            output_grid_units=heat_units,
+            output_grid_unit=heat_unit,
         )
 
-        fig, ax = plot.plot_2d(
+        fig, ax = plot.heatmap(
             grid=grid,
             extent=extent,
-            x_units=length_units,
-            y_units=time_units,
+            x_unit=length_unit,
+            y_unit=time_unit,
             xlabel=xlabel,
             ylabel=ylabel,
             cbar_label=cbar_label,
@@ -2130,12 +2139,12 @@ class Halo:
         time_range: Quantity | None = None,
         time_bin_size: Quantity | None | Literal['save cadence'] = 'save cadence',
         normalize_by_n_particles: bool = False,
-        length_units: UnitLike = 'kpc',
-        time_units: UnitLike = 'Tdyn',
+        length_unit: UnitLike = 'kpc',
+        time_unit: UnitLike = 'Tdyn',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = 'Number of scattering events per {time}',
-        cbar_label_time_units: UnitLike = 'Myr',
+        cbar_label_time_unit: UnitLike = 'Myr',
         cbar_label_time_format: str = '.1f',
         cbar_log_scale: bool = True,
         row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
@@ -2152,12 +2161,12 @@ class Halo:
             time_range: Range of times to consider (filters the data).
             time_bin_size: The size of the time bins. If `save cadence`, the time bins will be set to the save cadence of the simulation. If `None`, avoid binning completely.
             normalize_by_n_particles: Whether to normalize the histogram by the number of particles in each bin.
-            length_units: Units to use for the radius axis.
-            time_units: Units to use for the time axis.
+            length_unit: Units to use for the radius axis.
+            time_unit: Units to use for the time axis.
             xlabel: Label for the radius axis.
             ylabel: Label for the time axis.
             cbar_label: Label for the colorbar.
-            cbar_label_time_units: Units to use for time.
+            cbar_label_time_unit: Units to use for time.
             cbar_label_time_format: Format string for time.
             cbar_log_scale: Whether to use a logarithmic scale for the colorbar.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
@@ -2165,27 +2174,27 @@ class Halo:
             x_tick_format: Format string for the x-axis ticks.
             transparent_range: Range of values to turn transparent (i.e. plot as `NaN`). If `None` ignores.
             setup_kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
 
         Returns:
             fig, ax.
         """
-        time_units = self.fill_time_unit(time_units)
+        time_unit = self.fill_time_unit(time_unit)
 
-        time_array = self.scatter_track_time_raveled_binned(time_bin_size).to(time_units)
+        time_array = self.scatter_track_time_raveled_binned(time_bin_size).to(time_unit)
 
         if cbar_label is not None:
             cbar_label = cbar_label.format(
                 time=np.unique(time_array)
                 .diff()[0]
-                .to(cbar_label_time_units)
+                .to(cbar_label_time_unit)
                 .to_string(format='latex', formatter=cbar_label_time_format),
             )
 
         data = table.QTable(
             {
                 'time': time_array,
-                'r': Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units),
+                'r': Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_unit),
             }
         )
         grid, extent = plot.aggregate_evolution_data(
@@ -2212,11 +2221,11 @@ class Halo:
             grid[location_grid == 0] = 0
             grid[location_grid != 0] = grid[location_grid != 0] / location_grid[location_grid != 0]
 
-        fig, ax = plot.plot_2d(
+        fig, ax = plot.heatmap(
             grid=grid,
             extent=extent,
-            x_units=length_units,
-            y_units=time_units,
+            x_unit=length_unit,
+            y_unit=time_unit,
             xlabel=xlabel,
             ylabel=ylabel,
             cbar_label=cbar_label,
@@ -2235,7 +2244,7 @@ class Halo:
     def plot_start_end_distribution(
         self,
         key: str = 'r',
-        time_units: UnitLike = 'Tdyn',
+        time_unit: UnitLike = 'Tdyn',
         time_format: str = '.1f',
         label_start: str = 'start',
         label_end: str = 'after {t}',
@@ -2250,7 +2259,7 @@ class Halo:
 
         Parameters:
             key: The key to plot.
-            time_units: The time units to use in the plot.
+            time_unit: The time units to use in the plot.
             time_format: Format string for time.
             label_start: Label for the start distribution.
             label_end: Label for the end distribution.
@@ -2264,7 +2273,7 @@ class Halo:
         Returns:
             fig, ax.
         """
-        time_units = self.fill_time_unit(time_units)
+        time_unit = self.fill_time_unit(time_unit)
         fig, ax = self.plot_distribution(
             key=key,
             data=self.initial_particles,
@@ -2278,7 +2287,7 @@ class Halo:
             data=self.particles,
             fig=fig,
             ax=ax,
-            label=label_end.format(t=self.time.to(time_units).to_string(format='latex', formatter=time_format)),
+            label=label_end.format(t=self.time.to(time_unit).to_string(format='latex', formatter=time_format)),
             **{
                 **kwargs,
                 **end_kwargs,
@@ -2292,8 +2301,8 @@ class Halo:
         self,
         title: str | None = 'Scattering location distribution within the first {time}, total of {n_scatters} events',
         xlabel: str | None = 'Radius',
-        length_units: UnitLike = 'kpc',
-        time_units: UnitLike = 'Gyr',
+        length_unit: UnitLike = 'kpc',
+        time_unit: UnitLike = 'Gyr',
         time_format: str = '.1f',
         figsize: tuple[int, int] = (12, 6),
         fig: Figure | None = None,
@@ -2307,8 +2316,8 @@ class Halo:
         Parameters:
             title: Title for the plot.
             xlabel: Label for the x-axis.
-            length_units: Units to use for the radius axis.
-            time_units: Units to use for time.
+            length_unit: Units to use for the radius axis.
+            time_unit: Units to use for time.
             time_format: Format string for time.
             figsize: Size of the figure.
             fig: Figure to use for the plot.
@@ -2319,18 +2328,18 @@ class Halo:
             fig, ax.
 
         """
-        xlabel = utils.add_label_unit(xlabel, length_units)
-        time_units = self.fill_time_unit(time_units)
+        xlabel = utils.add_label_unit(xlabel, length_unit)
+        time_unit = self.fill_time_unit(time_unit)
         if title is not None:
             title = title.format(
-                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
+                time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
                 n_scatters=self.n_scatters.sum(),
             )
         fig, ax = plot.setup_plot(
             fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel)
         )
         sns.histplot(
-            Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_units),
+            Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_unit),
             ax=ax,
             log=True,
         )
@@ -2341,7 +2350,7 @@ class Halo:
         self,
         title: str | None = 'Interaction distance distribution',
         xlabel: str | None = 'Interaction distance',
-        length_units: UnitLike = 'pc',
+        length_unit: UnitLike = 'pc',
         log_scale: bool = True,
         stat: str = 'density',
         fig: Figure | None = None,
@@ -2357,7 +2366,7 @@ class Halo:
         Parameters:
             title: Title for the plot.
             xlabel: Label for the x-axis.
-            length_units: Units to use for the radius axis.
+            length_unit: Units to use for the radius axis.
             log_scale: Whether to use a logarithmic scale for the histogram.
             stat: Statistical function to use for the histogram, must be a valid input for `sns.histplot`.
             fig: Figure to use for the plot.
@@ -2371,9 +2380,9 @@ class Halo:
 
         """
         fig, ax = plot.setup_plot(
-            fig, ax, **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, length_units)), **setup_kwargs
+            fig, ax, **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, length_unit)), **setup_kwargs
         )
-        radius = np.diff(np.hstack(self.scatter_track_radius).reshape(-1, 2)).ravel().to(length_units)
+        radius = np.diff(np.hstack(self.scatter_track_radius).reshape(-1, 2)).ravel().to(length_unit)
         sns.histplot(radius, log_scale=log_scale, stat=stat, ax=ax, **kwargs)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
@@ -2384,8 +2393,8 @@ class Halo:
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Density',
         title: str | None = 'Scattering density within the first {time}, total of {n_scatters} events',
-        length_units: UnitLike = 'kpc',
-        time_units: UnitLike = 'Gyr',
+        length_unit: UnitLike = 'kpc',
+        time_unit: UnitLike = 'Gyr',
         time_format: str = '.1f',
         smooth_sigma: float = 5,
         smooth_interpolate_kind: str = 'linear',
@@ -2402,8 +2411,8 @@ class Halo:
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: Title for the plot.
-            length_units: Units to use for the radius axis.
-            time_units: Units to use for time.
+            length_unit: Units to use for the radius axis.
+            time_unit: Units to use for time.
             time_format: Format string for time.
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
             smooth_interpolate_kind: Interpolation kind for the density plot. Applied after the gaussian smoothing to further smooth the plot data.
@@ -2413,7 +2422,7 @@ class Halo:
         Returns:
             fig, ax.
         """
-        r = np.hstack(self.scatter_track_radius).to(length_units)
+        r = np.hstack(self.scatter_track_radius).to(length_unit)
         r_bins = np.linspace(0, r.max(), num=num)
         dr = r_bins[1] - r_bins[0]
         density = Quantity(
@@ -2423,18 +2432,18 @@ class Halo:
             ]
         )
         r_bins = r_bins[:-1]
-        density_units = str(density.unit)
+        density_unit = str(density.unit)
         interpolated_density = scipy.interpolate.interp1d(
             r_bins[density != 0], density[density != 0], kind=smooth_interpolate_kind
         )(r_bins)
         smoothed_density = scipy.ndimage.gaussian_filter1d(interpolated_density, sigma=smooth_sigma)
 
-        xlabel = utils.add_label_unit(xlabel, length_units)
-        ylabel = utils.add_label_unit(ylabel, density_units)
-        time_units = self.fill_time_unit(time_units)
+        xlabel = utils.add_label_unit(xlabel, length_unit)
+        ylabel = utils.add_label_unit(ylabel, density_unit)
+        time_unit = self.fill_time_unit(time_unit)
         if title is not None:
             title = title.format(
-                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
+                time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
                 n_scatters=self.n_scatters.sum(),
             )
         fig, ax = plot.setup_plot(**kwargs, ax_set={'yscale': 'log'}, **utils.drop_None(title=title, xlabel=xlabel))
@@ -2509,9 +2518,9 @@ class Halo:
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'local density',
         title: str | None = 'Local density ({nn} nearest neighbors) after t={time}',
-        x_units: UnitLike = 'kpc',
-        density_units: UnitLike = 'Msun/kpc**3',
-        time_units: UnitLike = 'Gyr',
+        x_unit: UnitLike = 'kpc',
+        density_unit: UnitLike = 'Msun/kpc**3',
+        time_unit: UnitLike = 'Gyr',
         time_format: str = '.1f',
         smooth_sigma: float = 50,
         save_kwargs: dict[str, Any] | None = None,
@@ -2524,9 +2533,9 @@ class Halo:
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: Title for the plot.
-            x_units: Units to use for the x-axis.
-            density_units: Units to use for the y-axis.
-            time_units: Units to use for time.
+            x_unit: Units to use for the x-axis.
+            density_unit: Units to use for the y-axis.
+            time_unit: Units to use for time.
             time_format: Format string for time.
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
@@ -2536,8 +2545,8 @@ class Halo:
             fig, ax.
         """
         x = self.r
-        time_units = self.fill_time_unit(time_units)
-        local_density = self.local_density.to(density_units)
+        time_unit = self.fill_time_unit(time_unit)
+        local_density = self.local_density.to(density_unit)
         smoothed_local_density = (
             scipy.ndimage.gaussian_filter1d(local_density, sigma=smooth_sigma) if smooth_sigma > 0 else local_density
         )
@@ -2547,10 +2556,10 @@ class Halo:
         if title is not None:
             title = title.format(
                 nn=self.scatter_params.get('max_radius_j', None),
-                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
+                time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
             )
-        xlabel = utils.add_label_unit(xlabel, x_units)
-        ylabel = utils.add_label_unit(ylabel, density_units)
+        xlabel = utils.add_label_unit(xlabel, x_unit)
+        ylabel = utils.add_label_unit(ylabel, density_unit)
         fig, ax = plot.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
         sns.lineplot(x=x, y=smoothed_local_density, ax=ax)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
@@ -2560,8 +2569,8 @@ class Halo:
         self,
         xlabel: str | None = 'local density',
         title: str | None = 'Local density ({nn} nearest neighbors) after t={time}',
-        density_units: UnitLike = 'Msun/kpc**3',
-        time_units: UnitLike = 'Gyr',
+        density_unit: UnitLike = 'Msun/kpc**3',
+        time_unit: UnitLike = 'Gyr',
         time_format: str = '.1f',
         log_scale: bool = True,
         stat: str = 'density',
@@ -2575,8 +2584,8 @@ class Halo:
         Parameters:
             xlabel: Label for the x-axis.
             title: Title for the plot.
-            density_units: Units to use for the x-axis.
-            time_units: Units to use for time.
+            density_unit: Units to use for the x-axis.
+            time_unit: Units to use for time.
             time_format: Format string for time.
             log_scale: Whether to use a logarithmic scale for the x-axis.
             stat: The type of statistic to plot. Gets passed to sns.histplot.
@@ -2588,16 +2597,16 @@ class Halo:
         Returns:
             fig, ax.
         """
-        time_units = self.fill_time_unit(time_units)
-        xlabel = utils.add_label_unit(xlabel, density_units)
+        time_unit = self.fill_time_unit(time_unit)
+        xlabel = utils.add_label_unit(xlabel, density_unit)
         if title is not None:
             title = title.format(
                 nn=self.scatter_params.get('max_radius_j', None),
-                time=self.time.to(time_units).to_string(format='latex', formatter=time_format),
+                time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
             )
         fig, ax = plot.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
         sns.histplot(
-            self.local_density.to(density_units),
+            self.local_density.to(density_unit),
             log_scale=log_scale,
             stat=stat,
             cumulative=cumulative,
@@ -2616,9 +2625,9 @@ class Halo:
         ylabel: str | None = None,
         title: str | None = 'Trace of particle id={particle_index}, initial position={r}',
         label: str | None = 'particle id={particle_index}, initial position={r}',
-        time_units: UnitLike = 'Tdyn',
-        y_units: UnitLike | None = None,
-        length_units: UnitLike = 'kpc',
+        time_unit: UnitLike = 'Tdyn',
+        y_unit: UnitLike | None = None,
+        length_unit: UnitLike = 'kpc',
         length_format: str = '.1f',
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
@@ -2634,9 +2643,9 @@ class Halo:
             ylabel: Label for the y-axis.
             title: Title for the plot.
             label: Label for the plot (legend).
-            time_units: Units for the x-axis.
-            y_units: Units for the y-axis.
-            length_units: Units for the length.
+            time_unit: Units for the x-axis.
+            y_unit: Units for the y-axis.
+            length_unit: Units for the length.
             length_format: Format string for length.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
@@ -2644,7 +2653,7 @@ class Halo:
         Returns:
             fig, ax.
         """
-        return plot.plot_trace(
+        return plot.trace(
             key=key,
             data=data
             if data is not None
@@ -2655,9 +2664,9 @@ class Halo:
             ylabel=ylabel,
             title=title,
             label=label,
-            time_units=self.fill_time_unit(time_units),
-            y_units=y_units,
-            length_units=length_units,
+            time_unit=self.fill_time_unit(time_unit),
+            y_unit=y_unit,
+            length_unit=length_unit,
             length_format=length_format,
             **kwargs,
         )
@@ -2955,7 +2964,7 @@ class Halo:
         add_distribution_label = distributions is None or len(distributions) > 1
 
         if automatic_times:
-            times, labels = self.add_automatic_guidelines(times, labels, time_units=cast(Unit, times.unit))
+            times, labels = self.add_automatic_guidelines(times, labels, time_unit=cast(Unit, times.unit))
 
         if distributions is None:
             index_blacklist = []
@@ -2974,7 +2983,7 @@ class Halo:
                     value=distribution.particle_type,
                     key='particle_type',
                 )
-                fig, ax = plot.plot_density(
+                fig, ax = plot.density(
                     cast(Quantity, sub['r']),
                     unit_mass=self.unit_mass(distribution),
                     bins=radius_bins
@@ -2999,7 +3008,7 @@ class Halo:
             Quantity([1e3, 1e11], 'Msun/kpc^3'),
             Quantity([1e-1, 1e7], 'Msun/kpc^3'),
         ],
-        label_units: UnitLike = 'Gyr',
+        label_unit: UnitLike = 'Gyr',
         label_format: str = '.1f',
         density_guidelines_kwargs: dict[str, Any] | None = {
             'line_kwargs': {'linestyle': '--'},
@@ -3015,7 +3024,7 @@ class Halo:
             distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions.
             xlim: List matching `distributions`. Consistent limits of the x-axis throughout the animation. If `None` ignores. If 'bins', uses the radius bins as the x-axis limits.
             ylim: List matching `distributions`. Consistent limits of the y-axis throughout the animation. If `None` ignores.
-            label_units: Units for the time label.
+            label_unit: Units for the time label.
             label_format: String format for the time label.
             density_guidelines_kwargs: Keyword arguments to pass to `plot.plot_distributions_over_time()` for plotting the density at fixed timestamps throughout the animation, serving as guidelines (i.e. initial distribution, max core, final distribution, etc.). If `None` doesn't plot the guidelines.
             multiplicity_guidelines: Number of frames to print for when the animation reaches the guidelines. If `None` ignores.
@@ -3050,11 +3059,11 @@ class Halo:
             plot.save_images(
                 images=plot.to_images(
                     iterator=data[data['particle_type'] == distribution.particle_type].group_by('time').groups,
-                    plot_fn=lambda x: plot.plot_density(
+                    plot_fn=lambda x: plot.density(
                         x['r'],
                         unit_mass=self.unit_mass(distribution),
                         bins=bins,
-                        label=f'{distribution.label} at {x["time"][0].to(label_units):{label_format}}',
+                        label=f'{distribution.label} at {x["time"][0].to(label_unit):{label_format}}',
                         xlim=xlim_,
                         ylim=ylim_,
                         fig=(
@@ -3088,7 +3097,7 @@ class Halo:
         x_bins: Quantity = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
         scatter_bins: Quantity = Quantity(np.geomspace(1, 6000, 100), ''),
         x_key: str = 'r',
-        x_units: UnitLike = 'kpc',
+        x_unit: UnitLike = 'kpc',
         cmap: str = 'jet',
         cbar_log_scale: bool = True,
         transparent_value: float | None = 0,
@@ -3120,7 +3129,7 @@ class Halo:
             x_bins: Bins for the x-axis.
             scatter_bins: Bins for the scatter axis.
             x_key: The key to use for the x-axis.
-            x_units: The units for the x-column in the data.
+            x_unit: The units for the x-column in the data.
             cmap: The colormap to use for the plot.
             cbar_log_scale: Wheather to plot the cbar in a log scale.
             transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
@@ -3128,7 +3137,7 @@ class Halo:
             ylabel: The label for the y-axis.
             title: The title of the plot.
             cbar_label: Label for the colorbar.
-            time_units: The time units to use in the plot's title.
+            time_unit: The time units to use in the plot's title.
             time_format: Format string for time to use in the plot's title.
             x_log: Sets the x-axis to a log scale.
             y_log: Sets the y-axis to a log scale.
@@ -3136,7 +3145,7 @@ class Halo:
             fig: Figure to plot on.
             ax: Axes to plot on.
             aggregate_kwargs: Additional keyword arguments to pass to the aggregation function (`plot.aggregate_2d_data()`).
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.plot_2d()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
 
         Returns:
             fig, ax.
@@ -3171,7 +3180,7 @@ class Halo:
             sub['n_scatters'] = sub['n_scatters'].fillna(no_scatter_value)
             data['n_scatters'] = Quantity(sub['n_scatters'])
 
-        fig, ax = plot.plot_2d(
+        fig, ax = plot.heatmap(
             *plot.aggregate_2d_data(
                 data, x_key=x_key, y_key='n_scatters', x_bins=x_bins, y_bins=scatter_bins, **aggregate_kwargs
             ),
@@ -3179,8 +3188,8 @@ class Halo:
             x_range=x_bins,
             y_range=scatter_bins,
             cmap=cmap,
-            x_units=x_units,
-            y_units='',
+            x_unit=x_unit,
+            y_unit='',
             log_scale=cbar_log_scale,
             transparent_value=transparent_value,
             xlabel=xlabel,
@@ -3230,8 +3239,8 @@ class Halo:
     def plot_mean_scattering_distance_over_time(
         self,
         bin_edges: Quantity['time'] = Quantity(np.linspace(0, 13.5, 20), 'Gyr'),
-        length_units: UnitLike = 'pc',
-        time_units: UnitLike = 'Gyr',
+        length_unit: UnitLike = 'pc',
+        time_unit: UnitLike = 'Gyr',
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Interaction distance',
         title: str | None = 'Mean interaction distance over time',
@@ -3249,8 +3258,8 @@ class Halo:
 
         Parameters:
             bin_edges: The edges of the time bins.
-            length_units: Units to use for distance.
-            time_units: Units to use for time.
+            length_unit: Units to use for distance.
+            time_unit: Units to use for time.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: The title of the plot.
@@ -3274,7 +3283,7 @@ class Halo:
                 continue
             start, end = np.arange(len(mask))[mask][[0, -1]]
             values += [
-                np.diff(np.hstack(list(self.scatter_track_radius)[start:end]).reshape(-1, 2)).ravel().to(length_units)
+                np.diff(np.hstack(list(self.scatter_track_radius)[start:end]).reshape(-1, 2)).ravel().to(length_unit)
             ]
             time_bins += [Quantity(time_range).mean()]
 
@@ -3295,7 +3304,7 @@ class Halo:
                     for t in pd.DataFrame(
                         {
                             's': plot_guidelines['labels'],
-                            'x': plot_guidelines['times'].to(time_units).mean(1).value,
+                            'x': plot_guidelines['times'].to(time_unit).mean(1).value,
                             'y': [0.07] * 2,
                             'horizontalalignment': ['center'] * 2,
                             'verticalalignment': ['bottom'] * 2,
@@ -3305,13 +3314,13 @@ class Halo:
             if vlines is None:
                 vlines = [
                     {'x': t, 'color': 'red', 'linestyle': '--', 'linewidth': 0.5}
-                    for t in plot_guidelines['times'].to(time_units).ravel().value
+                    for t in plot_guidelines['times'].to(time_unit).ravel().value
                 ]
 
         fig, ax = plot.setup_plot(
             **utils.drop_None(
-                xlabel=utils.add_label_unit(xlabel, time_units),
-                ylabel=utils.add_label_unit(ylabel, length_units),
+                xlabel=utils.add_label_unit(xlabel, time_unit),
+                ylabel=utils.add_label_unit(ylabel, length_unit),
                 title=title,
             ),
             vlines=vlines,

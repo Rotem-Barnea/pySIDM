@@ -40,9 +40,9 @@ def parse_from_args(
             for k, v in params.items()
             if k.startswith(f'{whitelist_prefix}_') or k == whitelist_prefix
         }
-    unit_prarms = [regex.sub('_units$', '', k) for k in params if k.endswith('_units')]
+    unit_prarms = [regex.sub('_unit$', '', k) for k in params if k.endswith('_unit')]
     for k in unit_prarms:
-        unit = params.pop(f'{k}_units')
+        unit = params.pop(f'{k}_unit')
         if k in params:
             params[k] = Quantity(params[k], unit)
     return params
@@ -125,7 +125,7 @@ for i, default_distribution in enumerate(default_distributions):
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--distribution_{i + 1}_scale_radius_units',
+        f'--distribution_{i + 1}_scale_radius_unit',
         metavar=f'-rc_u{i + 1}',
         help=f'Units for `scale_radius_{i + 1}`. Must be acceptable by astropy.units',
         type=partial(parse_unit, required_physical_type='kpc'),
@@ -139,7 +139,7 @@ for i, default_distribution in enumerate(default_distributions):
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--distribution_{i + 1}_virial_radius_units',
+        f'--distribution_{i + 1}_virial_radius_unit',
         metavar=f'-rvir_u{i + 1}',
         help=f'Units for `virial_radius_{i + 1}`. Must be acceptable by astropy.units',
         type=partial(parse_unit, required_physical_type='kpc'),
@@ -153,7 +153,7 @@ for i, default_distribution in enumerate(default_distributions):
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--distribution_{i + 1}_total_mass_units',
+        f'--distribution_{i + 1}_total_mass_unit',
         metavar=f'-mtot_u{i + 1}',
         help=f'Units for `total_mass_{i + 1}`. Must be acceptable by astropy.units',
         type=partial(parse_unit, required_physical_type='mass'),
@@ -167,7 +167,7 @@ for i, default_distribution in enumerate(default_distributions):
     )
 for i, default_distribution in enumerate(default_distributions):
     parser.add_argument(
-        f'--distribution_{i + 1}_density_scale_units',
+        f'--distribution_{i + 1}_density_scale_unit',
         metavar=f'-rho_s_u{i + 1}',
         help=f'Units for `density_scale_{i + 1}`. Must be acceptable by astropy.units',
         type=partial(parse_unit, required_physical_type='mass density'),
@@ -186,7 +186,7 @@ for i, default_distribution in enumerate(default_distributions):
 
 parser.add_argument('--dt', metavar='-dt', help='Time step for the simulation', default=1e-3, type=float)
 parser.add_argument(
-    '--dt_units',
+    '--dt_unit',
     metavar='-dt_u',
     help="Units for the time step provided, defaults to the first distribution's dynamical time. Must be acceptable by astropy.units or 'Tdyn'",
     type=partial(parse_unit, whitelist=['Tdyn'], required_physical_type='time'),
@@ -213,7 +213,7 @@ parser.add_argument(
     type=float,
 )
 parser.add_argument(
-    '--cleanup_Rmax_units',
+    '--cleanup_Rmax_unit',
     metavar='-clean2_value_u',
     help='Units for `cleanup_Rmax`. Must be acceptable by astropy.units',
     default='kpc',
@@ -240,7 +240,7 @@ parser.add_argument(
     type=float,
 )
 parser.add_argument(
-    '--save_every_time_units',
+    '--save_every_time_unit',
     metavar='-save_t_u',
     help='Units for `save_every_time`. Must be acceptable by astropy.units',
     default='Myr',
@@ -365,7 +365,7 @@ parser.add_argument(
     type=float,
 )
 parser.add_argument(
-    '--sidm_sigma_units',
+    '--sidm_sigma_unit',
     metavar='-sidm_s_u',
     help='Units for the cross section provided, defaults to cm^2/gram. Must be acceptable by astropy.units',
     default=Unit('cm^2/gram'),

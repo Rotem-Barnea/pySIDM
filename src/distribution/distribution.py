@@ -11,8 +11,9 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from .. import rng, plot, utils, report, run_units
+from .. import rng, plot, utils, report, physics, run_units
 from ..types import FloatOrArray, ParticleType
+from ..physics.eddington import QuantitySpline
 
 
 class Distribution:
@@ -84,7 +85,6 @@ class Distribution:
         self.particle_type: ParticleType = particle_type
         self._label: str = label
         self.name: str = name
-        self.h: Quantity['length'] = h.to(run_units.length)
         self.Rmin: Quantity['length'] = Rmin.to(run_units.length)
         self.Rmax: Quantity['length'] = (Rmax if Rmax is not None else 85 * self.Rs).to(run_units.length)
         if Mtot is not None:
@@ -189,7 +189,14 @@ class Distribution:
 
     @staticmethod
     @njit
-    def calculate_rho(r: FloatOrArray, rho_s: float = 1, Rs: float = 1, Rvir: float = 1) -> FloatOrArray:
+    def calculate_rho(
+        r: FloatOrArray,
+        rho_s: float = 1,
+        Rs: float = 1,
+        Rvir: float = 1,
+        truncate: bool = False,
+        truncate_power: int = 4,
+    ) -> FloatOrArray:
         """Calculate the density (`rho`) at a given radius.
 
         This method is meant to be overwritten by subclasses. The function gets called by njit parallelized functions and must be njit compatible.
@@ -199,6 +206,8 @@ class Distribution:
             rho_s: The scale density.
             Rs: The scale radius.
             Rvir: The virial radius.
+            truncate: Whether to truncate the density at the virial radius.
+            truncate_power: The power law used for truncation.
 
         Returns:
             The density at the given radius.
@@ -218,36 +227,6 @@ class Distribution:
         if 'rho_grid' not in self.memoization:
             self.memoization['rho_grid'] = self.rho(self.geomspace_grid)
         return self.memoization['rho_grid']
-
-    @property
-    def rho_grid_h(self) -> Quantity['mass density']:
-        """Calculate the density (`rho`) at the  `internal logarithmic grid` with a shift step `h` (memoized). Used for derivative calculations."""
-        if 'rho_grid_h' not in self.memoization:
-            self.memoization['rho_grid_h'] = self.rho(cast(Quantity, self.geomspace_grid + self.h))
-        return self.memoization['rho_grid_h']
-
-    @property
-    def rho_grid_2h(self) -> Quantity['mass density']:
-        """Calculate the density (`rho`) at the  `internal logarithmic grid` with two shift steps `2h` (memoized). Used for derivative calculations."""
-        if 'rho_grid_2h' not in self.memoization:
-            self.memoization['rho_grid_2h'] = self.rho(cast(Quantity, self.geomspace_grid + 2 * self.h))
-        return self.memoization['rho_grid_2h']
-
-    @property
-    def drho_dr_grid(self) -> Quantity:
-        """Calculate the derivative of the density (`rho`) at the  `internal logarithmic grid` (memoized)."""
-        if 'drho_dr_grid' not in self.memoization:
-            self.memoization['drho_dr_grid'] = Quantity((self.rho_grid_h - self.rho_grid) / self.h)
-        return self.memoization['drho_dr_grid']
-
-    @property
-    def d2rho_dr2_grid(self) -> Quantity:
-        """Calculate the second order derivative of the density (`rho`) at the  `internal logarithmic grid` (memoized)."""
-        if 'd2rho_dr2_grid' not in self.memoization:
-            self.memoization['d2rho_dr2_grid'] = Quantity(
-                (self.rho_grid_2h - 2 * self.rho_grid_h + self.rho_grid) / self.h**2
-            )
-        return self.memoization['d2rho_dr2_grid']
 
     def rho_r2(self, r: Quantity['length']) -> Quantity['linear density']:
         """Calculate the density (`rho`) times the jacobian (`r^2`) at a given radius."""
@@ -349,7 +328,7 @@ class Distribution:
             self.memoization['Phi0'] = self.Phi(self.Rmax * 100)
         return self.memoization['Phi0']
 
-    def Psi(self, r: Quantity['length']) -> Quantity['specific energy']:
+    def calculate_Psi(self, r: Quantity['length']) -> Quantity['specific energy']:
         """Calculate the relative gravitational potential energy (`Psi`) at a given radius `r`."""
         return cast(Quantity, self.Phi0 - self.Phi(r))
 
@@ -357,156 +336,55 @@ class Distribution:
     def Psi_grid(self) -> Quantity['specific energy']:
         """Calculate the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized)."""
         if 'Psi_grid' not in self.memoization:
-            self.memoization['Psi_grid'] = self.Psi(self.geomspace_grid)
+            self.memoization['Psi_grid'] = self.calculate_Psi(self.geomspace_grid)
         return self.memoization['Psi_grid']
 
     @property
-    def Psi_grid_h(self) -> Quantity['specific energy']:
-        """Calculate the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` with a shift step `h` (memoized). Used for derivative calculations."""
-        if 'Psi_grid_h' not in self.memoization:
-            self.memoization['Psi_grid_h'] = self.Psi(cast(Quantity, self.geomspace_grid + self.h))
-        return self.memoization['Psi_grid_h']
-
-    @property
-    def Psi_grid_2h(self) -> Quantity['specific energy']:
-        """Calculate the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` with two shift steps `2h` (memoized). Used for derivative calculations."""
-        if 'Psi_grid_2h' not in self.memoization:
-            self.memoization['Psi_grid_2h'] = self.Psi(cast(Quantity, self.geomspace_grid + 2 * self.h))
-        return self.memoization['Psi_grid_2h']
-
-    @property
-    def dPsi_dr_grid(self) -> Quantity:
-        """Calculate the derivative of the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized)."""
-        if 'dPsi_dr_grid' not in self.memoization:
-            self.memoization['dPsi_dr_grid'] = Quantity((self.Psi_grid_h - self.Psi_grid) / self.h)
-        return self.memoization['dPsi_dr_grid']
-
-    @property
-    def d2Psi_dr2_grid(self) -> Quantity:
-        """Calculate the second order derivative of the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized)."""
-        if 'd2Psi_dr2_grid' not in self.memoization:
-            self.memoization['d2Psi_dr2_grid'] = Quantity(
-                (self.Psi_grid_2h - 2 * self.Psi_grid_h + self.Psi_grid) / self.h**2
-            )
-        return self.memoization['d2Psi_dr2_grid']
-
-    @property
-    def drho_dPsi_grid(self) -> Quantity:
-        r"""Calculate the derivative of the density with respect to the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized).
-
-        Simplified using the chain rule to allow calculating based on the spatial derivatives at a consistent grid:
-            $\frac{\mathrm{d}\rho}{\mathrm{d}\Psi} =
-            \frac{\mathrm{d}\rho}{\mathrm{d}r}\frac{\mathrm{d}r}{\mathrm{d}\Psi} =
-            \rho^\prime\left(\frac{\mathrm{d}\Psi}{\mathrm{d}r}\right)^{-1} =
-            \frac{\rho^\prime}{\Psi^\prime}$
-        """
-        if 'drho_dPsi_grid' not in self.memoization:
-            self.memoization['drho_dPsi_grid'] = self.drho_dr_grid / self.dPsi_dr_grid
-        return self.memoization['drho_dPsi_grid']
-
-    @property
-    def d2rho_dPsi2_grid(self) -> Quantity:
-        r"""Calculate the second order derivative of the density with respect to the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized).
-
-        Simplified using the chain rule (Faà di Bruno's formula) to allow calculating based on the spatial derivatives at a consistent grid:
-            $\frac{\mathrm{d}^2\rho}{\mathrm{d}\Psi^2} =
-            \frac{\mathrm{d}^2\rho}{\mathrm{d}r^2}\left(\frac{\mathrm{d}r}{\mathrm{d}\Psi}\right)^2 +
-            \frac{\mathrm{d}\rho}{\mathrm{d}r}\frac{\mathrm{d}^2r}{\mathrm{d}\Psi^2}$
-
-            $\frac{\mathrm{d}^2r}{\mathrm{d}\Psi^2} &=
-            \frac{\mathrm{d}}{\mathrm{d}\Psi}\left(\frac{\mathrm{d}r}{\mathrm{d}\Psi}\right) =
-            \frac{\mathrm{d}}{\mathrm{d}\Psi}\left(\left(\frac{\mathrm{d}\Psi}{\mathrm{d}r}\right)^{-1}\right) =
-            -\left(\frac{\mathrm{d}\Psi}{\mathrm{d}r}\right)^{-2}\frac{\mathrm{d}}{\mathrm{d}\Psi}\left(\frac{\mathrm{d}\Psi}{\mathrm{d}r}\right) =$
-            $= -\left(\frac{\mathrm{d}\Psi}{\mathrm{d}r}\right)^{-2}\frac{\frac{\mathrm{d}}{\mathrm{d}r}\left(\frac{\mathrm{d}\Psi}{\mathrm{d}r}\right)}{\frac{\mathrm{d}\Psi}{\mathrm{d}r}} =
-            -\left(\frac{\mathrm{d}\Psi}{\mathrm{d}r}\right)^{-3}\frac{\mathrm{d}^2\Psi}{\mathrm{d}r^2} =
-            -\left(\Psi^\prime\right)^{-3}\Psi^{\prime\prime}$
-
-            $\frac{\mathrm{d}^2\rho}{\mathrm{d}\Psi^2} =
-            \rho^{\prime\prime}\left(\frac{\mathrm{d}r}{\mathrm{d}\Psi}\right)^2 -
-            \frac{\rho^{\prime}\Psi^{\prime\prime}}{\left(\Psi^\prime\right)^3} =
-            \rho^{\prime\prime}\left(\frac{\mathrm{d}\Psi}{\mathrm{d}r}\right)^{-2} - \frac{\rho^{\prime}\Psi^{\prime\prime}}{\left(\Psi^\prime\right)^3} =
-            \frac{\rho^{\prime\prime}}{\left(\Psi^\prime\right)^2} - \frac{\rho^{\prime}\Psi^{\prime\prime}}{\left(\Psi^\prime\right)^3}$
-        """
-        if 'd2rho_dPsi2_grid' not in self.memoization:
-            self.memoization['d2rho_dPsi2_grid'] = cast(
-                Quantity,
-                utils.smooth_holes_1d(
-                    x=self.Psi_grid,
-                    y=Quantity(
-                        self.d2rho_dr2_grid / self.dPsi_dr_grid**2
-                        - self.drho_dr_grid / self.dPsi_dr_grid**3 * self.d2Psi_dr2_grid
-                    ),
+    def F(self) -> QuantitySpline:
+        """Calculate the spline function for the antiderivative (`F`) of the distribution function (`f`)"""
+        if 'F' not in self.memoization:
+            self.memoization['F'] = physics.eddington.make_F_spline(
+                Psi_grid=self.Psi_grid,
+                rho_Psi_spline=physics.eddington.make_rho_Psi_spline(
+                    Psi_grid=self.Psi_grid,
+                    rho_grid=self.rho_grid,
+                    s=1e-1,
                 ),
             )
-        return self.memoization['d2rho_dPsi2_grid']
+        return self.memoization['F']
 
-    def d2rho_dPsi2(self, Psi: Quantity['specific energy']) -> Quantity:
-        """Interpolate the second order derivative of the density with respect to the relative gravitational potential (`Psi`) based on the  `internal logarithmic grid` (memoized)."""
-        if 'd2rho_dPsi2' not in self.memoization:
-            self.memoization['d2rho_dPsi2'] = scipy.interpolate.interp1d(
-                self.Psi_grid, self.d2rho_dPsi2_grid, bounds_error=False, fill_value=0
-            )
-        return Quantity(self.memoization['d2rho_dPsi2'](Psi.to(self.Psi_grid.unit)), self.d2rho_dPsi2_grid.unit)
-
-    def calculate_f(self, E: Quantity, num: int = 10000) -> Quantity:
+    def f(self, E: Quantity, reject_negative: bool = True) -> Quantity:
         """Calculate the distribution function (`f`) for the given energy."""
-        t = Quantity(np.linspace(0, np.sqrt(E), num))[:-1]
-        integral = 2 * np.trapezoid(self.d2rho_dPsi2(cast(Quantity, E - t**2)), t, axis=0)
-        return 1 / (self.Mtot.unit * np.sqrt(8) * np.pi**2) * (1 / np.sqrt(E) * self.drho_dPsi_grid[-1] + integral)
+        return physics.eddington.f(E=E, F_spline=self.F, reject_negative=reject_negative)
 
     @property
-    def E_grid(self) -> Quantity['specific energy']:
-        """Set the `internal energy grid` to a logarithmic scale with `1,000` steps from the minimum `Psi_grid` value to the maximum one (memoized)."""
-        if 'E_grid' not in self.memoization:
-            self.memoization['E_grid'] = np.geomspace(self.Psi_grid.min(), self.Psi_grid.max(), 1000)
-        return self.memoization['E_grid']
-
-    @property
-    def f_grid(self) -> Quantity['specific energy']:
-        """Calculate the distribution function (`f`) on the `internal energy grid` (memoized)."""
-        if 'f_grid' not in self.memoization:
-            self.memoization['f_grid'] = cast(
-                Quantity,
-                utils.smooth_holes_1d(
-                    x=self.E_grid,
-                    y=self.calculate_f(E=self.E_grid).to(run_units.f_units),
-                ),
-            )
-        return self.memoization['f_grid']
-
-    def f(self, E: Quantity['specific energy'], edge: int = 2) -> Quantity:
-        """Interpolate the distribution function (`f`) based on the `internal energy grid` (memoized).
-
-        Points that are too close to the edges are calculated directly to avoid interpolation errors.
-
-        Parameters:
-            E: The specific energy at which to evaluate the distribution function.
-            edge: The number of grid points to exclude from the interpolation at the edges (corresponding to low radius only).
-
-        Returns:
-            The value of f at the given energies.
-        """
-        if 'f' not in self.memoization:
-            self.memoization['f'] = scipy.interpolate.interp1d(
-                self.E_grid, self.f_grid, bounds_error=False, fill_value=0
-            )
-        edge_mask = np.searchsorted(self.E_grid, E) >= len(self.E_grid) - edge
-        output = Quantity(np.zeros(E.shape), run_units.f_units)
-        output[~edge_mask] = Quantity(self.memoization['f'](E[~edge_mask].to(self.E_grid.unit)), self.f_grid.unit)
-        output[edge_mask] = self.calculate_f(E=cast(Quantity, E[edge_mask]))
-        return output
-
-    def Psi_interpolate(self, r: Quantity['length']) -> Quantity['specific energy']:
+    def Psi(self) -> QuantitySpline:
         """Interpolate the relative gravitational potential (`Psi`) based on the  `internal logarithmic grid` (memoized)."""
-        if 'Psi_interpolate' not in self.memoization:
-            self.memoization['Psi_interpolate'] = scipy.interpolate.interp1d(
-                self.geomspace_grid, self.Psi_grid, bounds_error=False, fill_value=0
+        if 'Psi' not in self.memoization:
+            # self.memoization['Psi'] = scipy.interpolate.interp1d(
+            #     self.geomspace_grid, self.Psi_grid, bounds_error=False, fill_value=0
+            # )
+            self.memoization['Psi'] = QuantitySpline(
+                x=self.geomspace_grid.value,
+                y=self.Psi_grid.value,
+                in_unit=str(self.geomspace_grid.unit),
+                out_unit=str(self.Psi_grid.unit),
+                s=0,
             )
-        return Quantity(self.memoization['Psi_interpolate'](r.to(self.geomspace_grid.unit)), self.Psi_grid.unit)
+        return self.memoization['Psi']
 
-    def E(self, r: Quantity['length'], v: Quantity['velocity']) -> Quantity['specific energy']:
-        """Interpolate the internal energy (`E`) At the given radius `r` using `Psi_interpolate()`."""
-        return cast(Quantity, self.Psi_interpolate(r) - 1 / 2 * v**2)
+    def E(
+        self,
+        v: Quantity['velocity'],
+        r: Quantity['length'] | None = None,
+        Psi: Quantity['specific energy'] | None = None,
+    ) -> Quantity['specific energy']:
+        """Interpolate the internal energy (`E`) At the given radius `r` using `Psi()`."""
+        if r is not None:
+            return cast(Quantity, self.Psi(r) - 1 / 2 * v**2)
+        elif Psi is not None:
+            return cast(Quantity, Psi - 1 / 2 * v**2)
+        raise ValueError('Either `r` or `Psi` must be provided')
 
     def recalculate(self, key: str, inplace: bool = False) -> Any:
         """Recalculate the memoized value of the given key."""
@@ -517,14 +395,14 @@ class Distribution:
             return new_value
 
     @staticmethod
-    def merge_distribution_grids(distributions: list['Distribution'], grid_base_name: list[str] = ['Psi']):
-        """Merges the grid values of the given distributions of the given types. Used to combine the potentials of multiple distributions to sample via Eddington's inversion."""
+    def merge_distribution_grids(distributions: list['Distribution'], inplace: bool = False) -> None:
+        """Merges the `Psi` grid values of the given distributions. Used to combine the potentials of multiple distributions to sample via Eddington's inversion."""
         physical_distributions = [density for density in distributions if density.physical]
-        for grid_name in grid_base_name:
-            for suffix in ['', '_h', '_2h']:
-                grid = sum([getattr(density, f'{grid_name}_grid{suffix}') for density in physical_distributions])
-                for distribution in physical_distributions:
-                    distribution.memoization[f'{grid_name}_grid{suffix}'] = grid
+        for distribution in physical_distributions:
+            distribution.memoization = {}
+        Psi_grid = sum([getattr(density, 'Psi_grid') for density in physical_distributions])
+        for distribution in physical_distributions:
+            distribution.memoization['Psi_grid'] = Psi_grid
 
     ## Roll initial setup
 
@@ -601,7 +479,7 @@ class Distribution:
             generator = rng.generator
         return Quantity(
             self.sample_v_norm_fast(
-                Psi=self.Psi_interpolate(r).to(run_units.specific_energy),
+                Psi=self.Psi(r).to(run_units.specific_energy),
                 E_grid=self.E_grid,
                 f_grid=self.f_grid,
                 rolls=generator.random(len(r)),
@@ -706,7 +584,8 @@ class Distribution:
             radius_range = Quantity(np.linspace(radius_min_value, radius_max_value, int(radius_resolution)))
         if velocity_range is None:
             if velocity_max_value is None:
-                velocity_max_value = 1.5 * Quantity(np.sqrt(self.E_grid.max()))
+                # velocity_max_value = 1.5 * Quantity(np.sqrt(self.E_grid.max()))
+                velocity_max_value = 1.5 * Quantity(np.sqrt(self.Psi_grid.max())).to(velocity_min_value.unit)
             velocity_range = Quantity(np.linspace(velocity_min_value, velocity_max_value, int(velocity_resolution)))
 
         r_grid, v_grid = cast(
@@ -714,7 +593,7 @@ class Distribution:
         )
 
         drdv = np.prod(np.meshgrid(radius_range.diff(), velocity_range.diff(), indexing='ij'), axis=0)
-        probability_grid = np.array(16 * np.pi * r_grid**2 * v_grid**2 * self.f(self.E(r_grid, v_grid)) * drdv)
+        probability_grid = np.array(16 * np.pi * r_grid**2 * v_grid**2 * self.f(self.E(v=v_grid, r=r_grid)) * drdv)
         probability_grid /= probability_grid.sum()
         flat_probability_grid = probability_grid.ravel()
         if (probability_grid < 0).any():
@@ -723,6 +602,7 @@ class Distribution:
             else:
                 probability_grid = cast(NDArray[np.float64], utils.smooth_holes_2d(probability_grid))
                 probability_grid[probability_grid < 0] = 0
+
         indices = np.unravel_index(
             generator.choice(a=flat_probability_grid.size, size=int(n_particles), p=flat_probability_grid),
             probability_grid.shape,
@@ -760,10 +640,11 @@ class Distribution:
         self,
         r_range: Quantity['length'] = Quantity(np.linspace(1e-2, 35, 200), 'kpc'),
         v_range: Quantity['velocity'] = Quantity(np.linspace(0, 60, 200), 'km/second'),
-        velocity_units: UnitLike = 'km/second',
+        velocity_unit: UnitLike = 'km/second',
         cmap: str = 'jet',
         transparent_value: float | None = 0,
         fix_negative_values: bool = True,
+        plot_energy: bool = False,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the phase space distribution of the density profile.
@@ -771,20 +652,23 @@ class Distribution:
         Parameters:
             r_range: Range of radial distances to plot.
             v_range: Range of velocities to plot.
-            velocity_units: Units to use for the velocity axis.
+            velocity_unit: Units to use for the velocity axis.
             cmap: The colormap to use for the plot.
             transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
             fix_negative_values: Whether to fix negative values by interpolating them.
+            plot_energy: Whether to plot the energy distribution instead of the density distribution.
             kwargs: Additional keyword arguments to pass to `plot.plot_phase_space()`.
 
         Returns:
             fig, ax.
         """
         r, v = cast(tuple[Quantity, Quantity], np.meshgrid(r_range, v_range))
-        f = self.f(self.E(r, v))
-        grid = 16 * np.pi * r**2 * v**2 * f
+        if plot_energy:
+            grid = self.E(v=v, r=r)
+        else:
+            grid = 16 * np.pi * r**2 * v**2 * self.f(self.E(v=v, r=r))
 
-        if fix_negative_values and (grid < 0).any():
+        if fix_negative_values and not plot_energy and (grid < 0).any():
             y, x = np.indices(grid.shape)
             mask = grid < 0
 
@@ -795,35 +679,35 @@ class Distribution:
                 grid.unit,
             )
 
-        return plot.plot_phase_space(
+        return plot.phase_space(
             grid,
             r_range,
             v_range,
-            velocity_units=velocity_units,
+            velocity_unit=velocity_unit,
             cmap=cmap,
             transparent_value=transparent_value,
             **kwargs,
         )
 
-    def add_plot_R_markers(self, ax: Axes, ymax: float, x_units: UnitLike = 'kpc') -> Axes:
+    def add_plot_R_markers(self, ax: Axes, ymax: float, x_unit: UnitLike = 'kpc') -> Axes:
         """Add markers for the scale radius and virial radius to the plot."""
         ax.vlines(
-            x=[self.Rs.to(x_units).value, self.Rvir.to(x_units).value],
+            x=[self.Rs.to(x_unit).value, self.Rvir.to(x_unit).value],
             ymin=0,
             ymax=ymax,
             linestyles='dashed',
             colors='black',
         )
-        ax.text(x=self.Rs.to(x_units).value, y=ymax, s='Rs')
-        ax.text(x=self.Rvir.to(x_units).value, y=ymax, s='Rvir')
+        ax.text(x=self.Rs.to(x_unit).value, y=ymax, s='Rs')
+        ax.text(x=self.Rvir.to(x_unit).value, y=ymax, s='Rvir')
         return ax
 
     def plot_rho(
         self,
         r_start: Quantity['length'] | None = None,
         r_end: Quantity['length'] | None = Quantity(1e4, 'kpc'),
-        density_units: UnitLike = 'Msun/kpc^3',
-        length_units: UnitLike = 'kpc',
+        density_unit: UnitLike = 'Msun/kpc^3',
+        length_unit: UnitLike = 'kpc',
         label: str | None = None,
         add_markers: bool = True,
         ax_set: dict[str, Any] = {'xscale': 'log', 'yscale': 'log'},
@@ -834,8 +718,8 @@ class Distribution:
         Parameters:
             r_start: The starting radius for the plot. If `None`, uses `Rmin`.
             r_end: The ending radius for the plot. If `None` uses `Rmax`.
-            density_units: The units for the density axis.
-            length_units: The units for the radius axis.
+            density_unit: The unit for the density axis.
+            length_unit: The unit for the radius axis.
             ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
             kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
 
@@ -844,8 +728,8 @@ class Distribution:
         """
         fig, ax = plot.setup_plot(
             title='Density distribution (rho)',
-            xlabel=utils.add_label_unit('Radius', length_units),
-            ylabel=utils.add_label_unit('Density', density_units),
+            xlabel=utils.add_label_unit('Radius', length_unit),
+            ylabel=utils.add_label_unit('Density', density_unit),
             ax_set=ax_set,
             **kwargs,
         )
@@ -857,10 +741,10 @@ class Distribution:
 
         r = cast(Quantity, np.geomspace(r_start, r_end, self.space_steps))
         rho = self.rho(r)
-        sns.lineplot(x=r.to(length_units).value, y=rho.to(density_units).value, ax=ax, label=label)
+        sns.lineplot(x=r.to(length_unit).value, y=rho.to(density_unit).value, ax=ax, label=label)
 
         if add_markers:
-            ax = self.add_plot_R_markers(ax, ymax=rho.max().to(density_units).value, x_units=length_units)
+            ax = self.add_plot_R_markers(ax, ymax=rho.max().to(density_unit).value, x_unit=length_unit)
 
         if label is not None:
             ax.legend()
@@ -871,7 +755,7 @@ class Distribution:
         r_start: Quantity['length'] | None = None,
         r_end: Quantity['length'] | None = None,
         cumulative: bool = False,
-        length_units: UnitLike = 'kpc',
+        length_unit: UnitLike = 'kpc',
         label: str | None = None,
         add_markers: bool = True,
         color: str = 'red',
@@ -885,7 +769,7 @@ class Distribution:
             r_start: The starting radius for the plot. If `None` uses `Rmin`.
             r_end: The ending radius for the plot. If `None` uses `Rmax`.
             cumulative: Plot the `cdf`, if `False` plot the `pdf` instead.
-            length_units: The units for the radius axis.
+            length_unit: The unit for the radius axis.
             label: The label for the plot (legend).
             add_markers: Whether to add markers to the plot.
             color: The color for the plot.
@@ -898,7 +782,7 @@ class Distribution:
         """
         title = 'Particle cumulative range distribution (cdf)' if cumulative else 'Particle range distribution (pdf)'
         fig, ax = plot.setup_plot(
-            fig, ax, title=title, xlabel=utils.add_label_unit('Radius', length_units), ylabel='Density'
+            fig, ax, title=title, xlabel=utils.add_label_unit('Radius', length_unit), ylabel='Density'
         )
 
         if r_start is None:
@@ -908,9 +792,9 @@ class Distribution:
 
         r = cast(Quantity, np.geomspace(r_start, r_end, self.space_steps))
         y = self.mass_cdf(r) if cumulative else self.mass_pdf(r)
-        sns.lineplot(x=r.to(length_units).value, y=y, color=color, ax=ax, label=label, **kwargs)
+        sns.lineplot(x=r.to(length_unit).value, y=y, color=color, ax=ax, label=label, **kwargs)
         if add_markers:
-            ax = self.add_plot_R_markers(ax, ymax=y.max(), x_units=length_units)
+            ax = self.add_plot_R_markers(ax, ymax=y.max(), x_unit=length_unit)
         return fig, ax
 
     def plot_drho_dPsi(
@@ -918,8 +802,8 @@ class Distribution:
         xlabel: str | None = r'$\Psi$',
         ylabel: str | None = r'$\frac{\mathrm{d}\rho}{\mathrm{d}\Psi}$',
         title: str | None = 'Density derivative (log-log)',
-        energy_units: UnitLike = 'km^2/second^2',
-        y_units: UnitLike = 'Msun*second^2/(kpc^3*km^2)',
+        energy_unit: UnitLike = 'km^2/second^2',
+        y_unit: UnitLike = 'Msun*second^2/(kpc^3*km^2)',
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
@@ -928,8 +812,8 @@ class Distribution:
         Parameters:
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
-            energy_units: Units for the energy axis.
-            y_units: Units for the y-axis.
+            energy_unit: Units for the energy axis.
+            y_unit: Units for the y-axis.
             fig: Figure to plot on.
             ax: Axes to plot on.
 
@@ -937,8 +821,8 @@ class Distribution:
             fig, ax
         """
 
-        xlabel = utils.add_label_unit(xlabel, energy_units)
-        ylabel = utils.add_label_unit(ylabel, y_units)
+        xlabel = utils.add_label_unit(xlabel, energy_unit)
+        ylabel = utils.add_label_unit(ylabel, y_unit)
         fig, ax = plot.setup_plot(
             fig,
             ax,
@@ -948,7 +832,7 @@ class Distribution:
             ylabel=ylabel,
             title=title,
         )
-        sns.lineplot(x=np.array(self.Psi_grid.to(energy_units)), y=np.array(self.drho_dPsi_grid.to(y_units)), ax=ax)
+        sns.lineplot(x=np.array(self.Psi_grid.to(energy_unit)), y=np.array(self.drho_dPsi_grid.to(y_unit)), ax=ax)
         return fig, ax
 
     def plot_f(
@@ -957,8 +841,8 @@ class Distribution:
         xlabel: str | None = r'$\mathcal{E}$',
         ylabel: str | None = 'f',
         title: str | None = 'Particle distribution function',
-        energy_units: UnitLike = 'km^2/second^2',
-        f_units: UnitLike = 'second^3/(kpc^3*km^3)',
+        energy_unit: UnitLike = 'km^2/second^2',
+        f_unit: UnitLike = 'second^3/(kpc^3*km^3)',
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
@@ -968,8 +852,8 @@ class Distribution:
             E: Energy values to plot.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
-            energy_units: Units for the energy axis.
-            f_units: Units for the density function axis.
+            energy_unit: Units for the energy axis.
+            f_unit: Units for the density function axis.
             fig: Figure to plot on.
             ax: Axes to plot on.
 
@@ -977,8 +861,8 @@ class Distribution:
             fig, ax
         """
 
-        xlabel = utils.add_label_unit(xlabel, energy_units)
-        ylabel = utils.add_label_unit(ylabel, f_units)
+        xlabel = utils.add_label_unit(xlabel, energy_unit)
+        ylabel = utils.add_label_unit(ylabel, f_unit)
         fig, ax = plot.setup_plot(
             fig,
             ax,
@@ -988,5 +872,5 @@ class Distribution:
             ylabel=ylabel,
             title=title,
         )
-        sns.lineplot(x=np.array(E.to(energy_units)), y=np.array(self.f(E).to(f_units)), ax=ax)
+        sns.lineplot(x=np.array(E.to(energy_unit)), y=np.array(self.f(E).to(f_unit)), ax=ax)
         return fig, ax
