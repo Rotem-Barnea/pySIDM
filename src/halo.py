@@ -790,7 +790,9 @@ class Halo:
                 halo.step(in_bootstrap=not include_scatters)
             end = time.perf_counter()
             diff += [end - start]
-        self.dt /= factor[np.argmin(np.array(diff) * factor)]
+        optimized_factor = factor[np.argmin(np.array(diff) * factor)]
+        self.dt /= optimized_factor
+        print(f'Optimized factor: 1/{optimized_factor}, `dt` value used: {self.dt}')
 
     def step(
         self,
