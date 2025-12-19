@@ -6,20 +6,15 @@ if __name__ == '__main__':
 
     sys.path.append(str(Path(__file__).resolve().parents[1]))
 
-    from typing import cast, get_args
-
     from astropy.units import Quantity
 
+    from src import distribution
     from src.halo import Halo
-    from src.distribution import physical_examples
 
     print('Setup distributions')
-    name = os.environ.get('NAME', 'default')
-    known_examples = physical_examples.by_name.__annotations__['name']
-    assert name in get_args(physical_examples.by_name.__annotations__['name'])
-    name = cast(type(known_examples), name)
+    name = distribution.physical_examples.validate_example_name(os.environ.get('NAME', 'default'))
     print('running example', name)
-    dm_distribution, b_distribution = physical_examples.by_name(name=name)
+    dm_distribution, b_distribution = distribution.physical_examples.by_name(name=name)
 
     print('Setup parameters')
     dm_n_particles = 1e5

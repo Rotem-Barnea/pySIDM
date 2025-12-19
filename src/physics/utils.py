@@ -8,6 +8,8 @@ from astropy.units import Unit, Quantity
 from .. import run_units
 from ..types import QuantityOrArray
 
+G = constants.G.to(run_units.G_unit)
+
 
 def M(
     r: Quantity['length'],
@@ -124,3 +126,8 @@ def Psi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityO
     if isinstance(r, Quantity):
         return Quantity(integral, run_units.energy)
     return integral
+
+
+def acceleration(r: QuantityOrArray, M: QuantityOrArray, L: QuantityOrArray) -> QuantityOrArray:
+    """Calculate the gravitational acceleration"""
+    return -G * M / r**2 + L**2 / r**3

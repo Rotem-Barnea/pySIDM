@@ -1,4 +1,4 @@
-from typing import Any, Literal
+from typing import Any, Literal, cast, get_args
 
 from astropy.units import Quantity
 
@@ -30,6 +30,15 @@ def by_name(
     """
     dm_distribution = NFW.from_example(name, Rmin=Rmin, Rmax=Rmax, **dm_kwargs, **kwargs)
     b_distribution = Hernquist.from_example(name, Rmin=Rmin, Rmax=Rmax, **b_kwargs, **kwargs)
-    distributions = [dm_distribution, b_distribution]
+    distributions = cast(list[Distribution], [dm_distribution, b_distribution])
     Distribution.merge_distribution_grids(distributions)
     return distributions
+
+
+known_examples = by_name.__annotations__['name']
+
+
+def validate_example_name(name: str) -> known_examples:
+    """Validate that the given name is a known physical example."""
+    assert name in get_args(known_examples), f'Unknown physical example: {name}'
+    return cast(known_examples, name)
