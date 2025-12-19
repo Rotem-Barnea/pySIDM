@@ -71,7 +71,6 @@ class Halo:
         save_path: Path | str | None = None,
         Rmax: Quantity['length'] = Quantity(300, 'kpc'),
         bootstrap_steps: int = 100,
-        scatters_to_collapse: int = 340,
         cleanup_nullish_particles: bool = False,
         cleanup_particles_by_radius: bool = False,
         runtime_realtime_track: deque[float] | None = None,
@@ -122,7 +121,6 @@ class Halo:
             save_path: Path to save the halo to memory.
             Rmax: Maximum radius of the halo, particles outside of this radius get killed off. If `None` ignores.
             bootstrap_steps: Number of bootstrap rounds to perform before scattering begins. Time only begins counting after the bootstrap steps.
-            scatters_to_collapse: Number of scatters required on average for every dark matter particle to reach core collapse. Only used for estimating core collapse time for the early stopping mechanism, has no effect on the physical calculation (which will reach core-collapse on its own independently).
             cleanup_nullish_particles: Whether to remove particles from the halo after each interaction if they are nullish.
             cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `Rmax`).
             generator: Random number generator. If provided ignore `seed` and `generator_state`.
@@ -186,7 +184,6 @@ class Halo:
         self.save_path: Path | str | None = Path(save_path) if isinstance(save_path, str) else save_path
         self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
         self.bootstrap_steps = bootstrap_steps
-        self.scatters_to_collapse: int = scatters_to_collapse
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
         self.runtime_realtime_track: deque[float] = utils.handle_default(runtime_realtime_track, deque())
@@ -608,11 +605,6 @@ class Halo:
         return self._particles['particle_type'].value_counts().to_dict()
 
     @property
-    def core_collapse_time(self) -> Quantity['time']:
-        """Time at which the halo underwent core collapse, defined by on average every dm particle undergoing `scatters_to_collapse` events."""
-        return (self.n_scatters.cumsum() < self.scatters_to_collapse * self.n_particles['dm']).argmin() * self.dt
-
-    @property
     def runtime_track(self):
         """Runtime tracking of the simulation."""
         return pd.DataFrame(
@@ -932,12 +924,9 @@ class Halo:
         until_t: Quantity['time'] | None = None,
         tqdm_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
-        t_after_core_collapse: Quantity['time'] = Quantity(-1, 'Myr'),
         optimize_dt_at_startup: bool = True,
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
-
-        t_after_core_collapse IS DEPRECATED FOR NOW!!!
 
         Parameters:
             n_steps: Number of steps to evolve the simulation for. Takes precedence over `t`.
@@ -945,7 +934,6 @@ class Halo:
             until_t: Evolve the simulation until this time. Ignored if `n_steps` or `t` are specified, otherwise transformed into steps using `to_steps()`.
             tqdm_kwargs: Additional keyword arguments to pass to `tqdm` (NOTE this is the custom submodule defined in this project at `tqdm.py`).
             save_kwargs: Additional keyword arguments to pass to `save()`.
-            t_after_core_collapse: Time after core collapse to evolve the simulation for, afterwhich the simulation will stop (early quit). If negative ignore the core collapse check.
             optimize_dt_at_startup: Whether to optimize the time step at startup.
 
         Returns:
@@ -973,13 +961,6 @@ class Halo:
                 save_kwargs=save_kwargs,
                 subdivisions=None if self.max_allowed_subdivisions != 1 else 1,
             )
-            if (
-                np.sign(t_after_core_collapse) >= 0
-                and self.n_scatters.sum() > self.scatters_to_collapse * self.n_particles['dm']
-            ):
-                if self.time > self.core_collapse_time + t_after_core_collapse:
-                    print(f'Core collapse detected at time {self.time}')
-                    break
         if self.hard_save:
             self.save(**save_kwargs)
 
@@ -1021,7 +1002,6 @@ class Halo:
             'hard_save',
             'save_path',
             'Rmax',
-            'scatters_to_collapse',
             'cleanup_nullish_particles',
             'cleanup_particles_by_radius',
             'runtime_realtime_track',
