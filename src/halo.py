@@ -44,6 +44,7 @@ class Halo:
         m: Quantity['mass'],
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         distribution_id: list[int] | NDArray[np.int64] | None = None,
+        leapfrog_convergence_rounds: NDArray[np.int64] | None = None,
         Tdyn: Quantity['time'] | None = None,
         Phi0: Quantity['energy'] | None = None,
         distributions: list[Distribution] | None = None,
@@ -93,6 +94,7 @@ class Halo:
             m: Mass of the halo particles.
             particle_type: Type of the halo particles. Should comply with ParticleType (i.e. `dm` or `baryon`).
             distribution_id: ID of the relevant distribution that sourced the particles.
+            leapfrog_convergence_rounds: Number of rounds each particle needs to converge the leapfrog integrator. Used to jumpstart the next step for difficult particles.
             Tdyn: Dynamical time of the halo. If `None` calculates from the first density.
             Phi0: Potential at infinity of the halo. If `None` calculates from the first density.
             distributions: List of distributions of the halo.
@@ -131,7 +133,14 @@ class Halo:
             Halo object.
         """
         self.sort_kind: SortKind = sort_kind
-        self._particles = self.to_dataframe(r=r, v=v, m=m, particle_type=particle_type, distribution_id=distribution_id)
+        self._particles = self.to_dataframe(
+            r=r,
+            v=v,
+            m=m,
+            particle_type=particle_type,
+            distribution_id=distribution_id,
+            leapfrog_convergence_rounds=leapfrog_convergence_rounds,
+        )
         self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
         self.time: Quantity['time'] = time.to(run_units.time)
         self.steps: int = int(steps)
@@ -294,6 +303,7 @@ class Halo:
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         distribution_id: list[int] | NDArray[np.int64] | None = None,
         particle_index: NDArray[np.int_] | None = None,
+        leapfrog_convergence_rounds: NDArray[np.int64] | None = None,
     ) -> pd.DataFrame:
         """Convert particle data to a `DataFrame`."""
         vx, vy, vr = v.to(run_units.velocity).T
@@ -307,6 +317,9 @@ class Halo:
                 'particle_type': particle_type if particle_type is not None else np.full(len(r), 'dm'),
                 'particle_index': particle_index if particle_index is not None else np.arange(len(r)),
                 'distribution_id': distribution_id if distribution_id is not None else np.full(len(r), 0),
+                'leapfrog_convergence_rounds': leapfrog_convergence_rounds
+                if leapfrog_convergence_rounds is not None
+                else np.full(len(r), 0),
             }
         )
         data['interacting'] = data['particle_type'] == 'dm'
@@ -820,7 +833,9 @@ class Halo:
             self.runtime_track_cleanup += [time.perf_counter() - t0]
             if self.is_save_round():
                 self.save_snapshot(**save_kwargs)
-            r, vx, vy, vr, m = self._particles[['r', 'vx', 'vy', 'vr', 'm']].values.T
+            r, vx, vy, vr, m, leapfrog_convergence_rounds = self._particles[
+                ['r', 'vx', 'vy', 'vr', 'm', 'leapfrog_convergence_rounds']
+            ].values.T
             dt = self.dt / subdivisions
             if not in_bootstrap and self.scatter_params.get('sigma', no_sigma) > no_sigma:
                 t0 = time.perf_counter()
@@ -849,11 +864,22 @@ class Halo:
                 self.scatter_rounds_underestimated += [scatter_rounds_underestimated]
                 self.runtime_track_sidm += [time.perf_counter() - t0]
             t0 = time.perf_counter()
-            r, vx, vy, vr = leapfrog.step(r=r, vx=vx, vy=vy, vr=vr, m=m, M=self.M, dt=dt, **self.dynamics_params)
+            r, vx, vy, vr, leapfrog_convergence_rounds = leapfrog.step(
+                r=r,
+                vx=vx,
+                vy=vy,
+                vr=vr,
+                m=m,
+                first_mini_round=(leapfrog_convergence_rounds - 1).clip(min=0),
+                M=self.M,
+                dt=dt,
+                **self.dynamics_params,
+            )
             self._particles['r'] = r
             self._particles['vx'] = vx
             self._particles['vy'] = vy
             self._particles['vr'] = vr
+            self._particles['leapfrog_convergence_rounds'] = leapfrog_convergence_rounds
 
             self.runtime_track_leapfrog += [time.perf_counter() - t0]
             if not in_bootstrap:

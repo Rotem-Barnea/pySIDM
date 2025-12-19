@@ -20,7 +20,6 @@ class Params(TypedDict, total=False):
         max_minirounds: Maximum number of mini-rounds to perform.
         r_convergence_threshold: Convergence threshold for the radius.
         vr_convergence_threshold: Convergence threshold for the radial velocity.
-        first_mini_round: First mini-round to perform (i.e. start with a non-trivial subdivision).
         richardson_extrapolation: Whether to use Richardson extrapolation.
         adaptive: Whether to use adaptive mini-rounds.
         grid_window_radius: Radius of the grid window for updating the enclosed mass during the run.
@@ -32,7 +31,6 @@ class Params(TypedDict, total=False):
     max_minirounds: int
     r_convergence_threshold: float
     vr_convergence_threshold: float
-    first_mini_round: int
     richardson_extrapolation: bool
     adaptive: bool
     grid_window_radius: int
@@ -45,7 +43,6 @@ default_params: Params = {
     'max_minirounds': 20,
     'r_convergence_threshold': 1e-7,
     'vr_convergence_threshold': 1e-7,
-    'first_mini_round': 0,
     'richardson_extrapolation': True,
     'adaptive': True,
     'grid_window_radius': 50,
@@ -371,7 +368,7 @@ def particle_adaptive_step(
     levi_civita_override_always: bool = False,
     levi_civita_override_never: bool = False,
     levi_civita_condition_coefficient: float = 1 / 20,
-) -> tuple[float, float, float, float, bool]:
+) -> tuple[float, float, float, float, bool, int]:
     """Perform an adaptive leapfrog step for a particle.
 
     Parameters:
@@ -384,21 +381,22 @@ def particle_adaptive_step(
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
         dt: Time step.
-        max_minirounds: Maximum number of mini-rounds to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
+        max_minirounds: Maximum number of mini-rounds to perform.
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
-        first_mini_round: The first mini-round to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
+        first_mini_round: The first mini-round to perform.
         richardson_extrapolation: Use Richardson extrapolation.
         levi_civita_override_always: If `True`, particle is always in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=infinity`.
         levi_civita_override_never: If `True`, the particle is never in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=0`.
         levi_civita_condition_coefficient: Threshold parameter for the Levi-Civita condition.
 
     Returns:
-        Updated position and velocity.
+        Updated position and velocity. The final two values are the convergence status and the number of rounds to convergence.
     """
     converged = False
     r_coarse, vx_coarse, vy_coarse, vr_coarse = r, vx, vy, vr
     r_fine, vx_fine, vy_fine, vr_fine = r_coarse, vx_coarse, vy_coarse, vr_coarse
+    rounds_to_convergence = first_mini_round
     for mini_round in range(first_mini_round, first_mini_round + max_minirounds):
         r_coarse, vx_coarse, vy_coarse, vr_coarse = particle_step(
             r=r,
@@ -434,6 +432,7 @@ def particle_adaptive_step(
         vr_relative_error = np.abs(vr_fine - vr_coarse) / vr_fine
         if (r_relative_error < r_convergence_threshold) and (vr_relative_error < vr_convergence_threshold):
             converged = True
+            rounds_to_convergence = mini_round
             break
     if richardson_extrapolation:
         r_result = 4 * r_fine - 3 * r_coarse
@@ -446,7 +445,7 @@ def particle_adaptive_step(
             vr_result *= -1
     else:
         r_result, vx_result, vy_result, vr_result = r_fine, vx_fine, vy_fine, vr_fine
-    return r_result, vx_result, vy_result, vr_result, converged
+    return r_result, vx_result, vy_result, vr_result, converged, rounds_to_convergence
 
 
 @njit(parallel=True)
@@ -458,17 +457,24 @@ def fast_step(
     m: NDArray[np.float64],
     M: NDArray[np.float64],
     dt: float,
+    first_mini_round: NDArray[np.int64],
     max_minirounds: int = 100,
     r_convergence_threshold: float = 1e-7,
     vr_convergence_threshold: float = 1e-7,
-    first_mini_round: int = 0,
     richardson_extrapolation: bool = True,
     levi_civita_override_always: bool = False,
     levi_civita_override_never: bool = False,
     levi_civita_condition_coefficient: float = 1 / 20,
     adaptive: bool = True,
     grid_window_radius: int = 2,
-) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.bool_]]:
+) -> tuple[
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.float64],
+    NDArray[np.bool_],
+    NDArray[np.int64],
+]:
     """Perform a leapfrog step (single or adaptive) for a particle.
 
     Parameters:
@@ -479,10 +485,10 @@ def fast_step(
         m: The mass of the particle.
         M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
         dt: Time step.
-        max_minirounds: Maximum number of mini-rounds to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
+        max_minirounds: Maximum number of mini-rounds to perform.
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
-        first_mini_round: The first mini-round to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
+        first_mini_round: The first mini-round to perform for each particle.
         richardson_extrapolation: Use Richardson extrapolation.
         levi_civita_override_always: If `True`, particle is always in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=infinity`.
         levi_civita_override_never: If `True`, the particle is never in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=0`.
@@ -491,7 +497,7 @@ def fast_step(
         grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (`M(<=r)`) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (`M(<=r)`) during the step (use the value pre-step for all acceleration calculations).
 
     Returns:
-        Updated position and velocity.
+        Updated position and velocity. final two arrays are the convergence status and the number of rounds to convergence for each particle.
     """
     output_r, output_vx, output_vy, output_vr = (
         np.empty_like(r),
@@ -499,7 +505,8 @@ def fast_step(
         np.empty_like(vy),
         np.empty_like(vr),
     )
-    output_converged = np.ones(len(r), dtype=np.bool_)
+    converged = np.ones(len(r), dtype=np.bool_)
+    convergence_rounds = first_mini_round.copy()
     for particle in prange(len(r)):
         M_grid, r_grid = get_grid(r=r, M=M, window_radius=grid_window_radius, particle_index=particle)
         if not adaptive:
@@ -513,13 +520,20 @@ def fast_step(
                 M_grid=M_grid,
                 r_grid=r_grid,
                 dt=dt,
-                N=2**first_mini_round,
+                N=2 ** first_mini_round[particle],
                 levi_civita_override_always=levi_civita_override_always,
                 levi_civita_override_never=levi_civita_override_never,
                 levi_civita_condition_coefficient=levi_civita_condition_coefficient,
             )
         else:
-            r_result, vx_result, vy_result, vr_result, output_converged[particle] = particle_adaptive_step(
+            (
+                r_result,
+                vx_result,
+                vy_result,
+                vr_result,
+                converged[particle],
+                convergence_rounds[particle],
+            ) = particle_adaptive_step(
                 r=r[particle],
                 vx=vx[particle],
                 vy=vy[particle],
@@ -532,7 +546,7 @@ def fast_step(
                 max_minirounds=max_minirounds,
                 r_convergence_threshold=r_convergence_threshold,
                 vr_convergence_threshold=vr_convergence_threshold,
-                first_mini_round=first_mini_round,
+                first_mini_round=first_mini_round[particle],
                 richardson_extrapolation=richardson_extrapolation,
                 levi_civita_override_always=levi_civita_override_always,
                 levi_civita_override_never=levi_civita_override_never,
@@ -542,7 +556,7 @@ def fast_step(
         output_vx[particle] = vx_result
         output_vy[particle] = vy_result
         output_vr[particle] = vr_result
-    return output_r, output_vx, output_vy, output_vr, output_converged
+    return output_r, output_vx, output_vy, output_vr, converged, convergence_rounds
 
 
 def step(
@@ -556,14 +570,14 @@ def step(
     max_minirounds: int = default_params['max_minirounds'],
     r_convergence_threshold: float = default_params['r_convergence_threshold'],
     vr_convergence_threshold: float = default_params['vr_convergence_threshold'],
-    first_mini_round: int = default_params['first_mini_round'],
+    first_mini_round: NDArray[np.int64] | None = None,
     richardson_extrapolation: bool = default_params['richardson_extrapolation'],
     levi_civita_mode: Literal['always', 'never', 'adaptive'] = default_params['levi_civita_mode'],
     levi_civita_condition_coefficient: float = default_params['levi_civita_condition_coefficient'],
     adaptive: bool = default_params['adaptive'],
     grid_window_radius: int = default_params['grid_window_radius'],
     raise_warning: bool = default_params['raise_warning'],
-) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
+) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64]]:
     """Perform an adaptive leapfrog step for a particle.
 
     Wrapper for the njit `fast_step()` function.
@@ -576,10 +590,10 @@ def step(
         m: The mass of the particles.
         M: The mass cdf (`M(<=r)`) of the particles at the start of the step. Used only if `M_grid` is empty.
         dt: Time step.
-        max_minirounds: Maximum number of mini-rounds to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
+        max_minirounds: Maximum number of mini-rounds to perform.
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
-        first_mini_round: The first mini-round to perform (will be sent to `mini_step_to_N()` to evaluate the actual number of mini-steps).
+        first_mini_round: The first mini-round to perform for each particle.
         richardson_extrapolation: Use Richardson extrapolation.
         levi_civita_mode: Operation mode for controlling when to use Levi-Civita regularization and when to use a normal leapfrog step.
         alpha: Threshold parameter for the Levi-Civita condition.
@@ -588,9 +602,9 @@ def step(
         raise_warning: Raise a warning if a particle fails to converge.
 
     Returns:
-        Updated position and velocity.
+        Updated position and velocity. The final array is the number of convergence rounds required for each particle to converge.
     """
-    _r, _vx, _vy, _vr, convergred = fast_step(
+    _r, _vx, _vy, _vr, converged, convergence_rounds = fast_step(
         r=np.array(r),
         vx=np.array(vx),
         vy=np.array(vy),
@@ -601,7 +615,7 @@ def step(
         max_minirounds=max_minirounds,
         r_convergence_threshold=r_convergence_threshold,
         vr_convergence_threshold=vr_convergence_threshold,
-        first_mini_round=first_mini_round,
+        first_mini_round=first_mini_round if first_mini_round is not None else np.zeros(len(r), dtype=np.int64),
         richardson_extrapolation=richardson_extrapolation,
         levi_civita_override_always=levi_civita_mode == 'always',
         levi_civita_override_never=levi_civita_mode == 'never',
@@ -609,9 +623,9 @@ def step(
         adaptive=adaptive,
         grid_window_radius=grid_window_radius,
     )
-    if raise_warning and not convergred.all():
-        for index in np.where(~convergred)[0]:
+    if raise_warning and not converged.all():
+        for index in np.where(~converged)[0]:
             warnings.warn(
                 f'Maximum number of mini-rounds reached for particle {index}, starting with r={r[index]}, vx={vx[index]}, vy={vy[index]}, vr={vr[index]}, M={M[index]}'
             )
-    return _r, _vx, _vy, _vr
+    return _r, _vx, _vy, _vr, convergence_rounds
