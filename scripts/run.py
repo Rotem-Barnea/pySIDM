@@ -20,7 +20,7 @@ if __name__ == '__main__':
     dm_n_particles = 1e5
     b_n_particles = 1e5
     sigma = Quantity(50, 'cm^2/gram')
-    dt = 1 / 1000 / 4
+    dt = 1 / 1000
     save_every_time = 10 / 5
     hard_save = True
     save_path = Path(os.environ['SAVE_PATH']) / 'run results' / os.environ.get('SAVE_NAME', 'run 1')

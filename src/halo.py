@@ -42,6 +42,7 @@ class Halo:
         r: Quantity['length'],
         v: Quantity['velocity'],
         m: Quantity['mass'],
+        unoptimized_dt: Quantity['time'] | None = None,
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         distribution_id: list[int] | NDArray[np.int64] | None = None,
         leapfrog_convergence_rounds: NDArray[np.int64] | None = None,
@@ -146,6 +147,7 @@ class Halo:
         self.dt: Quantity['time'] = (dt if isinstance(dt, Quantity) else self.distributions[0].Tdyn * dt).to(
             run_units.time
         )
+        self.unoptimized_dt: Quantity['time'] = utils.handle_default(unoptimized_dt, self.dt)
         self.Tdyn: Quantity['time']
         if Tdyn is not None:
             self.Tdyn = Tdyn
@@ -731,6 +733,10 @@ class Halo:
         """Calculate the number of steps required to reach the given time."""
         return int(time / self.dt)
 
+    def to_time(self, steps: int) -> Quantity['time']:
+        """Calculate the duration of the given number of steps."""
+        return steps * self.dt
+
     @property
     def current_step(self) -> int:
         """The current simulation step count (calculated based on the simulation time)."""
@@ -762,6 +768,7 @@ class Halo:
         test_steps: int = 100,
         include_scatters: bool = False,
         verbose: bool = True,
+        tqdm_leave: bool = False,
     ) -> None:
         """Optimize dt to minimize the time taken for a given number of steps.
 
@@ -775,16 +782,16 @@ class Halo:
         """
         diff = []
         factor = np.linspace(1, max_factor + 1, factor_steps)
-        for i in tqdm(factor, desc='Optimizing `dt` value', disable=not verbose):
+        for i in tqdm(factor, desc='Optimizing `dt` value', disable=not verbose, leave=tqdm_leave):
             halo = self.copy()
-            halo.dt = self.dt / i
+            halo.dt = self.unoptimized_dt / i
             start = time.perf_counter()
             for _ in range(test_steps):
                 halo.step(in_bootstrap=not include_scatters)
             end = time.perf_counter()
             diff += [end - start]
         optimized_factor = factor[np.argmin(np.array(diff) * factor)]
-        self.dt /= optimized_factor
+        self.dt = self.unoptimized_dt / optimized_factor
         if verbose:
             print(f'Optimized factor: 1/{optimized_factor}, `dt` value used: {self.dt}')
 
@@ -924,7 +931,8 @@ class Halo:
         until_t: Quantity['time'] | None = None,
         tqdm_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
-        optimize_dt_at_startup: bool = True,
+        optimize_dt: bool = True,
+        reoptimize_dt_rate: Quantity['time'] | None = None,
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
 
@@ -934,7 +942,8 @@ class Halo:
             until_t: Evolve the simulation until this time. Ignored if `n_steps` or `t` are specified, otherwise transformed into steps using `to_steps()`.
             tqdm_kwargs: Additional keyword arguments to pass to `tqdm` (NOTE this is the custom submodule defined in this project at `tqdm.py`).
             save_kwargs: Additional keyword arguments to pass to `save()`.
-            optimize_dt_at_startup: Whether to optimize the time step at startup.
+            optimize_dt: Whether to optimize the time step (`dt`).
+            reoptimize_dt_rate: If provided split the evolution loop into chunks of this duration and reoptimize the time step (`dt`) at the start of each chunk.
 
         Returns:
             None
@@ -948,19 +957,42 @@ class Halo:
                 n_steps = self.to_step(cast(Quantity, until_t - self.time))
             else:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
-        if optimize_dt_at_startup and self.time == 0:
-            self.optimize_dt()
-        if self.bootstrap_steps > 0 and self.steps == 0:
-            start_time = self.time - self.bootstrap_steps * self.dt
-            n_steps += self.bootstrap_steps
+        # if optimize_dt_at_startup and self.time == 0:
+        #     self.optimize_dt()
+
+        if reoptimize_dt_rate is not None:
+            n_chunks = int(np.ceil((self.to_time(n_steps).to(reoptimize_dt_rate.unit) / reoptimize_dt_rate).value))
+            chunk_n_steps = int(np.ceil(n_steps / n_chunks))
         else:
-            start_time = self.time
-        for step in tqdm(range(n_steps), start_time=cast(Quantity, start_time), dt=self.dt, **tqdm_kwargs):
-            self.step(
-                in_bootstrap=(step < self.bootstrap_steps and self.steps == 0),
-                save_kwargs=save_kwargs,
-                subdivisions=None if self.max_allowed_subdivisions != 1 else 1,
-            )
+            chunk_n_steps = n_steps
+            n_chunks = 1
+
+        for _ in tqdm(range(n_chunks), disable=n_chunks == 1):
+            if self.bootstrap_steps > 0 and self.steps == 0:
+                start_time = self.time - self.bootstrap_steps * self.dt
+                n_steps += self.bootstrap_steps
+            else:
+                start_time = self.time
+            for step in tqdm(range(chunk_n_steps), start_time=cast(Quantity, start_time), dt=self.dt, **tqdm_kwargs):
+                if optimize_dt and step == 0:
+                    self.optimize_dt()
+                self.step(
+                    in_bootstrap=(step < self.bootstrap_steps and self.steps == 0),
+                    save_kwargs=save_kwargs,
+                    subdivisions=None if self.max_allowed_subdivisions != 1 else 1,
+                )
+
+        # if self.bootstrap_steps > 0 and self.steps == 0:
+        #     start_time = self.time - self.bootstrap_steps * self.dt
+        #     n_steps += self.bootstrap_steps
+        # else:
+        #     start_time = self.time
+        # for step in tqdm(range(n_steps), start_time=cast(Quantity, start_time), dt=self.dt, **tqdm_kwargs):
+        #     self.step(
+        #         in_bootstrap=(step < self.bootstrap_steps and self.steps == 0),
+        #         save_kwargs=save_kwargs,
+        #         subdivisions=None if self.max_allowed_subdivisions != 1 else 1,
+        #     )
         if self.hard_save:
             self.save(**save_kwargs)
 
@@ -982,6 +1014,7 @@ class Halo:
             'time',
             'steps',
             'dt',
+            'unoptimized_dt',
             'distributions',
             'save_every_n_steps',
             'save_every_time',
