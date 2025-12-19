@@ -769,6 +769,7 @@ class Halo:
         factor_steps: int = 30,
         test_steps: int = 100,
         include_scatters: bool = False,
+        verbose: bool = True,
     ) -> None:
         """Optimize dt to minimize the time taken for a given number of steps.
 
@@ -782,7 +783,7 @@ class Halo:
         """
         diff = []
         factor = np.linspace(1, max_factor + 1, factor_steps)
-        for i in tqdm(factor, desc='Optimizing `dt` value'):
+        for i in tqdm(factor, desc='Optimizing `dt` value', disable=not verbose):
             halo = self.copy()
             halo.dt = self.dt / i
             start = time.perf_counter()
@@ -792,7 +793,8 @@ class Halo:
             diff += [end - start]
         optimized_factor = factor[np.argmin(np.array(diff) * factor)]
         self.dt /= optimized_factor
-        print(f'Optimized factor: 1/{optimized_factor}, `dt` value used: {self.dt}')
+        if verbose:
+            print(f'Optimized factor: 1/{optimized_factor}, `dt` value used: {self.dt}')
 
     def step(
         self,
