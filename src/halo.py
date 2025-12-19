@@ -348,6 +348,10 @@ class Halo:
         self.runtime_track_full_step = deque()
         self.rng = np.random.default_rng(self.seed)
 
+    def copy(self) -> Self:
+        """Returns a copy of the halo."""
+        return deepcopy(self)
+
     @property
     def particles(self) -> table.QTable:
         """Particle data QTable.
@@ -759,6 +763,35 @@ class Halo:
             return True
         return False
 
+    def optimize_dt(
+        self,
+        max_factor: int = 10,
+        factor_steps: int = 30,
+        test_steps: int = 100,
+        include_scatters: bool = False,
+    ) -> None:
+        """Optimize dt to minimize the time taken for a given number of steps.
+
+        The optimization is performed by running consecutive steps with decreasing `dt` value. A larger `dt` might require more adaptive rounds to converge leading to a slower runtime, while a smaller `dt` would require more steps all-together to reach a predefined `T`.
+
+        Parameters:
+            max_factor: Maximum factor to divide the initial `dt` by.
+            factor_steps: Number of factors tested between 1 and `max_factor`.
+            test_steps: Number of steps to take when testing `dt`.
+            include_scatters: Include scatters in the optimization, otherwise optimize only over the leapfrog integrator.
+        """
+        diff = []
+        factor = np.linspace(1, max_factor + 1, factor_steps)
+        for i in tqdm(factor, desc='Optimizing `dt` value'):
+            halo = self.copy()
+            halo.dt = self.dt / i
+            start = time.perf_counter()
+            for _ in range(test_steps):
+                halo.step(in_bootstrap=not include_scatters)
+            end = time.perf_counter()
+            diff += [end - start]
+        self.dt /= factor[np.argmin(np.array(diff) * factor)]
+
     def step(
         self,
         in_bootstrap: bool = False,
@@ -896,6 +929,7 @@ class Halo:
         tqdm_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
         t_after_core_collapse: Quantity['time'] = Quantity(-1, 'Myr'),
+        optimize_dt_at_startup: bool = True,
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
 
@@ -908,6 +942,7 @@ class Halo:
             tqdm_kwargs: Additional keyword arguments to pass to `tqdm` (NOTE this is the custom submodule defined in this project at `tqdm.py`).
             save_kwargs: Additional keyword arguments to pass to `save()`.
             t_after_core_collapse: Time after core collapse to evolve the simulation for, afterwhich the simulation will stop (early quit). If negative ignore the core collapse check.
+            optimize_dt_at_startup: Whether to optimize the time step at startup.
 
         Returns:
             None
@@ -921,6 +956,8 @@ class Halo:
                 n_steps = self.to_step(cast(Quantity, until_t - self.time))
             else:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
+        if optimize_dt_at_startup and self.time == 0:
+            self.optimize_dt()
         if self.bootstrap_steps > 0 and self.steps == 0:
             start_time = self.time - self.bootstrap_steps * self.dt
             n_steps += self.bootstrap_steps
