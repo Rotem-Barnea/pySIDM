@@ -790,6 +790,7 @@ class Halo:
                 halo.step(in_bootstrap=not include_scatters)
             end = time.perf_counter()
             diff += [end - start]
+            del halo
         optimized_factor = factor[np.argmin(np.array(diff) * factor)]
         self.dt = self.unoptimized_dt / optimized_factor
         if verbose:
