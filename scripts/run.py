@@ -11,33 +11,34 @@ if __name__ == '__main__':
     from src import distribution
     from src.halo import Halo
 
-    print('Setup distributions')
-    name = distribution.physical_examples.validate_example_name(os.environ.get('NAME', 'default'))
-    print('running example', name)
-    dm_distribution, b_distribution = distribution.physical_examples.by_name(name=name)
-
-    print('Setup parameters')
-    dm_n_particles = 1e5
-    b_n_particles = 1e5
-    sigma = Quantity(50, 'cm^2/gram')
-    dt = 1 / 1000
-    save_every_time = 10 / 5
-    hard_save = True
     save_path = Path(os.environ['SAVE_PATH']) / 'run results' / os.environ.get('SAVE_NAME', 'run 1')
-    cleanup_nullish_particles = True
-    cleanup_particles_by_radius = True
-    max_allowed_subdivisions = 1
-    bootstrap_steps = 100
-    dynamics_params = {'raise_warning': False}
-    scatter_params = {'disable_tqdm': True}
-
-    print('Setup complete, starting halo initialization')
 
     if save_path.exists():
         print('Loaded existing halo (continuing run)')
         halo = Halo.load(save_path)
     else:
         print('Starting new run')
+        print('Setup distributions')
+        name = distribution.physical_examples.validate_example_name(os.environ.get('NAME', 'default'))
+        print('running example', name)
+        dm_distribution, b_distribution = distribution.physical_examples.by_name(name=name)
+
+        print('Setup parameters')
+        dm_n_particles = 1e5
+        b_n_particles = 1e5
+        sigma = Quantity(50, 'cm^2/gram')
+        dt = 1 / 1000
+        save_every_time = 10 / 5
+        hard_save = True
+        cleanup_nullish_particles = True
+        cleanup_particles_by_radius = True
+        max_allowed_subdivisions = 1
+        bootstrap_steps = 100
+        dynamics_params = {'raise_warning': False}
+        scatter_params = {'disable_tqdm': True}
+
+        print('Setup complete, starting halo initialization')
+
         halo = Halo.setup(
             distributions=[dm_distribution, b_distribution],
             n_particles=[dm_n_particles, b_n_particles],
@@ -56,4 +57,5 @@ if __name__ == '__main__':
     halo.evolve(
         until_t=Quantity(15, 'Gyr'),
         tqdm_kwargs={'mininterval': 60},
+        reoptimize_dt_rate=Quantity(1, 'Gyr'),
     )
