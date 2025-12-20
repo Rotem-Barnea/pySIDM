@@ -13,6 +13,8 @@ if __name__ == '__main__':
 
     save_path = Path(os.environ['SAVE_PATH']) / 'run results' / os.environ.get('SAVE_NAME', 'run 1')
 
+    until_t = Quantity(os.environ.get('RUN_DURATION', '20'), 'Gyr')
+
     if save_path.exists():
         print('Loaded existing halo (continuing run)')
         halo = Halo.load(save_path)
@@ -55,7 +57,7 @@ if __name__ == '__main__':
         )
 
     halo.evolve(
-        until_t=Quantity(20, 'Gyr'),
+        until_t=until_t,
         tqdm_kwargs={'mininterval': 60},
         reoptimize_dt_rate=Quantity(1, 'Gyr'),
     )
