@@ -9,6 +9,8 @@ from astropy.units import Quantity
 from .. import utils, physics, run_units
 from ..tqdm import tqdm
 
+no_sigma = Quantity(0, 'cm^2/g')
+
 
 class Params(TypedDict, total=False):
     """Parameter dictionary for the SIDM calculation.

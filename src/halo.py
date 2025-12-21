@@ -1,6 +1,4 @@
 import time
-import pickle
-import shutil
 import itertools
 from copy import deepcopy
 from typing import Any, Self, Literal, cast
@@ -23,14 +21,12 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from . import plot, utils, report, physics, run_units
+from . import io, plot, utils, report, physics, run_units
 from .tqdm import tqdm
 from .types import ParticleType
 from .physics import sidm, leapfrog
 from .background import Mass_Distribution
 from .distribution.distribution import Distribution
-
-no_sigma = Quantity(0, run_units.cross_section)
 
 
 class Halo:
@@ -84,6 +80,7 @@ class Halo:
         generator: np.random.Generator | None = None,
         seed: int | None = None,
         generator_state: Mapping[str, Any] | None = None,
+        **kwargs: Any,
     ) -> None:
         """Initialize a Halo object.
 
@@ -126,7 +123,8 @@ class Halo:
             cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `Rmax`).
             generator: Random number generator. If provided ignore `seed` and `generator_state`.
             seed: Seed for the random number generator.
-            generator_state: State of the random number generator. If not provided, will be set by the `seed`
+            generator_state: State of the random number generator. If not provided, will be set by the `seed`.
+            kwargs: Ignored.
 
         Returns:
             Halo object.
@@ -203,28 +201,69 @@ class Halo:
             if generator_state is not None:
                 self.rng.bit_generator.state = generator_state
 
-    def __repr__(self):
-        scatter_params = dict(deepcopy(self.scatter_params))
-        scatter_params['sigma'] = f'{scatter_params["sigma"].to("cm^2/g"):.1f}'
+    @property
+    def repr_payload(self):
+        """TODO"""
+        return {
+            k: getattr(self, k)
+            for k in [
+                'scatter_params',
+                'time',
+                'dt',
+                'n_particles',
+                'save_path',
+                'hard_save',
+                'save_every_time',
+                'save_every_n_steps',
+                'cleanup_nullish_particles',
+                'cleanup_particles_by_radius',
+                'dynamics_params',
+                'distributions',
+                'Tdyn',
+            ]
+        }
+
+    @staticmethod
+    def to_report(
+        scatter_params: sidm.Params,
+        dynamics_params: sidm.Params,
+        distributions: list[Distribution],
+        time: Quantity['time'],
+        dt: Quantity['time'],
+        cleanup_nullish_particles: bool,
+        cleanup_particles_by_radius: bool,
+        save_path: str,
+        hard_save: bool,
+        save_every_n_steps: int,
+        save_every_time: Quantity['time'],
+        Tdyn: Unit | None = None,
+        n_particles: list[int] | None = None,
+        **kwargs: Any,
+    ) -> str:
+        """TODO"""
+        scatter_params = deepcopy(scatter_params)
+        scatter_params['sigma'] = scatter_params.get('sigma', sidm.no_sigma).to('cm^2/g')
+        if Tdyn is None:
+            Tdyn = distributions[0].Tdyn
         description = {
-            'Current time': f'{self.time:.1f}',
-            'Time step size': f'{self.dt:.4f} = {self.dt.to(self.Tdyn):.1e}',
-            '#particles': self.n_particles,
+            'Current time': f'{time:.1f}',
+            'Time step size': f'{dt:.4f} = {dt.to(Tdyn):.1e} = 1/{1 / dt.to(Tdyn).value:.1f} Tdyn',
+            '#particles': n_particles,
             'Save parameters': utils.drop_None(
                 **{
-                    'path': self.save_path,
-                    'hard save': self.hard_save,
-                    'Save every': f'{self.save_every_time:.1f}',
-                    'Save every [n] steps': self.save_every_n_steps,
+                    'path': save_path,
+                    'hard save': hard_save,
+                    'Save every': f'{save_every_time:.1f}',
+                    'Save every [n] steps': save_every_n_steps,
                 }
             ),
             'Cleanup': {
-                'NaN': self.cleanup_nullish_particles,
-                'high radius': self.cleanup_particles_by_radius,
+                'NaN': cleanup_nullish_particles,
+                'high radius': cleanup_particles_by_radius,
             },
-            'Leapfrog parameters': dict(self.dynamics_params),
+            'Leapfrog parameters': dynamics_params,
             'Scatter parameters': scatter_params,
-            'Distributions': {f'#{i}': d for i, d in enumerate(self.distributions)},
+            'Distributions': {f'#{i}': d for i, d in enumerate(distributions)},
         }
 
         description_strings = []
@@ -237,6 +276,9 @@ class Halo:
             else:
                 description_strings += [f'{key}: {value}']
         return '\n'.join(description_strings)
+
+    def __repr__(self):
+        return self.to_report(**self.repr_payload)
 
     @classmethod
     def setup(
@@ -818,7 +860,7 @@ class Halo:
             save_kwargs: Keyword arguments for saving the snapshot.
         """
 
-        if in_bootstrap or self.scatter_params.get('sigma', no_sigma) == no_sigma:
+        if in_bootstrap or self.scatter_params.get('sigma', sidm.no_sigma) == sidm.no_sigma:
             subdivisions = 1
         elif subdivisions is None:
             subdivision_values: list[int] = []
@@ -835,7 +877,7 @@ class Halo:
                             vr=self._particles.vr,
                             dt=self.dt,
                             m=self._particles.m,
-                            sigma=self.scatter_params.get('sigma', no_sigma),
+                            sigma=self.scatter_params.get('sigma', sidm.no_sigma),
                             max_radius_j=self.scatter_params.get('max_radius_j', 10),
                         ),
                         kappa=self.scatter_params.get('kappa', 1),
@@ -874,7 +916,7 @@ class Halo:
                 ['r', 'vx', 'vy', 'vr', 'm', 'leapfrog_convergence_rounds']
             ].values.T
             dt = self.dt / subdivisions
-            if not in_bootstrap and self.scatter_params.get('sigma', no_sigma) > no_sigma:
+            if not in_bootstrap and self.scatter_params.get('sigma', sidm.no_sigma) > sidm.no_sigma:
                 t0 = time.perf_counter()
                 mask = cast(NDArray[np.bool_], self._particles['interacting'].values)
                 (
@@ -1009,8 +1051,8 @@ class Halo:
         return self.save_path.parents[1] / 'results' / self.save_path.stem
 
     @staticmethod
-    def payload_keys() -> list[str]:
-        """Return the keys of the payload dictionary, used for saving and loading halos. A `@staticmethod` and not a `@property` to allow getting it from an uninitialized cls during `@classmethod`."""
+    def metadata_keys() -> list[str]:
+        """Return the keys of the metadata payload dictionary, used for saving and loading halos. A `@staticmethod` and not a `@property` to allow getting it from an uninitialized cls during `@classmethod`."""
         return [
             'time',
             'steps',
@@ -1025,49 +1067,46 @@ class Halo:
             'subdivide_on_scatter_chance',
             'subdivide_on_gravitational_step',
             'subdivide_on_startup',
-            'ministep_size',
-            'scatter_track_time',
-            'scatter_track_index',
-            'scatter_track_radius',
             'background',
             'last_saved_time',
-            'scatter_rounds',
-            'scatter_rounds_underestimated',
             'hard_save',
             'save_path',
             'Rmax',
             'cleanup_nullish_particles',
             'cleanup_particles_by_radius',
+            'seed',
+            'generator_state',
+            'n_particles',
+            'Tdyn',
+        ]
+
+    @staticmethod
+    def heavy_payload_keys() -> list[str]:
+        """Return the keys of the heavy payload dictionary, used for saving and loading halos. A `@staticmethod` and not a `@property` to allow getting it from an uninitialized cls during `@classmethod`."""
+        return [
+            'ministep_size',
+            'scatter_track_time',
+            'scatter_track_index',
+            'scatter_track_radius',
+            'scatter_rounds',
+            'scatter_rounds_underestimated',
             'runtime_realtime_track',
             'runtime_track_sort',
             'runtime_track_cleanup',
             'runtime_track_sidm',
             'runtime_track_leapfrog',
             'runtime_track_full_step',
-            'seed',
-            'generator_state',
         ]
 
-    @staticmethod
-    def save_table(data: table.QTable, path: str | Path, **kwargs: Any) -> None:
-        """Save a QTable to a file, splitting the strings from the Quantity data, and saving into `{}_strings.csv` and `{}.fits`."""
-        data[[column for column in data.colnames if data[column].dtype != np.dtype('O')]].write(
-            path.with_name(f'{path.stem}.fits'), **kwargs
-        )
-        data[[column for column in data.colnames if data[column].dtype == np.dtype('O')]].write(
-            path.with_name(f'strings_{path.stem}.csv'), **kwargs
-        )
+    @property
+    def metadata(self) -> dict[str, Any]:
+        """Return the metadata for the simulation. Used for saving."""
+        return {key: getattr(self, key) for key in self.metadata_keys()}
 
-    @staticmethod
-    def load_table(path: str | Path) -> table.QTable:
-        """Load a QTable saved via `save_table()`."""
-        fits_table = table.QTable.read(path.with_name(f'{path.stem}.fits'))
-        csv_table = table.QTable.read(path.with_name(f'strings_{path.stem}.csv'))
-        for col in fits_table.colnames:
-            fits_table[col] = fits_table[col].astype(fits_table[col].dtype.newbyteorder('='), copy=False)
-        for col in csv_table.colnames:
-            csv_table[col] = np.array(csv_table[col]).astype('O')
-        return cast(table.QTable, table.hstack([fits_table, csv_table]))
+    @property
+    def heavy_payload(self) -> dict[str, Any]:
+        """Return the heavy payload for the simulation. Used for saving."""
+        return {key: getattr(self, key) for key in self.heavy_payload_keys()}
 
     def save(
         self,
@@ -1087,81 +1126,63 @@ class Halo:
         Returns:
             None
         """
-        if path is None:
-            path = self.save_path
-        assert path is not None, 'Save path must be provided'
-        path = Path(path)
-        path.mkdir(exist_ok=True, parents=True)
-        if keep_last_backup:
-            for file in path.glob('*'):
-                if '_backup.' in file.name:
-                    continue
-                if file.is_dir():
-                    shutil.copytree(file, file.with_stem(f'{file.stem}_backup'), dirs_exist_ok=True)
-                else:
-                    shutil.copyfile(file, file.with_stem(f'{file.stem}_backup'))
-        payload = {key: getattr(self, key) for key in self.payload_keys()}
-        tables = {'particles': self.particles, 'initial_particles': self.initial_particles}
-        if not split_snapshots:
-            tables['snapshots'] = self.snapshots
-        tag = '_' if two_steps else ''
-        with open(path / f'halo_payload{tag}.pkl', 'wb') as f:
-            pickle.dump(payload, f)
-        for name, data in tables.items():
-            self.save_table(data, path / f'{name}{tag}.fits', overwrite=True)
-        for file in path.glob('*_.*'):
-            file.rename(file.with_stem(file.stem[:-1]))
-        if split_snapshots:
-            (path / 'split_snapshots').mkdir(exist_ok=True)
-            if len(self.snapshots) > 0:
-                for i, group in enumerate(self.snapshots.group_by('time').groups):
-                    self.save_table(group, path / f'split_snapshots/snapshot_{i}.fits', overwrite=True)
+        io.save(
+            path=self.save_path if path is None else path,
+            static_tables={'particles': self.particles, 'initial_particles': self.initial_particles},
+            splitable_table={'snapshots': self.snapshots},
+            metadata_payload=self.metadata,
+            heavy_payload=self.heavy_payload,
+            two_steps=two_steps,
+            keep_last_backup=keep_last_backup,
+            split_tables=split_snapshots,
+        )
 
     @classmethod
-    def load(cls, path: str | Path, update_save_path: bool = True, static: bool = False) -> Self:
+    def load(
+        cls,
+        path: str | Path,
+        update_save_path: bool = True,
+        static: bool = False,
+        legacy_payload: bool = False,
+        undersample_snapshots: int | None = None,
+    ) -> Self:
         """Load the simulation state from a directory.
 
         Parameters:
             path: Save path to load from.
             update_save_path: Whether to update the internal save path to `path` (for example, if the directory was moved after the run).
             static: Whether to load the simulation with `hard_save=False` as a safeguard, to avoid accidently evolving the simulation on a completed run (that was loaded for analysis).
+            undersample_snapshots: If provided, undersample loading the snapshot tables by the given factor (i.e. load every 10th table, etc.).
 
         Returns:
             The loaded Halo object
         """
-        path = Path(path)
-        with open(path / 'halo_payload.pkl', 'rb') as f:
-            payload = {key: value for key, value in pickle.load(f).items() if key in cls.payload_keys()}
-
-        tables = {}
-
-        if (path / 'split_snapshots').exists():
-            table_list = [cls.load_table(file) for file in (path / 'split_snapshots').glob('*.fits')]
-            if len(table_list) > 0:
-                tables['snapshots'] = cast(
-                    table.QTable,
-                    table.vstack([cls.load_table(file) for file in (path / 'split_snapshots').glob('*.fits')]),
-                )
-        elif (path / 'snapshots.fits').exists():
-            tables['snapshots'] = cls.load_table(path / 'snapshots.fits')
-        else:
-            tables['snapshots'] = None
-
-        for name in ['particles', 'initial_particles']:
-            tables[name] = cls.load_table(path / f'{name}.fits')
+        tables = io.load_tables(path, undersample={'snapshots': undersample_snapshots})
+        assert tables['particles'] is not None, 'Particles table is missing'
         particles = tables['particles']
-        particles.sort('particle_index')
+        r, vx, vy, vr, m = [
+            cast(Quantity, t)
+            for t in (
+                particles['r'],
+                particles['vx'],
+                particles['vy'],
+                particles['vr'],
+                particles['m'],
+            )
+        ]
         output = cls(
-            r=particles['r'],
-            v=cast(Quantity, np.vstack([particles['vx'], particles['vy'], particles['vr']]).T),
-            particle_type=particles['particle_type'],
-            m=particles['m'],
-            **payload,
+            r=r,
+            v=cast(Quantity, np.vstack([vx, vy, vr]).T),
+            particle_type=cast(list[ParticleType], particles['particle_type']),
+            m=m,
+            **(io.load_pickle(path, 'metadata') if not legacy_payload else {}),
+            **(io.load_pickle(path, 'heavy_payload') if not legacy_payload else {}),
+            **(io.load_pickle(path, 'halo_payload') if legacy_payload else {}),
             snapshots=tables['snapshots'],
         )
         output.initial_particles = tables['initial_particles']
         if update_save_path:
-            output.save_path = path.resolve()
+            output.save_path = Path(path).resolve()
         if static:
             output.hard_save = False
         return output
