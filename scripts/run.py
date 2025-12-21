@@ -20,14 +20,13 @@ if __name__ == '__main__':
         halo = Halo.load(save_path)
     else:
         print('Starting new run')
-        print('Setup distributions')
-        name = distribution.physical_examples.validate_example_name(os.environ.get('NAME', 'default'))
-        print('running example', name)
-        dm_distribution, b_distribution = distribution.physical_examples.by_name(name=name)
+        distributions = distribution.physical_examples.by_name(
+            *distribution.physical_examples.validate_input(os.environ.get('NAME', 'default')),
+            verbose=True,
+        )
 
         print('Setup parameters')
-        dm_n_particles = 1e5
-        b_n_particles = 1e5
+        n_particles = [1e5, 1e5]
         sigma = Quantity(50, 'cm^2/gram')
         dt = 1 / 1000
         save_every_time = 10
@@ -42,8 +41,8 @@ if __name__ == '__main__':
         print('Setup complete, starting halo initialization')
 
         halo = Halo.setup(
-            distributions=[dm_distribution, b_distribution],
-            n_particles=[dm_n_particles, b_n_particles],
+            distributions=distributions,
+            n_particles=n_particles,
             dt=dt,
             hard_save=hard_save,
             save_path=save_path,
