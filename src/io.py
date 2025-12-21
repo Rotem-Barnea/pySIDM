@@ -37,8 +37,10 @@ def save_pickle(path: str | Path, stem: str, payload: dict[str, Any]) -> None:
         pickle.dump(payload, f)
 
 
-def load_pickle(path: str | Path, stem: str) -> dict[str, Any]:
+def load_pickle(path: str | Path, stem: str, verbose: bool = False) -> dict[str, Any]:
     """Load a pickled simulation file"""
+    if verbose:
+        print(f'Loading {stem}.pkl')
     with open(Path(path) / f'{stem}.pkl', 'rb') as f:
         return pickle.load(f)
 
@@ -101,6 +103,7 @@ def load_tables(
     path: str | Path,
     ensure_keys: list[str] = ['particles', 'initial_particles', 'snapshots'],
     undersample: dict[str, int | None] = {},
+    verbose: bool = False,
 ) -> dict[str, table.QTable | None]:
     """Load the simulation tables.
 
@@ -108,6 +111,7 @@ def load_tables(
         path: Save path to load from.
         ensure_keys: List of keys to ensure are present in the loaded tables (set with `None` value).
         undersample: If provided, undersample loading split tables by the given factor (i.e. load every 10th table, etc.).
+        verbose: Whether to print progress information.
 
     Returns:
         The loaded tables
@@ -119,7 +123,9 @@ def load_tables(
         files = sorted(list(splitted_path.glob('*.fits')), key=lambda x: int(regex.findall(r'_(\d+)$', x.stem)[0]))
         if name in undersample and undersample[name] is not None:
             files = files[:: undersample[name]]
-        table_list = [load_table(file) for file in tqdm(files, desc=f'Loading split tables for {name}')]
+        table_list = [
+            load_table(file) for file in tqdm(files, desc=f'Loading split tables for {name}', disable=not verbose)
+        ]
         if len(table_list) > 0:
             tables[name] = cast(table.QTable, table.vstack(table_list))
     for unsplitted_path in list(path.glob('*.fits')):

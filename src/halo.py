@@ -1145,6 +1145,7 @@ class Halo:
         static: bool = False,
         legacy_payload: bool = False,
         undersample_snapshots: int | None = None,
+        verbose: bool = True,
     ) -> Self:
         """Load the simulation state from a directory.
 
@@ -1153,11 +1154,12 @@ class Halo:
             update_save_path: Whether to update the internal save path to `path` (for example, if the directory was moved after the run).
             static: Whether to load the simulation with `hard_save=False` as a safeguard, to avoid accidently evolving the simulation on a completed run (that was loaded for analysis).
             undersample_snapshots: If provided, undersample loading the snapshot tables by the given factor (i.e. load every 10th table, etc.).
+            verbose: Whether to print progress information during loading.
 
         Returns:
             The loaded Halo object
         """
-        tables = io.load_tables(path, undersample={'snapshots': undersample_snapshots})
+        tables = io.load_tables(path, undersample={'snapshots': undersample_snapshots}, verbose=verbose)
         assert tables['particles'] is not None, 'Particles table is missing'
         particles = tables['particles']
         r, vx, vy, vr, m = [
@@ -1175,9 +1177,9 @@ class Halo:
             v=cast(Quantity, np.vstack([vx, vy, vr]).T),
             particle_type=cast(list[ParticleType], particles['particle_type']),
             m=m,
-            **(io.load_pickle(path, 'metadata') if not legacy_payload else {}),
-            **(io.load_pickle(path, 'heavy_payload') if not legacy_payload else {}),
-            **(io.load_pickle(path, 'halo_payload') if legacy_payload else {}),
+            **(io.load_pickle(path, 'metadata', verbose=verbose) if not legacy_payload else {}),
+            **(io.load_pickle(path, 'heavy_payload', verbose=verbose) if not legacy_payload else {}),
+            **(io.load_pickle(path, 'halo_payload', verbose=verbose) if legacy_payload else {}),
             snapshots=tables['snapshots'],
         )
         output.initial_particles = tables['initial_particles']

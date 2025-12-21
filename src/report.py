@@ -1,19 +1,64 @@
-from typing import Any, Required, TypedDict
+from copy import deepcopy
+from typing import Any, Self
+
+from astropy.units import Quantity
+from astropy.units.typing import UnitLike
 
 
-class Line(TypedDict, total=False):
-    """A line in a report. Will be printed as `title: {value:format}`
+class Line:
+    """A line in a report. Will be printed as `{prefix_buffer}title: {value.to(unit):format}`."""
 
-    Parameters:
-        title: The title of the line.
-        value: The value of the line.
-        format: The format of the line.
-    """
+    def __init__(
+        self,
+        title: str,
+        value: Any,
+        format: str = '',
+        prefix_buffer: str = '',
+        unit: UnitLike | None = None,
+        global_prefix: str = '',
+        add_thousands_separator: bool = True,
+        title_format: str = '',
+    ) -> None:
+        self.title = title
+        self.value = value.to(self.unit) if (isinstance(value, Quantity) and unit is not None) else value
+        self.format = format
+        self.prefix_buffer = prefix_buffer
+        self.global_prefix = global_prefix
+        self.add_thousands_separator = add_thousands_separator
+        self.title_format = title_format
 
-    title: Required[str]
-    value: Required[Any]
-    format: str
-    prefix_buffer: str
+    def __str__(self) -> str:
+        """Prepares a line for the report, by adjusting its formats and constructing it into a string."""
+        line_prefix = f'{self.global_prefix}{self.prefix_buffer}'
+        title = f'{self.title}:'
+        value = self.validate_format(
+            self.value,
+            format=(',' if self.add_thousands_separator and not isinstance(self.value, bool) else '') + self.format,
+            backup_format=self.format,
+        )
+        return f'{line_prefix}{title:{self.title_format}} {value}'
+
+    @staticmethod
+    def validate_format(value: Any, format: str, backup_format: str = ''):
+        """Check if the format is applicable to the value."""
+        try:
+            return f'{value:{format}}'
+        except Exception:
+            return f'{value:{backup_format}}'
+
+    def __len__(self) -> int:
+        return len(self.title)
+
+    def with_updated_parameters(self, **kwargs: Any) -> Self:
+        """Update a parameter"""
+        output = self.copy()
+        for key, value in kwargs.items():
+            setattr(output, key, value)
+        return output
+
+    def copy(self) -> Self:
+        """Deepcopy the object."""
+        return deepcopy(self)
 
 
 class Report:
@@ -21,12 +66,12 @@ class Report:
 
     def __init__(
         self,
-        body_lines: list[Line],
-        body_prefix: str | None = None,
-        header: str | None = None,
+        body_lines: list[Line | Self],
+        body_prefix: str = '',
+        header: str = '',
         body_title_buffer: int = 4,
         add_thousands_separator: bool = True,
-    ):
+    ) -> None:
         """Constructor for a Report object.
 
         Parameters:
@@ -38,38 +83,69 @@ class Report:
         Returns:
             The Report object.
         """
-
         self.body_lines = body_lines
-        self.body_prefix = body_prefix or ''
-        self.header: str = header or ''
-        self.body_title_buffer = body_title_buffer
+        self.body_prefix = body_prefix
+        self.header = header
         self.add_thousands_separator = add_thousands_separator
+        self.body_title_buffer = body_title_buffer
 
-    def __repr__(self) -> str:
-        return f"""Report(
-        body_lines={self.body_lines},
-        header={self.header if self.header else 'None'},
-        body_title_buffer={self.body_title_buffer},
-        add_thousands_separator={self.add_thousands_separator}
-    )"""
-
-    def __str__(self):
+    def __str__(self) -> str:
         return (self.header + '\n' + self.body).strip()
+
+    def __len__(self) -> int:
+        return len(self.header)
+
+    def copy(self) -> Self:
+        """Deepcopy the object."""
+        return deepcopy(self)
+
+    @classmethod
+    def from_dict(
+        cls,
+        payload: dict[str, Any],
+        keys: list[str] = [],
+        line_kwargs: dict[str, Any] = {},
+        rec_prefix: str = '- ',
+        **kwargs: Any,
+    ) -> 'Report':
+        """Create a Report object from a dictionary (handling nested dictionaries)."""
+        items = [(key, payload[key]) for key in keys] if keys else payload.items()
+        return cls(
+            body_lines=[
+                Line(title=title, value=value, **line_kwargs.get(title, {}))
+                if not isinstance(value, dict)
+                else cls.from_dict(
+                    header=f'{title}:',
+                    payload=value,
+                    body_prefix=f'  {rec_prefix}',
+                    rec_prefix=f'  {rec_prefix}',
+                    **line_kwargs.get(title, {}),
+                )
+                for title, value in items
+            ],
+            **kwargs,
+        )
 
     @property
     def body_title_format(self) -> str:
         """Total format for the titles in the body, aligning the `value` section in all lines."""
-        return str(max([len(line['title']) for line in self.body_lines]) + self.body_title_buffer)
+        return str(max(map(len, self.body_lines)) + self.body_title_buffer)
+
+    @property
+    def compiled_body_lines(self) -> list[Line | Self]:
+        """Compiled version of the lines (prepared for printing)"""
+        return [
+            line.with_updated_parameters(
+                global_prefix=self.body_prefix,
+                add_thousands_separator=self.add_thousands_separator,
+                title_format=self.body_title_format,
+            )
+            if type(line) is Line
+            else line
+            for line in self.body_lines
+        ]
 
     @property
     def body(self) -> str:
         """Body of the report."""
-        return '\n'.join(map(self.prepare_line, self.body_lines))
-
-    def prepare_line(self, line: Line) -> str:
-        """Prepares a line for the report, by adjusting its formats and constructing it into a string."""
-        line_prefix = f'{self.body_prefix}{line.get("prefix_buffer", "")}'
-        title = f'{line["title"]}:'
-        add_thousands_separator = self.add_thousands_separator and not isinstance(line['value'], str)
-        value_format = (',' if add_thousands_separator else '') + line.get('format', '')
-        return f'{line_prefix}{title:{self.body_title_format}} {line["value"]:{value_format}}'
+        return '\n'.join(map(str, self.compiled_body_lines))
