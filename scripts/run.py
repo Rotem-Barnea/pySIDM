@@ -30,7 +30,7 @@ if __name__ == '__main__':
         b_n_particles = 1e5
         sigma = Quantity(50, 'cm^2/gram')
         dt = 1 / 1000
-        save_every_time = 10 / 5
+        save_every_time = 10
         hard_save = True
         cleanup_nullish_particles = True
         cleanup_particles_by_radius = True
