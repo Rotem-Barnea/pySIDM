@@ -360,7 +360,7 @@ def particle_adaptive_step(
     M_grid: NDArray[np.float64],
     r_grid: NDArray[np.float64],
     dt: float,
-    max_minirounds: int = 100,
+    max_minirounds: int = 20,
     r_convergence_threshold: float = 1e-7,
     vr_convergence_threshold: float = 1e-7,
     first_mini_round: int = 0,
@@ -397,7 +397,7 @@ def particle_adaptive_step(
     r_coarse, vx_coarse, vy_coarse, vr_coarse = r, vx, vy, vr
     r_fine, vx_fine, vy_fine, vr_fine = r_coarse, vx_coarse, vy_coarse, vr_coarse
     rounds_to_convergence = first_mini_round
-    for mini_round in range(first_mini_round, first_mini_round + max_minirounds):
+    for mini_round in range(first_mini_round, max(max_minirounds, first_mini_round + 1)):
         r_coarse, vx_coarse, vy_coarse, vr_coarse = particle_step(
             r=r,
             vx=vx,
@@ -458,7 +458,7 @@ def fast_step(
     M: NDArray[np.float64],
     dt: float,
     first_mini_round: NDArray[np.int64],
-    max_minirounds: int = 100,
+    max_minirounds: int = 20,
     r_convergence_threshold: float = 1e-7,
     vr_convergence_threshold: float = 1e-7,
     richardson_extrapolation: bool = True,
