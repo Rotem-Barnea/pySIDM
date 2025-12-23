@@ -16,7 +16,7 @@ if __name__ == '__main__':
     until_t = Quantity(os.environ.get('RUN_DURATION', '20'), 'Gyr')
 
     if save_path.exists():
-        print('Loaded existing halo (continuing run)')
+        print(f'Loaded existing halo (continuing run) from path {save_path}')
         halo = Halo.load(save_path)
     else:
         print('Starting new run')
