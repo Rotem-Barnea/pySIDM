@@ -15,6 +15,12 @@ if __name__ == '__main__':
 
     until_t = Quantity(os.environ.get('RUN_DURATION', '20'), 'Gyr')
 
+    print(f"""Reading environment:
+    save_name={os.environ.get('SAVE_NAME', 'not provided')}
+    example_name={os.environ.get('NAME', 'not provided')}
+    until_t={os.environ.get('RUN_DURATION', 'not provided')}
+    """)
+
     if save_path.exists():
         print(f'Loaded existing halo (continuing run) from path {save_path}')
         halo = Halo.load(save_path)
