@@ -10,6 +10,7 @@ from . import (
     physics,
     run_units,
     background,
+    phase_space,
     distribution,
     spatial_approximation,
 )
@@ -26,6 +27,7 @@ __all__ = [
     'physics',
     'run_units',
     'background',
+    'phase_space',
     'distribution',
     'spatial_approximation',
 ]

@@ -29,3 +29,15 @@ def set_state(state: Mapping[str, Any]) -> None:
     """
     global generator
     generator.bit_generator.state = state
+
+
+def get_seed(rng_generator: np.random.Generator | None = None) -> int | None:
+    """Get the seed of the RNG.
+
+    Returns:
+        The current seed of the RNG.
+    """
+    if rng_generator is None:
+        return generator.bit_generator.seed_seq.entropy
+    else:
+        return rng_generator.bit_generator.seed_seq.entropy

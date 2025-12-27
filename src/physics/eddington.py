@@ -74,7 +74,7 @@ def F(
 def make_rho_Psi_spline(
     Psi_grid: Quantity['specific energy'],
     rho_grid: Quantity['mass density'],
-    s: float = 1e-2,
+    s: float | None = 1e-2,
     **kwargs: Any,
 ) -> QuantitySpline:
     """Create a spline for the mass density as a function of Psi.

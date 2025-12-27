@@ -79,6 +79,11 @@ def split_3d(
     return x, y, radial
 
 
+def split_3d_quantity(x: Quantity, generator: np.random.Generator | None = None) -> Quantity:
+    """Wrapper for `split_3d` that handles quantities."""
+    return cast(Quantity, np.vstack(split_3d(x, generator=generator)).T)
+
+
 def joint_clean(
     arrays: list[NDArray[Any]],
     keys: list[str] | None = None,
@@ -514,3 +519,57 @@ def make_id(id: Any | None = None, method: Literal['timestamp'] = 'timestamp') -
     if id is not None:
         return id
     return int(datetime.datetime.now().timestamp() * 1000)
+
+
+def guess_scale(
+    array: Quantity | NDArray[Any] | list[float],
+    allow_log_zero: bool = True,
+    quantile_bounds: float = 0.1,
+    log_scale_cutoff: float = 2,
+    quantile_method: Literal['closest_observation', 'linear'] = 'closest_observation',
+) -> Literal['linear', 'log']:
+    """Guesses the required scale for plotting the data (linear or log).
+
+    Parameters:
+        array: The data to be analyzed.
+        allow_log_zero: Whether to allow considering log scale even though the data contains zero values.
+        quantile_bounds: The bounds for the quantiles used to calculate the scale.
+        log_scale_cutoff: The cutoff for the log scale.
+        quantile_method: The method to use for calculating the quantiles.
+
+    Returns:
+        The guessed scale.
+    """
+    x = np.array(array)
+    if (x < 0).any() or (not allow_log_zero and (x == 0).any()):
+        return 'linear'
+    x = x[x > 0]
+    if len(x) < 2:
+        return 'linear'
+    if (
+        np.log10(
+            np.quantile(x, 1 - quantile_bounds, method=quantile_method)
+            / np.quantile(x, quantile_bounds, method=quantile_method)
+        )
+        > log_scale_cutoff
+    ):
+        return 'log'
+    return 'linear'
+
+
+def mask_edge_zeros(grid: NDArray[Any] | Quantity, axis: int | None = None) -> NDArray[np.bool_]:
+    """Masks the edges of a grid that are fully zero.
+
+    Parameters:
+        grid: The grid to be masked.
+        axis: The axis along which to mask the zeros.
+
+    Returns:
+        A boolean array indicating which elements are not edge zeros.
+    """
+
+    grid = np.array(grid)
+    zeros = (grid == 0).all(axis=axis)
+    non_zero_indices = np.where(~zeros)[0]
+    indices = np.arange(len(zeros))
+    return np.where((indices >= non_zero_indices[0]) * (indices <= non_zero_indices[-1]), True, False)

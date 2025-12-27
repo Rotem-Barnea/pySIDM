@@ -130,4 +130,4 @@ def Psi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityO
 
 def acceleration(r: QuantityOrArray, M: QuantityOrArray, L: QuantityOrArray) -> QuantityOrArray:
     """Calculate the gravitational acceleration"""
-    return -G * M / r**2 + L**2 / r**3
+    return -(G if isinstance(M, Quantity) else G.value) * M / r**2 + L**2 / r**3

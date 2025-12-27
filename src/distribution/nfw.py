@@ -13,12 +13,17 @@ from .distribution import Distribution
 class NFW(Distribution):
     """NFW density profile."""
 
-    def __init__(self, Rs: Quantity['length'] | None | Literal['From mass'] = None, **kwargs: Any) -> None:
+    def __init__(
+        self,
+        Rs: Quantity['length'] | None | Literal['From mass'] = None,
+        truncate: bool = True,
+        **kwargs: Any,
+    ) -> None:
         if Rs == 'From mass':
             assert 'Mtot' in kwargs, 'Mtot must be provided when calculating Rs from the total mass'
             Rs = self.calculate_theoretical_Rvir(kwargs['Mtot'])
 
-        super().__init__(Rs=Rs, **kwargs)
+        super().__init__(Rs=Rs, truncate=truncate, **kwargs)
         self.title = 'NFW'
 
     @staticmethod

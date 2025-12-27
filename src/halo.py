@@ -286,8 +286,9 @@ class Halo:
         distributions: list[Distribution],
         n_particles: list[int | float],
         seed: int | None = None,
+        generator: np.random.Generator | None = None,
         sample_kwargs: dict[str, Any] = {},
-        join_distributions: bool = True,
+        join_distributions: bool = False,
         **kwargs: Any,
     ) -> Self:
         """Initialize a Halo object from a given set of distributions.
@@ -295,7 +296,7 @@ class Halo:
         Parameters:
             distributions: List of distributions for each particle type.
             n_particles: List of number of particles for each particle type.
-            seed: Seed for the random number generator.
+            seed: Seed for the random number generator. Ignore if `generator` is provided.
             generator: If `None` use the default generator from `rng.generator`.
             sample_kwargs: Additional keyword argumants to pass ot the sampling function.
             join_distributions: If `True`, joining the distributions (`Distribution.merge_distribution_grids`). Use `False` if the distributions already had Eddington inversion calculated elsewhere.
@@ -304,18 +305,21 @@ class Halo:
         Returns:
             Halo object.
         """
+
         r, v, particle_type, m, distribution_id = [], [], [], [], []
-        generator = np.random.default_rng(seed)
+        if generator is None:
+            generator = np.random.default_rng(seed)
         if join_distributions:
             Distribution.merge_distribution_grids(distributions)
         for distribution, n in zip(distributions, n_particles):
-            # r_sub, v_sub = distribution.sample_old(n_particles=n, generator=generator, **sample_kwargs)
-            r_sub, v_sub = distribution.sample(n_particles=n, generator=generator, **sample_kwargs)
-            r += [r_sub]
-            v += [v_sub]
-            particle_type += [[distribution.particle_type] * len(r_sub)]
-            m += [np.ones(len(r_sub)) * distribution.Mtot / len(r_sub)]
-            distribution_id += [np.ones(len(r_sub)) * distribution.id]
+            r_, v_, m_, particle_type_, distribution_id_ = distribution.full_sample(
+                n_particles=n, generator=generator, **sample_kwargs
+            )
+            r += [r_]
+            v += [v_]
+            m += [m_]
+            particle_type += [particle_type_]
+            distribution_id += [distribution_id_]
 
         return cls(
             r=cast(Quantity, np.hstack(r)),
@@ -1398,7 +1402,7 @@ class Halo:
             color_palette: The color palette to use for the halos. If `None`, uses the default color palette.
             legend_loc: The location of the legend. If `None` uses the default location.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
@@ -1417,7 +1421,7 @@ class Halo:
         colors = sns.color_palette(color_palette, len(indices)) if color_palette is not None else None
 
         time_unit = self.fill_time_unit(time_unit)
-        fig, ax = plot.setup_plot(**utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_unit)), **kwargs)
+        fig, ax = plot.setup(**utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_unit)), **kwargs)
         clip = tuple(x_clip.to(x_unit).value) if x_clip is not None else None
         for i, group in enumerate(data.group_by('time').groups):
             if i not in indices:
@@ -1481,7 +1485,7 @@ class Halo:
             ax: The axes to plot on.
             plt_kwargs: Additional keyword arguments to pass to the sns plotting function (`sns.histplot()` or `sns.kdeplot()`).
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
+            kwargs: Additional keyword arguments to pass to `plot.setup()`.
 
         Returns:
             fig, ax.
@@ -1498,7 +1502,7 @@ class Halo:
             **plot.default_plot_text(key, x_unit=x_unit),
             **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel),
         }
-        fig, ax = plot.setup_plot(fig, ax, **params, **kwargs)
+        fig, ax = plot.setup(fig, ax, **params, **kwargs)
         if plot_type == 'kde':
             sns.kdeplot(x, cumulative=cumulative, ax=ax, label=label, **plt_kwargs)
         else:
@@ -1531,7 +1535,7 @@ class Halo:
             hist_label: The label for the histogram (legend).
             density_label: The label for the density distribution (legend).
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
+            kwargs: Additional keyword arguments to pass to `plot.setup()`.
 
         Returns:
             fig, ax.
@@ -1984,7 +1988,7 @@ class Halo:
             ax: Axes to use for the plot.
             line_kwargs: Additional keyword arguments to pass to the lineplot function (`sns.lineplot()`).
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
@@ -2017,7 +2021,7 @@ class Halo:
         if ylabel is not None:
             ylabel = f'{prefix}{ylabel}'
 
-        fig, ax = plot.setup_plot(
+        fig, ax = plot.setup(
             fig,
             ax,
             **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel),
@@ -2200,7 +2204,7 @@ class Halo:
             cbar_label: Label for the colorbar.
             row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
             cmap: The colormap to use for the plot.
-            setup_kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
+            setup_kwargs: Additional keyword arguments to pass to `plot.setup()`.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
 
         Returns:
@@ -2277,7 +2281,7 @@ class Halo:
             cmap: The colormap to use for the plot.
             x_tick_format: Format string for the x-axis ticks.
             transparent_range: Range of values to turn transparent (i.e. plot as `NaN`). If `None` ignores.
-            setup_kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
+            setup_kwargs: Additional keyword arguments to pass to `plot.setup()`.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
 
         Returns:
@@ -2439,9 +2443,7 @@ class Halo:
                 time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
                 n_scatters=self.n_scatters.sum(),
             )
-        fig, ax = plot.setup_plot(
-            fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel)
-        )
+        fig, ax = plot.setup(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
         sns.histplot(
             Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_unit),
             ax=ax,
@@ -2475,7 +2477,7 @@ class Halo:
             stat: Statistical function to use for the histogram, must be a valid input for `sns.histplot`.
             fig: Figure to use for the plot.
             ax: Axes to use for the plot.
-            setup_kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
+            setup_kwargs: Additional keyword arguments to pass to `plot.setup()`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments passed to `sns.histplot`.
 
@@ -2483,7 +2485,7 @@ class Halo:
             fig, ax.
 
         """
-        fig, ax = plot.setup_plot(
+        fig, ax = plot.setup(
             fig, ax, **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, length_unit)), **setup_kwargs
         )
         radius = np.diff(np.hstack(self.scatter_track_radius).reshape(-1, 2)).ravel().to(length_unit)
@@ -2521,7 +2523,7 @@ class Halo:
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
             smooth_interpolate_kind: Interpolation kind for the density plot. Applied after the gaussian smoothing to further smooth the plot data.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
@@ -2550,7 +2552,7 @@ class Halo:
                 time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
                 n_scatters=self.n_scatters.sum(),
             )
-        fig, ax = plot.setup_plot(**kwargs, ax_set={'yscale': 'log'}, **utils.drop_None(title=title, xlabel=xlabel))
+        fig, ax = plot.setup(**kwargs, yscale='log', **utils.drop_None(title=title, xlabel=xlabel))
         sns.lineplot(x=r_bins, y=smoothed_density, ax=ax)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
@@ -2562,7 +2564,7 @@ class Halo:
         ylabel: str | None = 'Fraction of scattering DM particles',
         title: str | None = 'Per particle scattering amount distribution',
         minorticks: bool = True,
-        ax_set: dict[str, Any] = {'xscale': 'log'},
+        xscale: str = 'log',
         plot_labels: bool = True,
         bar_kwargs: dict[str, Any] = {'align': 'center', 'edgecolor': 'black', 'alpha': 0.7},
         save_kwargs: dict[str, Any] | None = None,
@@ -2576,22 +2578,22 @@ class Halo:
             ylabel: Label for the y-axis.
             title: Title for the plot.
             minorticks: Whether to add the grid for the minor ticks.
-            ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
+            xscale: The scale of the x-axis.
             plot_labels: Whether to add text bubbles with the y-value above the bins,
             bar_kwargs: Keyword arguments to pass to `Axes.bar()`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
         """
 
-        fig, ax = plot.setup_plot(
+        fig, ax = plot.setup(
             xlabel=xlabel,
             ylabel=ylabel,
             title=title,
             minorticks=minorticks,
-            ax_set=ax_set,
+            xscale=xscale,
             y_axis_percent_formatter={'xmax': 1},
             **kwargs,
         )
@@ -2643,7 +2645,7 @@ class Halo:
             time_format: Format string for time.
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
@@ -2664,7 +2666,7 @@ class Halo:
             )
         xlabel = utils.add_label_unit(xlabel, x_unit)
         ylabel = utils.add_label_unit(ylabel, density_unit)
-        fig, ax = plot.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
+        fig, ax = plot.setup(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
         sns.lineplot(x=x, y=smoothed_local_density, ax=ax)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
@@ -2696,7 +2698,7 @@ class Halo:
             cumulative: Whether to plot the cumulative distribution.
             hist_kwargs: Additional keyword arguments to pass to `sns.histogram()`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
@@ -2708,7 +2710,7 @@ class Halo:
                 nn=self.scatter_params.get('max_radius_j', None),
                 time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
             )
-        fig, ax = plot.setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
+        fig, ax = plot.setup(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
         sns.histplot(
             self.local_density.to(density_unit),
             log_scale=log_scale,
@@ -2752,7 +2754,7 @@ class Halo:
             length_unit: Units for the length.
             length_format: Format string for length.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
@@ -2783,7 +2785,7 @@ class Halo:
         ylabel: str | None = 'Cumulative number of scattering events',
         title: str | None = 'Cumulative number of scattering events',
         label: str | None = None,
-        ax_set: dict[str, Any] = {'yscale': 'log'},
+        yscale: str = 'log',
         lineplot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
@@ -2796,19 +2798,19 @@ class Halo:
             ylabel: Label for the y-axis.
             title: The title of the plot.
             label: Label for the plot (legend).
-            ax_set: Additional keyword arguments to pass to `Axes.set()`.
+            yscale: The scale of the y-axis.
             lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
             save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
         """
-        fig, ax = plot.setup_plot(
+        fig, ax = plot.setup(
             xlabel=utils.add_label_unit(xlabel, time_unit),
             ylabel=ylabel,
             title=title,
-            ax_set=ax_set,
+            yscale=yscale,
             **kwargs,
         )
         x = self.scatter_times.to(time_unit)
@@ -2849,12 +2851,12 @@ class Halo:
             label: Label for the plot (legend).
             per_dm_particle: If `True` plot the mean cumulative number of scattering events, i.e. devide by the number of dm particles.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
         """
-        fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
+        fig, ax = plot.setup(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
         sns.lineplot(
             x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit),
             y=self.n_scatters.cumsum() / self.n_particles['dm'],
@@ -2876,7 +2878,7 @@ class Halo:
         label: str | None = None,
         time_format: str | None = None,
         title_time_unit: str | None = 'Myr',
-        ax_set: dict[str, str] | None = {'yscale': 'log'},
+        yscale: str = 'log',
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -2891,9 +2893,9 @@ class Halo:
             label: Label for the plot (legend).
             time_format: Format for the time in the title.
             title_time_unit: Units for the time displayed in the title.
-            ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'yscale': 'log'}`.
+            yscale: The scale of the y-axis.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
@@ -2905,11 +2907,11 @@ class Halo:
         if title is not None:
             title = title.format(time=time_binning.to(title_time_unit).to_string(format='latex', formatter=time_format))
 
-        fig, ax = plot.setup_plot(
+        fig, ax = plot.setup(
             xlabel=utils.add_label_unit(xlabel, time_unit),
             ylabel=ylabel,
             title=title,
-            ax_set=ax_set,
+            yscale=yscale,
             **kwargs,
         )
         sns.lineplot(x=x[:-1], y=scatters[:-1], ax=ax, label=label)
@@ -2952,13 +2954,12 @@ class Halo:
             clip_max_rounds: Maximum value to clip the `rounds` plot.
             clip_max_total_required: Maximum value to clip the `total_required` plot.
             clip_max_underestimations: Maximum value to clip the `underestimations` plot.
-            ax_set: Additional keyword arguments to pass to `Axes.set()`.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup_plot()`).
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
         """
-        fig, ax = plot.setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
+        fig, ax = plot.setup(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
         x = (np.arange(len(self.scatter_rounds)) * self.dt).to(time_unit)
         if total_required:
             y = np.array(self.scatter_rounds) + np.array(self.scatter_rounds_underestimated)
@@ -3033,7 +3034,8 @@ class Halo:
         radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
         limit_radius_by_Rvir: bool = True,
         distributions: list[Distribution] | list[int] | None = None,
-        ax_set: dict[str, Any] = {'xscale': 'log', 'yscale': 'log'},
+        xscale: str = 'log',
+        yscale: str = 'log',
         fig: Figure | None = None,
         ax: Axes | None = None,
         setup_kwargs: dict[str, Any] = {},
@@ -3052,10 +3054,11 @@ class Halo:
             radius_bins: The radius bins for the density profile calculations.
             limit_radius_by_Rvir: Whether to limit the radius bins by the virial radius.
             distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions. If a list of distribution objects, filter the particles by the distribution ID.
-            ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
+            xscale: The scale of the x-axis.
+            yscale: The scale of the y-axis.
             fig: The figure to plot on.
             ax: The axes to plot on.
-            setup_kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
+            setup_kwargs: Additional keyword arguments to pass to `plot.setup()`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments are passed to every call to the plotting function.
 
@@ -3064,7 +3067,7 @@ class Halo:
         """
         if data is None:
             data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
-        fig, ax = plot.setup_plot(fig=fig, ax=ax, ax_set=ax_set, **setup_kwargs)
+        fig, ax = plot.setup(fig=fig, ax=ax, xscale=xscale, yscale=yscale, **setup_kwargs)
         add_distribution_label = distributions is None or len(distributions) > 1
 
         if automatic_times:
@@ -3212,8 +3215,8 @@ class Halo:
         cbar_label: str | None = 'Number of particles',
         time_unit: UnitLike = 'Gyr',
         time_format: str = '.1f',
-        x_log: bool = True,
-        y_log: bool = True,
+        xscale: str = 'log',
+        yscale: str = 'log',
         plot_method: Literal['imshow', 'pcolormesh'] = 'pcolormesh',
         fig: Figure | None = None,
         ax: Axes | None = None,
@@ -3243,8 +3246,8 @@ class Halo:
             cbar_label: Label for the colorbar.
             time_unit: The time units to use in the plot's title.
             time_format: Format string for time to use in the plot's title.
-            x_log: Sets the x-axis to a log scale.
-            y_log: Sets the y-axis to a log scale.
+            xscale: The scale for the x-axis.
+            yscale: The scale for the y-axis.
             plot_method: Method to use for plotting.
             fig: Figure to plot on.
             ax: Axes to plot on.
@@ -3300,8 +3303,8 @@ class Halo:
             ylabel=ylabel,
             title=title,
             cbar_label=cbar_label,
-            x_log=x_log,
-            y_log=y_log,
+            xscale=xscale,
+            yscale=yscale,
             **kwargs,
         )
         self.save_plot(fig=fig, **kwargs)
@@ -3421,7 +3424,7 @@ class Halo:
                     for t in plot_guidelines['times'].to(time_unit).ravel().value
                 ]
 
-        fig, ax = plot.setup_plot(
+        fig, ax = plot.setup(
             **utils.drop_None(
                 xlabel=utils.add_label_unit(xlabel, time_unit),
                 ylabel=utils.add_label_unit(ylabel, length_unit),

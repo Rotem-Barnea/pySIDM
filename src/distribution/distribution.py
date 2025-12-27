@@ -1,4 +1,4 @@
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 import numpy as np
 import scipy
@@ -15,6 +15,9 @@ from .. import rng, plot, utils, report, physics, run_units
 from ..types import FloatOrArray, ParticleType
 from ..physics.eddington import QuantitySpline
 
+if TYPE_CHECKING:
+    from ..phase_space import PhaseSpace
+
 
 class Distribution:
     """General mass distribution profile."""
@@ -29,7 +32,9 @@ class Distribution:
         Mtot: Quantity['mass'] | None = None,
         rho_s: Quantity['mass density'] | None = None,
         space_steps: float | int = 1e3,
-        h: Quantity['length'] = Quantity(1e-5, 'kpc'),
+        spline_s: float | None = None,
+        truncate: bool = False,
+        truncate_power: int = 4,
         initialize_grids: list[str] = [],
         label: str = '',
         particle_type: ParticleType = 'dm',
@@ -47,7 +52,9 @@ class Distribution:
             rho_s: Scale density of the distribution profile. Either `Mtot` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
             Mtot: Total mass of the distribution profile. Either `Mtot` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
             space_steps: Number of space steps for the `internal logarithmic grid`.
-            h: Radius step size for numerical differentiation.
+            spline_s: Spline smoothing parameter for calculating the drho/dPsi derivative.
+            truncate: Whether to truncate the density at the virial radius.
+            truncate_power: The power law used for truncation.
             initialize_grid: Grids to initialize at startup, otherwise they will only be calculated at runtime as needed.
             label: Label for the density profile.
             name: Additional name for the distribution profile.
@@ -95,6 +102,10 @@ class Distribution:
             self.rho_s = self.calculate_rho_scale()
         if Mtot is None:
             self.Mtot = self.calculate_M_tot()
+
+        self.spline_s = spline_s
+        self.truncate = truncate
+        self.truncate_power = truncate_power
 
         self.memoization = {}
         for grid in initialize_grids:
@@ -217,7 +228,14 @@ class Distribution:
     def rho(self, r: Quantity['length']) -> Quantity['mass density']:
         """Calculate the density (`rho`) at a given radius."""
         return Quantity(
-            self.calculate_rho(r.to(run_units.length).value, self.rho_s.value, self.Rs.value, self.Rvir.value),
+            self.calculate_rho(
+                r=r.to(run_units.length).value,
+                rho_s=self.rho_s.value,
+                Rs=self.Rs.value,
+                Rvir=self.Rvir.value,
+                truncate=self.truncate,
+                truncate_power=self.truncate_power,
+            ),
             run_units.density,
         )
 
@@ -348,7 +366,7 @@ class Distribution:
                 rho_Psi_spline=physics.eddington.make_rho_Psi_spline(
                     Psi_grid=self.Psi_grid,
                     rho_grid=self.rho_grid,
-                    s=1e-1,
+                    s=self.spline_s,
                 ),
             )
         return self.memoization['F']
@@ -503,7 +521,7 @@ class Distribution:
             Quantity, np.vstack(utils.split_3d(self.sample_v_norm(r, generator=generator), generator=generator)).T
         )
 
-    def sample_old(
+    def sample_legacy(
         self,
         n_particles: int | float,
         sampling_method: Literal['random', 'uniform'] = 'random',
@@ -634,6 +652,52 @@ class Distribution:
             cast(Quantity, np.vstack(utils.split_3d(velocity, generator=generator)).T),
         )
 
+    def phase_space(self, **kwargs: Any) -> 'PhaseSpace':
+        """Returns the phase space object matching the distribution."""
+        from ..phase_space import PhaseSpace
+
+        return PhaseSpace(self, **kwargs)
+
+    def full_sample(
+        self,
+        sample_method: Literal['distribution', 'phase space', 'legacy'] = 'distribution',
+        phase_space_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> tuple[
+        Quantity['length'],
+        Quantity['velocity'],
+        Quantity['mass'],
+        NDArray[np.str_],
+        NDArray[np.int64],
+    ]:
+        """Samples particles from the distribution. Wraps the sample method and returns additional particle properties.
+
+        Parameters
+            sample_method: The method to use for sampling particles.
+              - 'distribution': Samples particles from the distribution's distribution function (`df`) grid. Only works with linear grids.
+              - 'phase space': Samples particles from the phase space object. Works with any grid.
+              - 'legacy': Samples the particles' radius by sampling from the quantile m(r) distribution, and then for each particle calculate the velocity pdf from the distribution function (`df`), and sample from it's CDF. THERE IS SOME BUG IN THIS METHOD.
+
+            **phase_space_kwargs: Additional keyword arguments to pass to the phase space object during initialization. Only relevant if `sample_method='phase space'`.
+            **kwargs: Additional keyword arguments to pass to the sample method.
+
+        Returns:
+            The particles' position, velocity, mass, particle type, and distribution ID.
+        """
+        if sample_method == 'distribution':
+            r, v = self.sample(**kwargs)
+        elif sample_method == 'phase space':
+            r, v = self.phase_space(**phase_space_kwargs).sample_weighted_particles(**kwargs)
+        elif sample_method == 'legacy':
+            r, v = self.sample_legacy(**kwargs)
+        return (
+            r,
+            v,
+            cast(Quantity, np.ones(len(r)) * self.Mtot / len(r)),
+            np.full(len(r), self.particle_type),
+            np.full(len(r), self.id),
+        )
+
     ##Plots
 
     def plot_phase_space(
@@ -710,7 +774,8 @@ class Distribution:
         length_unit: UnitLike = 'kpc',
         label: str | None = None,
         add_markers: bool = True,
-        ax_set: dict[str, Any] = {'xscale': 'log', 'yscale': 'log'},
+        xscale: str = 'log',
+        yscale: str = 'log',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the density distribution (`rho`) of the density profile.
@@ -720,17 +785,19 @@ class Distribution:
             r_end: The ending radius for the plot. If `None` uses `Rmax`.
             density_unit: The unit for the density axis.
             length_unit: The unit for the radius axis.
-            ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
-            kwargs: Additional keyword arguments to pass to `plot.setup_plot()`.
+            xscale: The scale of the x-axis.
+            yscale: The scale of the y-axis.
+            kwargs: Additional keyword arguments to pass to `plot.setup()`.
 
         Returns:
             fig, ax.
         """
-        fig, ax = plot.setup_plot(
+        fig, ax = plot.setup(
             title='Density distribution (rho)',
             xlabel=utils.add_label_unit('Radius', length_unit),
             ylabel=utils.add_label_unit('Density', density_unit),
-            ax_set=ax_set,
+            xscale=xscale,
+            yscale=yscale,
             **kwargs,
         )
 
@@ -781,9 +848,7 @@ class Distribution:
             fig, ax.
         """
         title = 'Particle cumulative range distribution (cdf)' if cumulative else 'Particle range distribution (pdf)'
-        fig, ax = plot.setup_plot(
-            fig, ax, title=title, xlabel=utils.add_label_unit('Radius', length_unit), ylabel='Density'
-        )
+        fig, ax = plot.setup(fig, ax, title=title, xlabel=utils.add_label_unit('Radius', length_unit), ylabel='Density')
 
         if r_start is None:
             r_start = self.Rmin
@@ -823,11 +888,12 @@ class Distribution:
 
         xlabel = utils.add_label_unit(xlabel, energy_unit)
         ylabel = utils.add_label_unit(ylabel, y_unit)
-        fig, ax = plot.setup_plot(
+        fig, ax = plot.setup(
             fig,
             ax,
             minorticks=True,
-            ax_set={'xscale': 'log', 'yscale': 'log'},
+            xscale='log',
+            yscale='log',
             xlabel=xlabel,
             ylabel=ylabel,
             title=title,
@@ -863,11 +929,12 @@ class Distribution:
 
         xlabel = utils.add_label_unit(xlabel, energy_unit)
         ylabel = utils.add_label_unit(ylabel, f_unit)
-        fig, ax = plot.setup_plot(
+        fig, ax = plot.setup(
             fig,
             ax,
             minorticks=True,
-            ax_set={'xscale': 'log', 'yscale': 'log'},
+            xscale='log',
+            yscale='log',
             xlabel=xlabel,
             ylabel=ylabel,
             title=title,

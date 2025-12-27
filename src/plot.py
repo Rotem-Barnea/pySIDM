@@ -60,12 +60,14 @@ def pretty_ax_text(
     )
 
 
-def setup_plot(
+def setup(
     fig: Figure | None = None,
     ax: Axes | None = None,
     grid: bool = True,
     minorticks: bool = False,
     figsize: tuple[int, int] | None = (6, 5),
+    xscale: str = 'linear',
+    yscale: str = 'linear',
     ax_set: dict[str, str] | None = None,
     x_axis_percent_formatter: dict[str, Any] | None = None,
     y_axis_percent_formatter: dict[str, Any] | None = None,
@@ -90,6 +92,8 @@ def setup_plot(
         grid: Whether to add a grid to the plot (major ticks).
         minorticks: Whether to add the grid for the minor ticks.
         figsize: The figure size to create. Ignored if `fig` / `ax` is provided.
+        xscale: The scale of the x-axis. Superceded by `ax_set['xscale']` if provided.
+        yscale: The scale of the y-axis. Superceded by `ax_set['yscale']` if provided.
         ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
         x_axis_percent_formatter: Format the x-axis as a percentage and pass the arguments to the formatter (`matplotlib.ticker.PercentFormatter(**x_axis_percent_formatter)`). If `None` ignores.
         y_axis_percent_formatter: Format the y-axis as a percentage and pass the arguments to the formatter (`matplotlib.ticker.PercentFormatter(**y_axis_percent_formatter)`). If `None` ignores.
@@ -117,8 +121,7 @@ def setup_plot(
     if minorticks:
         ax.minorticks_on()
         ax.grid(True, which='minor', alpha=0.3, linestyle='--')
-    if ax_set is not None:
-        ax.set(**ax_set)
+    ax.set(**{'xscale': xscale, 'yscale': yscale, **(ax_set or {})})
     if title is not None:
         ax.set_title(title)
     if xlabel is not None:
@@ -226,7 +229,7 @@ def trace(
         length_unit: Units for the length.
         length_format: Format string for length.
         save_kwargs: Keyword arguments to pass to `save()`. Must include `save_path`. If `None` ignores saving.
-        kwargs: Additional keyword arguments to pass to the plot function (`setup_plot()`).
+        kwargs: Additional keyword arguments to pass to the plot function (`setup()`).
 
     Returns:
         fig, ax.
@@ -258,7 +261,7 @@ def trace(
             particle_index=particle_index,
             r=particle['r'][0].to(length_unit).to_string(format='latex', formatter=length_format),
         )
-    fig, ax = setup_plot(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
+    fig, ax = setup(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
     sns.lineplot(x=x, y=np.array(y), ax=ax, label=label)
     if save_kwargs is not None:
         save(fig=fig, **save_kwargs)
@@ -280,8 +283,10 @@ def heatmap(
     y_nbins: int | None = 6,
     x_tick_format: str = '.0f',
     y_tick_format: str = '.0f',
-    x_log: bool = False,
-    y_log: bool = False,
+    xscale: str | Literal['guess'] = 'guess',
+    yscale: str | Literal['guess'] = 'guess',
+    xclip: bool = False,
+    yclip: bool = False,
     title: str | None = None,
     xlabel: str | None = None,
     ylabel: str | None = None,
@@ -318,8 +323,10 @@ def heatmap(
         y_nbins: Number of bins to use for the y-axis.
         x_tick_format: Format string for the x-axis ticks.
         y_tick_format: Format string for the y-axis ticks.
-        x_log: Sets the x-axis to a log scale.
-        y_log: Sets the y-axis to a log scale.
+        xscale: The scale for the x-axis. If `guess`, the scale is determined automatically from the data.
+        yscale: The scale for the y-axis. If `guess`, the scale is determined automatically from the data.
+        xclip: Whether to clip the x-axis to the range of the non-transparent data. Only relevant if `x_range` is provided.
+        yclip: Whether to clip the y-axis to the range of the non-transparent data. Only relevant if `y_range` is provided.
         title: Title of the plot.
         xlabel: Label for the x-axis.
         ylabel: Label for the y-axis.
@@ -335,39 +342,13 @@ def heatmap(
         texts: List of texts to plot. Each element contains the keywords arguments passed to `ax.text()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         fig: Figure to plot on.
         ax: Axes to plot on.
-        setup_kwargs: Additional keyword arguments to pass to `setup_plot()`.
+        setup_kwargs: Additional keyword arguments to pass to `setup()`.
         save_kwargs: Keyword arguments to pass to `save()`. Must include `save_path`. If `None` ignores saving.
         kwargs: Additional keyword arguments to pass to `plt.imshow()` or `plt.pcolormesh()`.
 
     Returns:
         fig, ax.
     """
-    if extent is None:
-        assert x_range is not None and y_range is not None, 'x_range and y_range must be provided if extent is None'
-        extent = cast(
-            tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_range.to(x_unit), y_range.to(y_unit))
-        )
-    extent_value = (
-        float(extent[0].to(x_unit).value),
-        float(extent[1].to(x_unit).value),
-        float(extent[2].to(y_unit).value),
-        float(extent[3].to(y_unit).value),
-    )
-
-    if x_log:
-        setup_kwargs['ax_set'] = {**setup_kwargs.get('ax_set', {}), 'xscale': 'log'}
-    if y_log:
-        setup_kwargs['ax_set'] = {**setup_kwargs.get('ax_set', {}), 'yscale': 'log'}
-
-    fig, ax = setup_plot(
-        fig=fig,
-        ax=ax,
-        grid=False,
-        title=title,
-        xlabel=utils.add_label_unit(xlabel, x_unit),
-        ylabel=utils.add_label_unit(ylabel, y_unit),
-        **setup_kwargs,
-    )
     grid = grid.copy()
     if cbar_unit != '':
         grid = grid.to(cbar_unit)
@@ -383,13 +364,46 @@ def heatmap(
     if transparent_range is not None:
         grid[(grid.value >= transparent_range[0]) * (grid.value <= transparent_range[1])] = np.nan
 
+    if x_range is not None and y_range is not None:
+        if xclip:
+            mask = utils.mask_edge_zeros(grid=grid, axis=0)
+            grid, x_range = cast(tuple[Quantity, Quantity], (grid[:, mask], x_range[mask]))
+        if yclip:
+            mask = utils.mask_edge_zeros(grid=grid, axis=1)
+            grid, y_range = cast(tuple[Quantity, Quantity], (grid[mask, :], y_range[mask]))
+        extent = cast(
+            tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_range.to(x_unit), y_range.to(y_unit))
+        )
+        xscale = utils.guess_scale(x_range) if xscale == 'guess' else xscale
+        yscale = utils.guess_scale(y_range) if yscale == 'guess' else yscale
+    else:
+        assert extent is not None, '`extent` must be provided if `x_range` and `y_range` are not'
+        xscale = utils.guess_scale(Quantity(extent[:2])) if xscale == 'guess' else xscale
+        yscale = utils.guess_scale(Quantity(extent[2:])) if yscale == 'guess' else yscale
+    extent_value = (
+        float(extent[0].to(x_unit).value),
+        float(extent[1].to(x_unit).value),
+        float(extent[2].to(y_unit).value),
+        float(extent[3].to(y_unit).value),
+    )
+
+    fig, ax = setup(
+        fig=fig,
+        ax=ax,
+        grid=False,
+        title=title,
+        xlabel=utils.add_label_unit(xlabel, x_unit),
+        ylabel=utils.add_label_unit(ylabel, y_unit),
+        **cast(Any, {**setup_kwargs, 'xscale': xscale, 'yscale': yscale}),
+    )
+
     if plot_method == 'imshow':
         im = ax.imshow(grid.value, origin='lower', aspect='auto', extent=extent_value, **kwargs)
     else:
         assert x_range is not None and y_range is not None, (
             "x_range and y_range must be provided for `plot_method='pcolormesh'`"
         )
-        im = ax.pcolormesh(*np.meshgrid(x_range, y_range), grid.value, **kwargs)
+        im = ax.pcolormesh(*np.meshgrid(x_range.to(x_unit).value, y_range.to(y_unit).value), grid.value, **kwargs)
 
     cbar = fig.colorbar(im, ax=ax)
 
@@ -417,13 +431,12 @@ def heatmap(
         cbar.update_ticks()
 
     if x_nbins is not None:
-        if x_log:
+        if xscale == 'log':
             ax.xaxis.set_major_locator(ticker.LogLocator(base=10, numticks=x_nbins))
             ax.xaxis.set_major_formatter(ticker.LogFormatterSciNotation(base=10))
             ax.xaxis.set_minor_locator(
                 ticker.LogLocator(base=10, subs=list(np.arange(2, 10, dtype=float)), numticks=999)
             )
-            ax.set_xscale('log')
         else:
             ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_nbins))
             ax.xaxis.set_major_formatter(ticker.StrMethodFormatter(f'{{x:{x_tick_format}}}'))
@@ -433,13 +446,12 @@ def heatmap(
             lab.set_horizontalalignment('center')
 
     if y_nbins is not None:
-        if y_log:
+        if yscale == 'log':
             ax.yaxis.set_major_locator(ticker.LogLocator(base=10, numticks=y_nbins))
             ax.yaxis.set_major_formatter(ticker.LogFormatterSciNotation(base=10))
             ax.yaxis.set_minor_locator(
                 ticker.LogLocator(base=10, subs=list(np.arange(2, 10, dtype=float)), numticks=999)
             )
-            ax.set_yscale('log')
         else:
             ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=y_nbins))
             ax.yaxis.set_major_formatter(ticker.StrMethodFormatter(f'{{x:{y_tick_format}}}'))
@@ -490,7 +502,8 @@ def density(
     title: str | None = None,
     length_unit: UnitLike = 'kpc',
     density_unit: UnitLike = 'Msun/kpc^3',
-    ax_set: dict[str, Any] = {'xscale': 'log', 'yscale': 'log'},
+    xscale: str = 'log',
+    yscale: str = 'log',
     minorticks: bool = True,
     label: str | None = None,
     cleanup_nonpositive: bool = True,
@@ -511,7 +524,8 @@ def density(
         title: Title for the plot.
         length_unit: Units to use for the x-axis.
         density_unit: Number of bins to use for the y-axis.
-        ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
+        xscale: The scale of the x-axis.
+        yscale: The scale of the y-axis.
         minorticks: Whether to add the grid for the minor ticks.
         label: label to add to the plot legend.
         cleanup_nonpositive: drop non-positive values from the plot, to avoid "pits" in the log plot.
@@ -519,7 +533,7 @@ def density(
         add_J: Multiply the density by the spherical jacobian (4*pi*r^2).
         save_kwargs: Keyword arguments to pass to `save()`. Must include `save_path`. If `None` ignores saving.
         line_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
-        kwargs: Additional keyword arguments to pass to `setup_plot()`.
+        kwargs: Additional keyword arguments to pass to `setup()`.
 
 
     Returns:
@@ -537,8 +551,9 @@ def density(
         if ylabel is not None:
             ylabel = rf'{ylabel} $\cdot 4\pi r^2$'
     density = density.to(density_unit)
-    fig, ax = setup_plot(
-        ax_set=ax_set,
+    fig, ax = setup(
+        xscale=xscale,
+        yscale=yscale,
         minorticks=minorticks,
         **default_plot_text('r', xlabel=xlabel, ylabel=ylabel, title=title, x_unit=length_unit, y_unit=density_unit),
         **kwargs,
@@ -820,14 +835,14 @@ def cumulative_scattering_amount_over_time(
         data_time_unit: The units for the time in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
         lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
         save_kwargs: Keyword arguments to pass to `save()`. Must include `save_path`. If `None` ignores saving.
-        kwargs: Additional keyword arguments to pass to the plot function (`setup_plot()`).
+        kwargs: Additional keyword arguments to pass to the plot function (`setup()`).
 
     Returns:
         fig, ax.
     """
     if not isinstance(time, Quantity):
         time = Quantity(time, data_time_unit)
-    fig, ax = setup_plot(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, **kwargs)
+    fig, ax = setup(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, **kwargs)
     sns.lineplot(x=time.to(time_unit).value, y=cumulative_scatters, ax=ax, label=label, **lineplot_kwargs)
     if label is not None:
         ax.legend()
@@ -955,14 +970,14 @@ def phase_space_energy_lines(
         ax: Axes to plot on.
         lineplot_kwargs: Keyword arguments to pass to `sns.lineplot()`.
         save_kwargs: Keyword arguments to pass to `save()`. If `None` ignores saving.
-        kwargs: Additional keyword arguments to pass to `setup_plot()`.
+        kwargs: Additional keyword arguments to pass to `setup()`.
 
     Returns:
         fig, ax.
     """
     r = cast(Quantity, np.linspace(r_range.min(), r_range.max(), steps))
     Psi = Psi_fn(r)
-    fig, ax = setup_plot(fig=fig, ax=ax, **kwargs)
+    fig, ax = setup(fig=fig, ax=ax, **kwargs)
     for e in E:
         mask = np.ones(len(Psi), dtype=np.bool_)
         v = Quantity(np.zeros(len(Psi)), velocity_unit)

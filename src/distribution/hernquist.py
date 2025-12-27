@@ -11,8 +11,8 @@ from .distribution import Distribution
 class Hernquist(Distribution):
     """Hernquist density profile."""
 
-    def __init__(self, **kwargs: Any) -> None:
-        super().__init__(**kwargs)
+    def __init__(self, truncate: bool = False, **kwargs: Any) -> None:
+        super().__init__(truncate=truncate, **kwargs)
         self.title = 'Hernquist'
 
     @staticmethod
