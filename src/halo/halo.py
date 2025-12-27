@@ -21,12 +21,13 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from . import io, plot, utils, report, physics, run_units
-from .tqdm import tqdm
-from .types import ParticleType
-from .physics import sidm, leapfrog
-from .background import Mass_Distribution
-from .distribution.distribution import Distribution
+from . import io
+from .. import plot, utils, report, physics, run_units
+from ..tqdm import tqdm
+from ..types import ParticleType
+from ..physics import sidm, leapfrog
+from ..background import Mass_Distribution
+from ..distribution.distribution import Distribution
 
 
 class Halo:

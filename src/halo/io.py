@@ -7,7 +7,7 @@ import numpy as np
 import regex
 from astropy import table
 
-from .tqdm import tqdm
+from ..tqdm import tqdm
 
 
 def save_table(data: table.QTable, path: str | Path, **kwargs: Any) -> None:

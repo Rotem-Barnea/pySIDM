@@ -9,7 +9,7 @@ if __name__ == '__main__':
     from astropy.units import Quantity
 
     from src import distribution
-    from src.halo import Halo
+    from src.halo.halo import Halo
 
     save_path = Path(os.environ['SAVE_PATH']) / 'run results' / os.environ.get('SAVE_NAME', 'run 1')
 
