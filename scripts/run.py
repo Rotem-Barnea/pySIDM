@@ -65,5 +65,5 @@ if __name__ == '__main__':
     halo.evolve(
         until_t=until_t,
         tqdm_kwargs={'mininterval': 60},
-        reoptimize_dt_rate=Quantity(1, 'Gyr'),
+        # reoptimize_dt_rate=Quantity(1, 'Gyr'),
     )
