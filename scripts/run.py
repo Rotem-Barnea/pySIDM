@@ -29,6 +29,7 @@ if __name__ == '__main__':
         distributions = distribution.physical_examples.by_name(
             *distribution.physical_examples.validate_input(os.environ.get('NAME', 'default')),
             verbose=True,
+            backend='agama',
         )
 
         print('Setup parameters')
@@ -41,7 +42,7 @@ if __name__ == '__main__':
         cleanup_particles_by_radius = True
         max_allowed_subdivisions = 1
         bootstrap_steps = 100
-        dynamics_params = {'raise_warning': False}
+        dynamics_params = {'raise_warning': False, 'max_minirounds': 10}
         scatter_params = {'disable_tqdm': True}
 
         print('Setup complete, starting halo initialization')
