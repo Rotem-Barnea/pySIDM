@@ -19,5 +19,5 @@
   "reportInvalidTypeForm": false,
   "exclude": ["**/*.ipynb", "**/__pycache__"],
   "include": ["src"],
-  "venv": "SIDM_env"
+  "venv": "venv",
 }
