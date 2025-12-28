@@ -1009,7 +1009,13 @@ class Halo:
         #     self.optimize_dt()
 
         if reoptimize_dt_rate is not None:
-            n_chunks = int(np.ceil((self.to_time(n_steps).to(reoptimize_dt_rate.unit) / reoptimize_dt_rate).value))
+            n_chunks = int(
+                np.ceil(
+                    (self.to_time(n_steps).to(reoptimize_dt_rate.unit) / reoptimize_dt_rate)
+                    .decompose(run_units.system)
+                    .value
+                )
+            )
             chunk_n_steps = int(np.ceil(n_steps / n_chunks))
         else:
             chunk_n_steps = n_steps

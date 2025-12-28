@@ -8,7 +8,7 @@ from astropy.units import Unit, Quantity
 from .. import run_units
 from ..types import QuantityOrArray
 
-G = constants.G.to(run_units.G_unit)
+G = constants.G.decompose(run_units.system)
 
 
 def M(
@@ -105,7 +105,7 @@ def Phi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityO
         The gravitational potential at the given radius.
     """
     integral = scipy.integrate.cumulative_trapezoid(
-        y=constants.G.to(run_units.G_unit).value * M * m / r**2, x=r, initial=0
+        y=constants.G.decompose(run_units.system).value * M * m / r**2, x=r, initial=0
     )
     if isinstance(r, Quantity):
         return Quantity(integral, run_units.energy)
@@ -120,7 +120,7 @@ def Psi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityO
     See `Phi()` for details.
     """
     integral = scipy.integrate.cumulative_trapezoid(
-        y=constants.G.to(run_units.G_unit).value * M * m / r**2, x=r, initial=0
+        y=constants.G.decompose(run_units.system).value * M * m / r**2, x=r, initial=0
     )
     integral = integral[-1] - integral
     if isinstance(r, Quantity):

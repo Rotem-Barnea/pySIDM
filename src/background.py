@@ -6,7 +6,7 @@ from astropy.units import Quantity
 
 from tqdm import tqdm
 
-from . import nsphere
+from . import nsphere, run_units
 from .spatial_approximation import Lattice
 
 
@@ -81,5 +81,10 @@ class Mass_Distribution:
     def M_at_time(self, r: Quantity['length'], time: Quantity['time']) -> Quantity['mass']:
         """Calculate the mass at a given radius and time. Achieved by finding the nearest grid point and using linear interpolation in the time dimension (see `self.at_time()`)."""
         return cast(
-            Quantity, self.at_time(time)[self.lattice(r.value).clip(min=0, max=len(self.lattice) - 1).astype(np.int64)]
+            Quantity,
+            self.at_time(time)[
+                self.lattice(r.decompose(run_units.system).value)
+                .clip(min=0, max=len(self.lattice) - 1)
+                .astype(np.int64)
+            ],
         )

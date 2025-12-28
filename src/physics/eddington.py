@@ -2,7 +2,6 @@ from typing import Any, cast
 
 import numpy as np
 import scipy
-from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 from scipy.interpolate import UnivariateSpline
 from astropy.units.typing import UnitLike
@@ -38,10 +37,8 @@ class QuantitySpline(UnivariateSpline):
 def F(
     E: float,
     spline: UnivariateSpline,
-    limit: int = 100,
-    epsabs: float = 1e-8,
-    epsrel: float = 1e-6,
-    difficulties_bound_factor: tuple[float, float] | list[float] | NDArray[np.float64] = (0.95, 0.9999),
+    limit: int = 200,
+    # epsrel: float = 1e-8,
     **kwargs: Any,
 ) -> float:
     """Calculate the antiderivative of the distribution function `df`. Internal function that intentionally doesn't support units.
@@ -50,9 +47,7 @@ def F(
         E: The energy value to calculate the antiderivative at.
         spline: A `scipy` spline object for `rho` as a function of `Psi`.
         limit: Passed on to `scipy.integrate.quad()`.
-        epsabs: Passed on to `scipy.integrate.quad()`.
         epsrel: Passed on to `scipy.integrate.quad()`.
-        difficulties_bound_factor: Defines a list of breakpoints around difficulties to help `scipy.integrate.quad()` converge. The values are multiplied by `E`. The maximum value is taken as the end-point of the integral (there's always a pole there).
         kwargs: Additional keyword arguments to pass to `scipy.integrate.quad()`.
 
 
@@ -60,13 +55,13 @@ def F(
         The antiderivative value at `E`.
     """
     return scipy.integrate.quad(
-        func=lambda x: (1 / np.sqrt(E - x)) * spline.derivative()(x),
+        func=lambda x: spline.derivative()(x),
         a=0,
-        b=E * np.array(difficulties_bound_factor).max(),
+        b=E,
         limit=limit,
-        epsabs=epsabs,
-        epsrel=epsrel,
-        points=np.array(difficulties_bound_factor) * E,
+        # epsrel=epsrel,
+        weight='alg',
+        wvar=(0, -0.5),  # (t, s) where weight = (x-a)^t * (b-x)^s. t=-0.5 gives (E-x)^(-0.5) = 1/√(E-x)
         **kwargs,
     )[0] / (np.sqrt(8) * np.pi**2)
 

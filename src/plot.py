@@ -398,12 +398,18 @@ def heatmap(
     )
 
     if plot_method == 'imshow':
-        im = ax.imshow(grid.value, origin='lower', aspect='auto', extent=extent_value, **kwargs)
+        im = ax.imshow(
+            grid.decompose(run_units.system).value, origin='lower', aspect='auto', extent=extent_value, **kwargs
+        )
     else:
         assert x_range is not None and y_range is not None, (
             "x_range and y_range must be provided for `plot_method='pcolormesh'`"
         )
-        im = ax.pcolormesh(*np.meshgrid(x_range.to(x_unit).value, y_range.to(y_unit).value), grid.value, **kwargs)
+        im = ax.pcolormesh(
+            *np.meshgrid(x_range.to(x_unit).value, y_range.to(y_unit).value),
+            grid.decompose(run_units.system).value,
+            **kwargs,
+        )
 
     cbar = fig.colorbar(im, ax=ax)
 

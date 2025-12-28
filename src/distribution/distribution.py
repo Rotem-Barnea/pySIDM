@@ -72,7 +72,7 @@ class Distribution:
             'Exactly two of Rs, Rvir, and c must be specified'
         )
         if Rs is not None and Rvir is not None:
-            c = float(Rvir / Rs)
+            c = (Rvir / Rs).decompose(run_units.system).value
         elif Rs is not None and c is not None:
             Rvir = Quantity(c * Rs.to(run_units.length))
         elif Rvir is not None and c is not None:
@@ -146,7 +146,9 @@ class Distribution:
     @staticmethod
     def c_from_M_Dutton14(M: Quantity['mass']) -> float:
         """Calculate the concentration parameter `c` from the total mass `M` based on Dutton & Maccio (2014)."""
-        return 10 ** (1.025 - 0.097 * np.log10((M.to('Msun') / 1e12 * cosmology.Planck18.H0).value))
+        return 10 ** (
+            1.025 - 0.097 * np.log10((M.to('Msun') / 1e12 * cosmology.Planck18.H0).decompose(run_units.system).value)
+        )
 
     @property
     def label(self) -> str:
@@ -230,9 +232,9 @@ class Distribution:
         return Quantity(
             self.calculate_rho(
                 r=r.to(run_units.length).value,
-                rho_s=self.rho_s.value,
-                Rs=self.Rs.value,
-                Rvir=self.Rvir.value,
+                rho_s=self.rho_s.decompose(run_units.system).value,
+                Rs=self.Rs.decompose(run_units.system).value,
+                Rvir=self.Rvir.decompose(run_units.system).value,
                 truncate=self.truncate,
                 truncate_power=self.truncate_power,
             ),
@@ -259,9 +261,13 @@ class Distribution:
 
     def spherical_rho_integrate(self, r: Quantity['length'], use_rho_s: bool = True) -> Quantity['mass']:
         """Calculate the density (`rho`) integral in `[0,r]` assuming spherical symmetry. `use_rho_s` is used internally to calculate the density scale and shouldn't be used."""
-        rho_s = self.rho_s.value if use_rho_s else 1
+        rho_s = self.rho_s.decompose(run_units.system).value if use_rho_s else 1
         integral = utils.fast_spherical_rho_integrate(
-            np.atleast_1d(r.to(run_units.length).value), self.calculate_rho, rho_s, self.Rs.value, self.Rvir.value
+            np.atleast_1d(r.to(run_units.length).value),
+            self.calculate_rho,
+            rho_s,
+            self.Rs.decompose(run_units.system).value,
+            self.Rvir.decompose(run_units.system).value,
         )
         return Quantity(integral, run_units.mass)
 
@@ -294,12 +300,12 @@ class Distribution:
     def mass_pdf(self, r: Quantity['length']) -> FloatOrArray:
         """Mass probability density function (pdf) at radius `r`. Normalized `rho*r^2`."""
         mass_pdf = self.rho_r2(r).value
-        mass_pdf /= np.trapezoid(mass_pdf, r.value)
+        mass_pdf /= np.trapezoid(mass_pdf, r.decompose(run_units.system).value)
         return mass_pdf
 
     def mass_cdf(self, r: Quantity['length']) -> FloatOrArray:
         """Mass cumulative probability density function (cdf) at radius `r`. Normalized enclosed mass."""
-        return (self.M(r) / self.Mtot).value
+        return (self.M(r) / self.Mtot).decompose(run_units.system).value
 
     def pdf(self, r: Quantity['length']) -> FloatOrArray:
         """Mass probability density function (pdf) interpolated at a given radius (memoized)."""
