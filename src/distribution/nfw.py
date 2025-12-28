@@ -5,6 +5,7 @@ from numba import njit
 from astropy import cosmology
 from astropy.units import Quantity
 
+from . import agama_wrappers
 from .. import run_units
 from ..types import FloatOrArray
 from .distribution import Distribution
@@ -65,6 +66,12 @@ class NFW(Distribution):
     def calculate_theoretical_Rvir(M: Quantity['mass']) -> Quantity['length']:
         """Calculate the virial radius based on the theoretical density profile (without truncation)."""
         return ((3 * M / (4 * np.pi * 200 * cosmology.Planck18.critical_density0)) ** (1 / 3)).to(run_units.length)
+
+    def to_agama_potential(
+        self, type: str | None = 'Spheroid', gamma: int | None = 1, beta: int | None = 3, **kwargs: Any
+    ) -> agama_wrappers.Potential:
+        """Generate an agama potential from the distribution. NFW is a `Spheroid` potential with `gamma=1` and `beta=3`."""
+        return super().to_agama_potential(type=type, gamma=gamma, beta=beta, **kwargs)
 
     @classmethod
     def from_example(cls, name: Literal['Sague-1', 'Draco', 'Fornax', 'default'] = 'default', **kwargs: Any) -> Self:

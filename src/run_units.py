@@ -1,6 +1,9 @@
 from typing import cast
 
-from astropy.units import Unit, UnitBase
+import agama
+from astropy.units import Unit, Quantity, UnitBase
+
+agama.setUnits(mass=Quantity(1, 'Msun'), length=Quantity(1, 'kpc'), velocity=Quantity(1, 'km/second'))
 
 ## Base work units
 length: UnitBase = cast(UnitBase, Unit('kpc'))

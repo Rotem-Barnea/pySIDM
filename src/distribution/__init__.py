@@ -1,3 +1,3 @@
-from . import nfw, cored, uniform, distribution, physical_examples
+from . import io, nfw, cored, uniform, distribution, agama_wrappers, physical_examples
 
-__all__ = ['distribution', 'nfw', 'uniform', 'cored', 'physical_examples']
+__all__ = ['io', 'distribution', 'nfw', 'uniform', 'cored', 'agama_wrappers', 'physical_examples']

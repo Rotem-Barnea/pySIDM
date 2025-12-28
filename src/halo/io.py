@@ -8,6 +8,7 @@ import regex
 from astropy import table
 
 from ..tqdm import tqdm
+from ..distribution.distribution import Distribution
 
 
 def save_table(data: table.QTable, path: str | Path, **kwargs: Any) -> None:
@@ -45,12 +46,20 @@ def load_pickle(path: str | Path, stem: str, verbose: bool = False) -> dict[str,
         return pickle.load(f)
 
 
+def load_distributions(path: str | Path, verbose: bool = False) -> list[Distribution]:
+    """Load the distributions"""
+    if verbose:
+        print('Loading distributions')
+    return [Distribution.load(path.parent, path.stem) for path in (Path(path) / 'distributions').glob('*.pkl')]
+
+
 def save(
     path: str | Path | None,
     static_tables: dict[str, table.QTable] = {},
     splitable_table: dict[str, table.QTable] = {},
     metadata_payload: dict[str, Any] = {},
     heavy_payload: dict[str, Any] = {},
+    distributions: list[Distribution] = [],
     two_steps: bool = False,
     keep_last_backup: bool = False,
     split_tables: bool = True,
@@ -63,6 +72,7 @@ def save(
         splitable_table: Splitable tables to save (if `split_tables` is True).
         metadata_payload: Metadata payload to save.
         heavy_payload: Heavy payload to save.
+        distributions: Distributions to save.
         two_steps: If `True` saves the simulation state in two steps, to avoid rewriting the existing file with data that can be stopped midway (leaving just the 1 corrupted file). This means that for the duration of the saving the disk size used is doubled.
         keep_last_backup: If `True` keeps a full backup of the previous save, otherwise overwrite it based on `two_steps` rules. This option _always_ uses twice the disk space.
         split_tables: If `True` saves the `splitable_table` QTables as separate files.
@@ -87,6 +97,9 @@ def save(
     tag = '_' if two_steps else ''
     save_pickle(path, f'metadata{tag}', metadata_payload)
     save_pickle(path, f'heavy_payload{tag}', heavy_payload)
+    for distribution in distributions:
+        (path / 'distributions').mkdir(exist_ok=True)
+        distribution.save(path / 'distributions', f'{distribution.name}_{distribution.title}{tag}')
     for name, data in tables.items():
         save_table(data, path / f'{name}{tag}.fits', overwrite=True)
     for file in path.glob('*_.*'):

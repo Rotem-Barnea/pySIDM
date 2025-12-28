@@ -1,4 +1,5 @@
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, Callable, cast
+from pathlib import Path
 
 import numpy as np
 import scipy
@@ -11,6 +12,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
+from . import io, agama_wrappers
 from .. import rng, plot, utils, report, physics, run_units
 from ..types import FloatOrArray, ParticleType
 from ..physics.eddington import QuantitySpline
@@ -40,6 +42,9 @@ class Distribution:
         particle_type: ParticleType = 'dm',
         name: str = '',
         id: int | None = None,
+        backend: Literal['python', 'agama'] = 'python',
+        agama_potential: agama_wrappers.Potential | None = None,
+        agama_total_potential: agama_wrappers.Potential | None = None,
     ) -> None:
         """General mass distribution profile.
 
@@ -59,24 +64,51 @@ class Distribution:
             label: Label for the density profile.
             name: Additional name for the distribution profile.
             id: Unique identifier for the distribution profile.
+            bypass_init_checks: Whether to bypass initialization checks.
+            backend: Backend to use for calculations. Either 'python' (explicit functions defined in this class) or 'agama' (create the relevant potential and distribution functions on the fly and forward the calculations to them).
 
         Returns:
             General mass distribution object.
         """
 
+        self.space_steps: int = int(space_steps)
+        self.title = 'General'
+        self.particle_type: ParticleType = particle_type
+        self._label: str = label
+        self.name: str = name
+        self.Rmin: Quantity['length'] = Rmin.to(run_units.length)
+        self.Rmax: Quantity['length'] = (
+            Rmax if Rmax is not None else 85 * (Rs if Rs is not None else Quantity(2, 'kpc'))
+        ).to(run_units.length)
+
+        self.spline_s = spline_s
+        self.truncate = truncate
+        self.truncate_power = truncate_power
+        self.memoization = {}
+        self.id = utils.make_id(id)
+        self.backend = backend
+
         if c == 'Dutton14':
             assert Mtot is not None, 'Mtot must be provided when using Dutton14'
             c = self.c_from_M_Dutton14(Mtot)
 
-        assert sum([Rs is not None, Rvir is not None, c is not None]) == 2, (
-            'Exactly two of Rs, Rvir, and c must be specified'
-        )
         if Rs is not None and Rvir is not None:
             c = (Rvir / Rs).decompose(run_units.system).value
         elif Rs is not None and c is not None:
             Rvir = Quantity(c * Rs.to(run_units.length))
         elif Rvir is not None and c is not None:
             Rs = Quantity(Rvir.to(run_units.length) / c)
+
+        if Rs is not None:
+            self.Rs = Rs.to(run_units.length)
+        if Rvir is not None:
+            self.Rvir = Rvir.to(run_units.length)
+        if c is not None:
+            self.c = c
+        if Mtot is not None:
+            self.Mtot = Mtot.to(run_units.mass)
+        if rho_s is not None:
+            self.rho_s = rho_s.to(run_units.density)
 
         assert Rs is not None, 'Failed to evaluate Rs'
         assert Rvir is not None, 'Failed to evaluate Rvir'
@@ -87,13 +119,8 @@ class Distribution:
         self.Rvir: Quantity['length'] = Rvir.to(run_units.length)
         self.c: float = c
 
-        self.space_steps: int = int(space_steps)
-        self.title = 'General'
-        self.particle_type: ParticleType = particle_type
-        self._label: str = label
-        self.name: str = name
-        self.Rmin: Quantity['length'] = Rmin.to(run_units.length)
-        self.Rmax: Quantity['length'] = (Rmax if Rmax is not None else 85 * self.Rs).to(run_units.length)
+        self.Rmax = (Rmax if Rmax is not None else 85 * self.Rs).to(run_units.length)
+
         if Mtot is not None:
             self.Mtot: Quantity['mass'] = Mtot.to(run_units.mass)
         if rho_s is not None:
@@ -103,15 +130,17 @@ class Distribution:
         if Mtot is None:
             self.Mtot = self.calculate_M_tot()
 
-        self.spline_s = spline_s
-        self.truncate = truncate
-        self.truncate_power = truncate_power
+        if self.backend == 'agama':
+            self.agama_potential = agama_potential if agama_potential is not None else self.to_agama_potential()
+            self.agama_total_potential = (
+                agama_total_potential if agama_total_potential is not None else self.to_agama_potential()
+            )
+        else:
+            self.agama_potential = None
+            self.agama_total_potential = None
 
-        self.memoization = {}
         for grid in initialize_grids:
             getattr(self, grid)
-
-        self.id = utils.make_id(id)
 
     def __repr__(self):
         warn = '' if self.physical else 'WARNING: This distribution is not physical.\n\n'
@@ -184,6 +213,43 @@ class Distribution:
     def Tdyn(self, Tdyn: Unit) -> None:
         self.memoization['Tdyn'] = Tdyn
 
+    def to_agama_potential(
+        self, type: str | None = None, gamma: int | None = None, beta: int | None = None, **kwargs: Any
+    ) -> agama_wrappers.Potential:
+        """Generate an agama potential from the distribution."""
+        return agama_wrappers.Potential(
+            **utils.drop_None(
+                type=type,
+                gamma=gamma,
+                beta=beta,
+                outerCutoffRadius=self.Rvir.value if self.truncate else None,
+                cutoffStrength=self.truncate_power if self.truncate else None,
+            ),
+            mass=self.Mtot.value,
+            scaleRadius=self.Rs.value,
+            **kwargs,
+        )
+
+    def to_agama_df(
+        self,
+        type: str = 'QuasiSpherical',
+        potential: agama_wrappers.Potential | None = None,
+        density: agama_wrappers.Potential | None = None,
+        **kwargs: Any,
+    ) -> agama_wrappers.DistributionFunction:
+        """Generate an agama distribution function from the distribution."""
+        return agama_wrappers.DistributionFunction(
+            type=type,
+            potential=potential if potential is not None else self.agama_total_potential,
+            density=density if density is not None else self.agama_potential,
+            **kwargs,
+        )
+
+    @property
+    def agama_df(self) -> agama_wrappers.DistributionFunction:
+        """Generate an agama distribution function from the distribution."""
+        return self.to_agama_df()
+
     @property
     def geomspace_grid(self) -> Quantity['length']:
         """Calculate the `internal logarithmic grid` (memoized)."""
@@ -229,6 +295,9 @@ class Distribution:
 
     def rho(self, r: Quantity['length']) -> Quantity['mass density']:
         """Calculate the density (`rho`) at a given radius."""
+        if self.backend == 'agama':
+            assert self.agama_potential is not None, 'Agama potential not initialized'
+            return self.agama_potential.density(r)
         return Quantity(
             self.calculate_rho(
                 r=r.to(run_units.length).value,
@@ -342,6 +411,9 @@ class Distribution:
 
     def Phi(self, r: Quantity['length']) -> Quantity['specific energy']:
         """Calculate the gravitational potential energy (`Phi`), at a given radius `r`."""
+        if self.backend == 'agama':
+            assert self.agama_total_potential is not None, 'Agama potential not initialized'
+            return self.agama_total_potential.Phi(r).to(run_units.specific_energy)
         xs = Quantity(np.geomspace(self.Rmin, r, 1000), 'kpc').T
         return np.trapezoid(y=constants.G * self.M(xs) / xs**2, x=xs).to(run_units.specific_energy)
 
@@ -377,13 +449,31 @@ class Distribution:
             )
         return self.memoization['F']
 
-    def f(self, E: Quantity, reject_negative: bool = True) -> Quantity:
+    def f(
+        self,
+        E: Quantity | None = None,
+        r: Quantity | None = None,
+        v: Quantity | None = None,
+        reject_negative: bool = True,
+    ) -> Quantity:
         """Calculate the distribution function (`f`) for the given energy."""
+        if E is None:
+            assert r is not None and v is not None, 'Either energy or radius and velocity must be provided'
+            E = self.E(r=r, v=v)
+        if self.backend == 'agama':
+            assert self.agama_df is not None, 'Agama distribution function not initialized'
+            return self.agama_df.f(E=E).decompose(run_units.system)
         return physics.eddington.f(E=E, F_spline=self.F, reject_negative=reject_negative)
 
+    def f_from_rv(self, r: Quantity, v: Quantity):
+        """Calculate the distribution function (`f`) for the given radius and velocity."""
+        return cast(Quantity, self.f(self.E(r=r, v=v)) * run_units.mass)
+
     @property
-    def Psi(self) -> QuantitySpline:
+    def Psi(self) -> QuantitySpline | Callable[[Quantity], Quantity]:
         """Interpolate the relative gravitational potential (`Psi`) based on the  `internal logarithmic grid` (memoized)."""
+        if self.backend == 'agama':
+            return self.calculate_Psi
         if 'Psi' not in self.memoization:
             # self.memoization['Psi'] = scipy.interpolate.interp1d(
             #     self.geomspace_grid, self.Psi_grid, bounds_error=False, fill_value=0
@@ -419,14 +509,35 @@ class Distribution:
             return new_value
 
     @staticmethod
-    def merge_distribution_grids(distributions: list['Distribution'], inplace: bool = False) -> None:
+    def merge_distributions(distributions: list['Distribution'], inplace: bool = False) -> None:
         """Merges the `Psi` grid values of the given distributions. Used to combine the potentials of multiple distributions to sample via Eddington's inversion."""
         physical_distributions = [density for density in distributions if density.physical]
-        for distribution in physical_distributions:
-            distribution.memoization = {}
-        Psi_grid = sum([getattr(density, 'Psi_grid') for density in physical_distributions])
-        for distribution in physical_distributions:
-            distribution.memoization['Psi_grid'] = Psi_grid
+        if any([distribution.backend == 'agama' for distribution in physical_distributions]):
+            assert all([distribution.backend == 'agama' for distribution in physical_distributions]), (
+                'All distributions must be in the same backend'
+            )
+            total_potential = agama_wrappers.Potential(
+                *[distribution.agama_potential for distribution in distributions]
+            )
+            for distribution in physical_distributions:
+                distribution.agama_total_potential = total_potential
+        else:
+            for distribution in physical_distributions:
+                distribution.memoization = {}
+            Psi_grid = sum([getattr(density, 'Psi_grid') for density in physical_distributions])
+            for distribution in physical_distributions:
+                distribution.memoization['Psi_grid'] = Psi_grid
+
+    ## io
+
+    def save(self, path: str | Path, stem: str):
+        """Save the distribution to a file, handling the agama objects if present."""
+        io.save_distribution(path=path, stem=stem, distribution=self)
+
+    @classmethod
+    def load(cls, path: str | Path, stem: str):
+        """Load the distribution from a file, handling the agama objects if present."""
+        return io.load_distribution(path=path, stem=stem)
 
     ## Roll initial setup
 
@@ -576,6 +687,8 @@ class Distribution:
             - The sampled radius and velocity are perturbed by a uniform noise term to provide sub-pixel results.
             - Angles for the velocity split are sampled by `utils.split_3d()`.
 
+        ** IF THE BACKEND IS 'AGAMA', THE ALL OPTIONS ARE IGNORED, AND THE SAMPLING IS HANDLED BY AGAMA **
+
         Parameters:
             n_particles: Number of particles to sample.
             radius_min_value: Minimum radius value to consider for the phase space distribution. If `None` use the quantile value for `0`. Regardless, this value is capped by `Rmin` even if provided.
@@ -596,6 +709,10 @@ class Distribution:
                 Sampled radius values for each particle, shaped `(num_particles,)`
                 Corresponding 3d velocities for each particle, shaped `(num_particles,3)`.
         """
+        if self.backend == 'agama':
+            assert self.agama_df is not None, 'Agama distribution function not initialized'
+            r, v, _ = self.agama_df.sample(n=n_particles)
+            return r.decompose(run_units.system), v.decompose(run_units.system)
         if generator is None:
             generator = rng.generator
         if radius_range is None:
@@ -666,7 +783,8 @@ class Distribution:
 
     def full_sample(
         self,
-        sample_method: Literal['distribution', 'phase space', 'legacy'] = 'distribution',
+        n_particles: int | float,
+        sample_method: Literal['distribution', 'phase space', 'legacy'] | None = None,
         phase_space_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[
@@ -678,7 +796,10 @@ class Distribution:
     ]:
         """Samples particles from the distribution. Wraps the sample method and returns additional particle properties.
 
-        Parameters
+        If the backend is 'agama', the prefered (and default) sampling method is 'distribution' which is the agama backend's native sampling method. Otherwise, the prefered (and default) is 'phase space'.
+
+        Parameters:
+            n_particles: Number of particles to sample.
             sample_method: The method to use for sampling particles.
               - 'distribution': Samples particles from the distribution's distribution function (`df`) grid. Only works with linear grids.
               - 'phase space': Samples particles from the phase space object. Works with any grid.
@@ -690,12 +811,15 @@ class Distribution:
         Returns:
             The particles' position, velocity, mass, particle type, and distribution ID.
         """
+        if sample_method is None:
+            sample_method = 'distribution' if self.backend == 'agama' else 'phase space'
+
         if sample_method == 'distribution':
-            r, v = self.sample(**kwargs)
+            r, v = self.sample(n_particles=n_particles, **kwargs)
         elif sample_method == 'phase space':
-            r, v = self.phase_space(**phase_space_kwargs).sample_weighted_particles(**kwargs)
+            r, v = self.phase_space(**phase_space_kwargs).sample_weighted_particles(n_particles=n_particles, **kwargs)
         elif sample_method == 'legacy':
-            r, v = self.sample_legacy(**kwargs)
+            r, v = self.sample_legacy(n_particles=n_particles, **kwargs)
         return (
             r,
             v,

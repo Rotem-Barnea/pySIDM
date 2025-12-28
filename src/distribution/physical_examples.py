@@ -43,7 +43,7 @@ def by_name(
         distributions += [NFW.from_example(name, Rmin=Rmin, Rmax=Rmax, **dm_kwargs, **kwargs)]
     if suffix == 'b_only' or suffix is None:
         distributions += [Hernquist.from_example(name, Rmin=Rmin, Rmax=Rmax, **b_kwargs, **kwargs)]
-    Distribution.merge_distribution_grids(distributions)
+    Distribution.merge_distributions(distributions)
     return distributions
 
 

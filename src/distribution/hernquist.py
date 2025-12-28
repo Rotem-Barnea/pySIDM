@@ -4,6 +4,7 @@ import numpy as np
 from numba import njit
 from astropy.units import Quantity
 
+from . import agama_wrappers
 from ..types import FloatOrArray
 from .distribution import Distribution
 
@@ -49,6 +50,12 @@ class Hernquist(Distribution):
     def r_half_light_to_Rs(r: Quantity['length']) -> Quantity['length']:
         """Calculates the scale radius (`Rs`) from the half-light radius."""
         return r / (1 + np.sqrt(2))
+
+    def to_agama_potential(
+        self, type: str | None = 'Dehnen', gamma: int | None = 1, beta: int | None = None, **kwargs: Any
+    ) -> agama_wrappers.Potential:
+        """Generate an agama potential from the distribution. Hernquist is a `Dehnen` potential with `gamma=1`."""
+        return super().to_agama_potential(type=type, gamma=gamma, beta=beta, **kwargs)
 
     @classmethod
     def from_example(cls, name: Literal['Sague-1', 'Draco', 'Fornax', 'default'] = 'default', **kwargs: Any) -> Self:

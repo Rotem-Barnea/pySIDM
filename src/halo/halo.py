@@ -300,7 +300,7 @@ class Halo:
             seed: Seed for the random number generator. Ignore if `generator` is provided.
             generator: If `None` use the default generator from `rng.generator`.
             sample_kwargs: Additional keyword argumants to pass ot the sampling function.
-            join_distributions: If `True`, joining the distributions (`Distribution.merge_distribution_grids`). Use `False` if the distributions already had Eddington inversion calculated elsewhere.
+            join_distributions: If `True`, joining the distributions (`Distribution.merge_distributions`). Use `False` if the distributions already had Eddington inversion calculated elsewhere.
             kwargs: Additional keyword arguments, passed to the constructor.
 
         Returns:
@@ -311,7 +311,7 @@ class Halo:
         if generator is None:
             generator = np.random.default_rng(seed)
         if join_distributions:
-            Distribution.merge_distribution_grids(distributions)
+            Distribution.merge_distributions(distributions)
         for distribution, n in zip(distributions, n_particles):
             r_, v_, m_, particle_type_, distribution_id_ = distribution.full_sample(
                 n_particles=n, generator=generator, **sample_kwargs
@@ -1069,7 +1069,6 @@ class Halo:
             'steps',
             'dt',
             'unoptimized_dt',
-            'distributions',
             'save_every_n_steps',
             'save_every_time',
             'dynamics_params',
@@ -1143,6 +1142,7 @@ class Halo:
             splitable_table={'snapshots': self.snapshots},
             metadata_payload=self.metadata,
             heavy_payload=self.heavy_payload,
+            distributions=self.distributions,
             two_steps=two_steps,
             keep_last_backup=keep_last_backup,
             split_tables=split_snapshots,
@@ -1188,6 +1188,7 @@ class Halo:
             v=cast(Quantity, np.vstack([vx, vy, vr]).T),
             particle_type=cast(list[ParticleType], particles['particle_type']),
             m=m,
+            distributions=io.load_distributions(path, verbose=verbose),
             **(io.load_pickle(path, 'metadata', verbose=verbose) if not legacy_payload else {}),
             **(io.load_pickle(path, 'heavy_payload', verbose=verbose) if not legacy_payload else {}),
             **(io.load_pickle(path, 'halo_payload', verbose=verbose) if legacy_payload else {}),
