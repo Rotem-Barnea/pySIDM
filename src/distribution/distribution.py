@@ -45,6 +45,7 @@ class Distribution:
         backend: Literal['python', 'agama'] = 'python',
         agama_potential: agama_wrappers.Potential | None = None,
         agama_total_potential: agama_wrappers.Potential | None = None,
+        agama_truncation_power: int = 1,
     ) -> None:
         """General mass distribution profile.
 
@@ -131,6 +132,7 @@ class Distribution:
             self.Mtot = self.calculate_M_tot()
 
         if self.backend == 'agama':
+            self.truncate_power = agama_truncation_power
             self.agama_potential = agama_potential if agama_potential is not None else self.to_agama_potential()
             self.agama_total_potential = (
                 agama_total_potential if agama_total_potential is not None else self.to_agama_potential()
