@@ -4,6 +4,7 @@ import regex
 from astropy.units import Quantity
 
 from .nfw import NFW
+from .cored import Cored
 from .hernquist import Hernquist
 from .distribution import Distribution
 
@@ -42,7 +43,8 @@ def by_name(
     if suffix == 'dm_only' or suffix is None:
         distributions += [NFW.from_example(name, Rmin=Rmin, Rmax=Rmax, **dm_kwargs, **kwargs)]
     if suffix == 'b_only' or suffix is None:
-        distributions += [Hernquist.from_example(name, Rmin=Rmin, Rmax=Rmax, **b_kwargs, **kwargs)]
+        b_class = Cored if name == 'Draco' else Hernquist
+        distributions += [b_class.from_example(name, Rmin=Rmin, Rmax=Rmax, **b_kwargs, **kwargs)]
     Distribution.merge_distributions(distributions)
     return distributions
 

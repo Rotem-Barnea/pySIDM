@@ -1,23 +1,49 @@
-# # pyright: reportUnknownParameterType=false, reportUnknownVariableType=false, reportUntypedBaseClass=false, reportIncompatibleMethodOverride=false, reportIncompatibleVariableOverride=false
-
-from typing import Any, cast
+from typing import Any, TypeVar, Callable, cast
+from functools import wraps
 
 import agama
 import numpy as np
-
-# from astropy import constants, cosmology
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 
 from src.types import QuantityOrArray
 
-# from src import run_units
 from .. import utils
 
-# from ..types import ParticleType
+T = TypeVar('T')
 
-# from .distribution import Distribution
-# from .physical_examples import physical_examples
+
+def vectorize(func: Callable[..., T]) -> Callable[..., T]:
+    """
+    Decorator that ravels the first argument before calling the function,
+    then reshapes the result back to the original shape.
+
+    Handles scalar inputs specially by preserving scalar output.
+    """
+
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> T:
+        if 'r' in kwargs:
+            r = kwargs.pop('r')
+            self = args[0]
+            rest_args = args[1:]
+        elif len(args) < 2:
+            raise TypeError(f'{func.__name__} missing required positional argument')
+        else:
+            self, r = args[0], args[1]
+            rest_args = args[2:]
+
+        if np.isscalar(r) or (hasattr(r, 'shape') and r.shape == ()):
+            # For scalar input, call function directly and return scalar result
+            result = func(*args, **kwargs)
+            # Ensure scalar output (in case function returns array with shape ())
+            if hasattr(result, 'shape') and result.shape == ():
+                return result.item() if hasattr(result, 'item') else result
+            return result
+
+        return func(self, r.ravel(), *rest_args, **kwargs).reshape(r.shape)
+
+    return wrapper
 
 
 def length() -> Unit:
@@ -62,10 +88,12 @@ class Potential:
         """Transforms the given coordinates to actions."""
         return agama.ActionFinder(self.potential)(*args, **kwargs)
 
+    @vectorize
     def density(self, r: Quantity['length']) -> Quantity['mass density']:
         """Calculate the density at a given radius."""
         return Quantity(self.potential.density(to_3d(r).to(length()).value), mass() / length() ** 3)
 
+    @vectorize
     def Phi(self, r: Quantity['length']) -> Quantity['specific energy']:
         """Calculate the potential at a given radius."""
         return Quantity(self.potential.potential(to_3d(r).to(length()).value), velocity() ** 2)
@@ -89,12 +117,15 @@ class DistributionFunction:
         """Evaluate the distribution function at the given coordinates."""
         if potential is None:
             potential = self.potential
-        f = self.df(potential.to_action(np.hstack([to_3d(r).to(length()).value, to_3d(v).to(velocity()).value])))
+        f = self.df(
+            potential.to_action(np.hstack([to_3d(r.ravel()).to(length()).value, to_3d(v.ravel()).to(velocity()).value]))
+        )
         if zero_null:
             if np.isscalar(f):
                 f = 0 if np.isnan(f) else f
             else:
                 f[np.isnan(f)] = 0
+                f = f.reshape(r.shape)
         return Quantity(f, mass() / (length() ** 3 * velocity() ** 3))
 
     @property

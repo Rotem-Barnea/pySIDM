@@ -1,4 +1,4 @@
-from typing import Any, Self, Literal
+from typing import TYPE_CHECKING, Any, Self
 
 import numpy as np
 from numba import njit
@@ -7,6 +7,9 @@ from astropy.units import Quantity
 from . import agama_wrappers
 from ..types import FloatOrArray
 from .distribution import Distribution
+
+if TYPE_CHECKING:
+    from .physical_examples import physical_examples
 
 
 class Hernquist(Distribution):
@@ -58,26 +61,19 @@ class Hernquist(Distribution):
         return super().to_agama_potential(type=type, gamma=gamma, beta=beta, **kwargs)
 
     @classmethod
-    def from_example(cls, name: Literal['Sague-1', 'Draco', 'Fornax', 'default'] = 'default', **kwargs: Any) -> Self:
+    def from_example(cls, name: 'physical_examples' = 'default', **kwargs: Any) -> Self:
         """Create a Hernquist distribution from a predefined list of examples matching real galaxies."""
-        if name == 'Sague-1':
+        if name == 'Sague-1':  # Numbers taken from arXiv:1007.4198
             return cls(
-                Rs=cls.r_half_light_to_Rs(Quantity(30, 'pc')),
-                Mtot=Quantity(5.8e2, 'Msun'),
+                Rs=cls.r_half_light_to_Rs(Quantity(38, 'pc')),
+                Mtot=Quantity(5.8e5, 'Msun'),
                 c=100,
                 particle_type='baryon',
                 name=name,
                 **kwargs,
             )
-        elif name == 'Draco':
-            return cls(
-                Rs=cls.r_half_light_to_Rs(Quantity(200, 'pc')),
-                Mtot=Quantity(2e5, 'Msun'),
-                c=100,
-                particle_type='baryon',
-                name=name,
-                **kwargs,
-            )
+        elif name == 'Draco':  # Numbers taken from arXiv:2407.07769
+            raise NotImplementedError('Draco example not implemented for Hernquist (try Plummer for baryons).')
         elif name == 'Fornax':
             return cls(
                 Rs=cls.r_half_light_to_Rs(Quantity(700, 'pc')),

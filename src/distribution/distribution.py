@@ -459,17 +459,14 @@ class Distribution:
         reject_negative: bool = True,
     ) -> Quantity:
         """Calculate the distribution function (`f`) for the given energy."""
+        if self.backend == 'agama':
+            assert r is not None and v is not None, 'Radius and velocity must be provided for Agama backend'
+            assert self.agama_df is not None, 'Agama distribution function not initialized'
+            return self.agama_df(r=r, v=v).decompose(run_units.system)
         if E is None:
             assert r is not None and v is not None, 'Either energy or radius and velocity must be provided'
             E = self.E(r=r, v=v)
-        if self.backend == 'agama':
-            assert self.agama_df is not None, 'Agama distribution function not initialized'
-            return self.agama_df.f(E=E).decompose(run_units.system)
         return physics.eddington.f(E=E, F_spline=self.F, reject_negative=reject_negative)
-
-    def f_from_rv(self, r: Quantity, v: Quantity):
-        """Calculate the distribution function (`f`) for the given radius and velocity."""
-        return cast(Quantity, self.f(self.E(r=r, v=v)) * run_units.mass)
 
     @property
     def Psi(self) -> QuantitySpline | Callable[[Quantity], Quantity]:
@@ -862,7 +859,7 @@ class Distribution:
         if plot_energy:
             grid = self.E(v=v, r=r)
         else:
-            grid = 16 * np.pi * r**2 * v**2 * self.f(self.E(v=v, r=r))
+            grid = 16 * np.pi * r**2 * v**2 * self.f(v=v, r=r)
 
         if fix_negative_values and not plot_energy and (grid < 0).any():
             y, x = np.indices(grid.shape)

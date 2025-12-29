@@ -149,7 +149,7 @@ def f(
     reject_negative: bool = True,
 ) -> Quantity:
     """Calculate the distribution function `f` from the antiderivative `F`."""
-    value = F_spline.derivative_at(E)
+    value = F_spline.derivative_at(E) * run_units.mass
     if reject_negative:
         return cast(Quantity, value.clip(min=0))
     return value

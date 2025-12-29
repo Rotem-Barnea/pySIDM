@@ -60,7 +60,7 @@ class PhaseSpace:
         self.dr_grid, self.dv_grid = cast(tuple[Quantity, Quantity], np.meshgrid(self.dr, self.dv))
         self.volume_element = cast(Quantity, self.dv_grid * self.dr_grid)
 
-        self.f_grid: Quantity = self.distribution.f_from_rv(v=self.v_grid, r=self.r_grid)
+        self.f_grid: Quantity = self.distribution.f(v=self.v_grid, r=self.r_grid)
 
         self.mass_grids: Quantity = self.mass_grid[np.newaxis, ...].copy()
         self.grids_time: Quantity = t[np.newaxis, ...].copy()

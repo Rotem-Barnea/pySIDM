@@ -1,4 +1,4 @@
-from typing import Any, Self, Literal
+from typing import TYPE_CHECKING, Any, Self, Literal
 
 import numpy as np
 from numba import njit
@@ -10,21 +10,24 @@ from .. import run_units
 from ..types import FloatOrArray
 from .distribution import Distribution
 
+if TYPE_CHECKING:
+    from .physical_examples import physical_examples
+
 
 class NFW(Distribution):
     """NFW density profile."""
 
     def __init__(
         self,
-        Rs: Quantity['length'] | None | Literal['From mass'] = None,
+        Rvir: Quantity['length'] | None | Literal['From mass'] = None,
         truncate: bool = True,
         **kwargs: Any,
     ) -> None:
-        if Rs == 'From mass':
-            assert 'Mtot' in kwargs, 'Mtot must be provided when calculating Rs from the total mass'
-            Rs = self.calculate_theoretical_Rvir(kwargs['Mtot'])
+        if Rvir == 'From mass':
+            assert 'Mtot' in kwargs, 'Mtot must be provided when calculating Rvir from the total mass'
+            Rvir = self.calculate_theoretical_Rvir(kwargs['Mtot'])
 
-        super().__init__(Rs=Rs, truncate=truncate, **kwargs)
+        super().__init__(Rvir=Rvir, truncate=truncate, **kwargs)
         self.title = 'NFW'
 
     @staticmethod
@@ -74,31 +77,31 @@ class NFW(Distribution):
         return super().to_agama_potential(type=type, gamma=gamma, beta=beta, **kwargs)
 
     @classmethod
-    def from_example(cls, name: Literal['Sague-1', 'Draco', 'Fornax', 'default'] = 'default', **kwargs: Any) -> Self:
+    def from_example(cls, name: 'physical_examples' = 'default', **kwargs: Any) -> Self:
         """Create an NFW distribution from a predefined list of examples matching real galaxies."""
-        if name == 'Sague-1':
+        if name == 'Sague-1':  # Numbers taken from arXiv:1007.4198
             return cls(
-                Mtot=(Mtot := Quantity(1e8, 'Msun')),
-                Rvir=cls.calculate_theoretical_Rvir(Mtot),
-                c=cls.c_from_M_Dutton14(Mtot),
+                rho_s=Quantity(2.5, 'Msun/pc^3'),
+                Rvir='From mass',
+                c='Dutton14',
                 particle_type='dm',
                 name=name,
                 **kwargs,
             )
-        elif name == 'Draco':
+        elif name == 'Draco':  # Numbers taken from arXiv:2407.07769
             return cls(
-                Mtot=(Mtot := Quantity(5e8, 'Msun')),
+                Mtot=(Mtot := Quantity(0.80e8, 'Msun')),
+                Rs=Quantity(2.47e2, 'pc'),
                 Rvir=cls.calculate_theoretical_Rvir(Mtot),
-                c=cls.c_from_M_Dutton14(Mtot),
                 particle_type='dm',
                 name=name,
                 **kwargs,
             )
         elif name == 'Fornax':
             return cls(
-                Mtot=(Mtot := Quantity(1e10, 'Msun')),
-                Rvir=cls.calculate_theoretical_Rvir(Mtot),
-                c=cls.c_from_M_Dutton14(Mtot),
+                Mtot=Quantity(1e10, 'Msun'),
+                Rvir='From mass',
+                c='Dutton14',
                 particle_type='dm',
                 name=name,
                 **kwargs,
