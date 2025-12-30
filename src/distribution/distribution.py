@@ -29,6 +29,7 @@ class Distribution:
         Rmin: Quantity['length'] = Quantity(1e-4, 'kpc'),
         Rmax: Quantity['length'] | None = None,
         Rs: Quantity['length'] | None = None,
+        R_half_light: Quantity['length'] | None = None,
         c: int | float | None | Literal['Dutton14'] = None,
         Rvir: Quantity['length'] | None = None,
         Mtot: Quantity['mass'] | None = None,
@@ -53,6 +54,7 @@ class Distribution:
             Rmin: Minimum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
             Rmax: Maximum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
             Rs: Scale radius of the distribution profile.
+            R_half_light: Half-light radius of the distribution profile.
             c: Concentration parameter of the distribution profile (such that Rvir = c * Rs). If 'Dutton14', calculate it based on the total mass (must be provided via `Mtot`).
             Rvir: Virial radius of the distribution profile.
             rho_s: Scale density of the distribution profile. Either `Mtot` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
@@ -92,6 +94,9 @@ class Distribution:
         if c == 'Dutton14':
             assert Mtot is not None, 'Mtot must be provided when using Dutton14'
             c = self.c_from_M_Dutton14(Mtot)
+
+        if Rs is None and R_half_light is not None:
+            Rs = self.r_half_light_to_Rs(R_half_light)
 
         if Rs is not None and Rvir is not None:
             c = (Rvir / Rs).decompose(run_units.system).value
@@ -176,10 +181,15 @@ class Distribution:
 
     @staticmethod
     def c_from_M_Dutton14(M: Quantity['mass']) -> float:
-        """Calculate the concentration parameter `c` from the total mass `M` based on Dutton & Maccio (2014)."""
+        """Calculate the concentration parameter `c` from the total mass `M` based on Dutton & Maccio (2014) arXiv:1402.7073v2."""
         return 10 ** (
-            1.025 - 0.097 * np.log10((M.to('Msun') / 1e12 * cosmology.Planck18.H0).decompose(run_units.system).value)
+            1.025 - 0.097 * np.log10((M.to('Msun') / (1e12 * cosmology.Planck18.H0)).decompose(run_units.system).value)
         )
+
+    @staticmethod
+    def r_half_light_to_Rs(r: Quantity['length']) -> Quantity['length']:
+        """Calculates the scale radius (`Rs`) from the half-light radius."""
+        return r / (1 + np.sqrt(2))
 
     @property
     def label(self) -> str:
@@ -711,6 +721,7 @@ class Distribution:
         if self.backend == 'agama':
             assert self.agama_df is not None, 'Agama distribution function not initialized'
             r, v, _ = self.agama_df.sample(n=n_particles)
+            r, v = r[(i := np.argsort(r))], v[i]
             return r.decompose(run_units.system), v.decompose(run_units.system)
         if generator is None:
             generator = rng.generator

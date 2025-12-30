@@ -979,7 +979,7 @@ class Halo:
         until_t: Quantity['time'] | None = None,
         tqdm_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
-        optimize_dt: bool = True,
+        optimize_dt: bool = False,
         reoptimize_dt_rate: Quantity['time'] | None = None,
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
@@ -1702,6 +1702,8 @@ class Halo:
             ylabel=ylabel,
             x_unit=x_unit,
             y_unit=y_unit,
+            x_range=x_bins,
+            y_range=y_bins,
             cmap=cmap,
             transparent_value=transparent_value,
             **kwargs,
@@ -1974,7 +1976,7 @@ class Halo:
         label: str | None = None,
         fig: Figure | None = None,
         ax: Axes | None = None,
-        line_kwargs: dict[str, Any] = {},
+        lineplot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -1994,7 +1996,7 @@ class Halo:
             label: Label for the plot (legend).
             fig: Figure to use for the plot.
             ax: Axes to use for the plot.
-            line_kwargs: Additional keyword arguments to pass to the lineplot function (`sns.lineplot()`).
+            lineplot_kwargs: Additional keyword arguments to pass to the lineplot function (`sns.lineplot()`).
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
@@ -2040,7 +2042,7 @@ class Halo:
             y=agg_data['in_radius'].to_numpy(),
             ax=ax,
             label=label,
-            **line_kwargs,
+            **lineplot_kwargs,
         )
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
@@ -3126,7 +3128,7 @@ class Halo:
         label_unit: UnitLike = 'Gyr',
         label_format: str = '.1f',
         density_guidelines_kwargs: dict[str, Any] | None = {
-            'line_kwargs': {'linestyle': '--'},
+            'lineplot_kwargs': {'linestyle': '--'},
         },
         multiplicity_guidelines: int | None = 10,
         save_kwargs: dict[str, Any] = {},

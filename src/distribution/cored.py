@@ -36,6 +36,7 @@ class Cored(Distribution):
         Rvir: Quantity['length'] | None = None,
         rc: Quantity['length'] | None = None,
         r_max_factor: Quantity['length'] | None = None,
+        c: float | None = 1,
         truncate: bool = False,
         **kwargs: Any,
     ):
@@ -48,7 +49,7 @@ class Cored(Distribution):
             Rs = rc
         if r_max_factor is not None:
             Rvir = r_max_factor
-        super().__init__(Rs=Rs, Rvir=Rvir, truncate=truncate, **kwargs)
+        super().__init__(Rs=Rs, Rvir=Rvir, c=c, truncate=truncate, **kwargs)
         self.title = 'Cored'
 
         # Physical parameters
@@ -96,12 +97,10 @@ class Cored(Distribution):
     @classmethod
     def from_example(cls, name: 'physical_examples' = 'default', **kwargs: Any) -> Self:
         """Create a Plummer distribution from a predefined list of examples matching real galaxies."""
-        if name == 'Draco':  # Numbers taken from arXiv:2407.07769
+        if name == 'Draco':
             return cls(
-                Rs=Quantity(1.75e2, 'pc'),
-                Mtot=Quantity(4.30, 'Msun'),
-                c=100,
-                particle_type='baryon',
+                Rs=Quantity(1.75e2, 'pc'),  # arXiv:2407.07769
+                Mtot=Quantity(5.07e5, 'Msun'),  # arXiv:2407.07769
                 name=name,
                 **kwargs,
             )
@@ -110,7 +109,7 @@ class Cored(Distribution):
                 Rs=Quantity(23, 'kpc'),
                 rho_s=Quantity(3.52e07, 'Msun/kpc**3'),
                 Rvir=Quantity(85, 'kpc'),
-                particle_type='dm',
+                c=None,
                 name=name,
                 **kwargs,
             )

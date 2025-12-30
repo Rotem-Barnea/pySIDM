@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING, Any, Self
 
-import numpy as np
 from numba import njit
 from astropy.units import Quantity
 
@@ -15,8 +14,8 @@ if TYPE_CHECKING:
 class Hernquist(Distribution):
     """Hernquist density profile."""
 
-    def __init__(self, truncate: bool = False, **kwargs: Any) -> None:
-        super().__init__(truncate=truncate, **kwargs)
+    def __init__(self, c: float | None = 1, truncate: bool = False, **kwargs: Any) -> None:
+        super().__init__(truncate=truncate, c=c, **kwargs)
         self.title = 'Hernquist'
 
     @staticmethod
@@ -49,11 +48,6 @@ class Hernquist(Distribution):
             return rho / (1 + (r / Rvir) ** truncate_power)
         return rho
 
-    @staticmethod
-    def r_half_light_to_Rs(r: Quantity['length']) -> Quantity['length']:
-        """Calculates the scale radius (`Rs`) from the half-light radius."""
-        return r / (1 + np.sqrt(2))
-
     def to_agama_potential(
         self, type: str | None = 'Dehnen', gamma: int | None = 1, beta: int | None = None, **kwargs: Any
     ) -> agama_wrappers.Potential:
@@ -63,31 +57,25 @@ class Hernquist(Distribution):
     @classmethod
     def from_example(cls, name: 'physical_examples' = 'default', **kwargs: Any) -> Self:
         """Create a Hernquist distribution from a predefined list of examples matching real galaxies."""
-        if name == 'Sague-1':  # Numbers taken from arXiv:1007.4198
+        if name == 'Sague-1':
             return cls(
-                Rs=cls.r_half_light_to_Rs(Quantity(38, 'pc')),
-                Mtot=Quantity(5.8e5, 'Msun'),
-                c=100,
-                particle_type='baryon',
+                R_half_light=Quantity(30, 'pc'),  # doi:10.1111/j.1365-2966.2009.15287.x
+                Mtot=Quantity(1e3, 'Msun'),  # arXiv:0809.2781
                 name=name,
                 **kwargs,
             )
-        elif name == 'Draco':  # Numbers taken from arXiv:2407.07769
+        elif name == 'Draco':
             raise NotImplementedError('Draco example not implemented for Hernquist (try Plummer for baryons).')
-        elif name == 'Fornax':
+        elif name == 'Fornax dSph':
             return cls(
-                Rs=cls.r_half_light_to_Rs(Quantity(700, 'pc')),
-                Mtot=Quantity(3e7, 'Msun'),
-                c=100,
-                particle_type='baryon',
+                R_half_light=Quantity(668, 'pc'),  # doi:10.1111/j.1365-2966.2012.21885.x
+                Mtot=Quantity(3e7, 'Msun'),  # Why?
                 name=name,
                 **kwargs,
             )
         return cls(
             Rs=Quantity(1.18, 'kpc'),
             rho_s=Quantity(1.1e4, 'Msun/kpc**3'),
-            c=19,
-            particle_type='baryon',
             name=name,
             **kwargs,
         )

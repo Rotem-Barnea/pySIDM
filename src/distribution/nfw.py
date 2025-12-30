@@ -79,30 +79,27 @@ class NFW(Distribution):
     @classmethod
     def from_example(cls, name: 'physical_examples' = 'default', **kwargs: Any) -> Self:
         """Create an NFW distribution from a predefined list of examples matching real galaxies."""
-        if name == 'Sague-1':  # Numbers taken from arXiv:1007.4198
+        if name == 'Sague-1':  # Numbers taken from arXiv:0809.2781
             return cls(
-                rho_s=Quantity(2.5, 'Msun/pc^3'),
+                Mtot=Quantity(4.5e5, 'Msun'),
                 Rvir='From mass',
                 c='Dutton14',
-                particle_type='dm',
                 name=name,
                 **kwargs,
             )
         elif name == 'Draco':  # Numbers taken from arXiv:2407.07769
             return cls(
-                Mtot=(Mtot := Quantity(0.80e8, 'Msun')),
+                Mtot=Quantity(0.80e8, 'Msun'),
                 Rs=Quantity(2.47e2, 'pc'),
-                Rvir=cls.calculate_theoretical_Rvir(Mtot),
-                particle_type='dm',
+                Rvir='From mass',
                 name=name,
                 **kwargs,
             )
-        elif name == 'Fornax':
+        elif name == 'Fornax dSph':  # Numbers taken from doi:10.1093/mnrasl/sls031
             return cls(
-                Mtot=Quantity(1e10, 'Msun'),
-                Rvir='From mass',
-                c='Dutton14',
-                particle_type='dm',
+                Mtot=Quantity((9 * 2 - 1) * (1e8 / 1.5) + 1e8, 'Msun'),
+                Rs=Quantity(2, 'kpc'),
+                c=9,
                 name=name,
                 **kwargs,
             )
@@ -110,7 +107,6 @@ class NFW(Distribution):
             rho_s=Quantity(2.73e7, 'Msun/kpc**3'),
             Rs=Quantity(1.18, 'kpc'),
             c=19,
-            particle_type='dm',
             name=name,
             **kwargs,
         )

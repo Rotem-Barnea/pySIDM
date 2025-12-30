@@ -8,7 +8,7 @@ from .cored import Cored
 from .hernquist import Hernquist
 from .distribution import Distribution
 
-physical_examples = Literal['Sague-1', 'Draco', 'Fornax', 'default']
+physical_examples = Literal['Sague-1', 'Draco', 'Fornax dSph', 'default']
 distribution_options = Literal['dm_only', 'b_only', None]
 
 
@@ -41,10 +41,12 @@ def by_name(
         print('running example', name)
     distributions: list[Distribution] = []
     if suffix == 'dm_only' or suffix is None:
-        distributions += [NFW.from_example(name, Rmin=Rmin, Rmax=Rmax, **dm_kwargs, **kwargs)]
+        distributions += [NFW.from_example(name, Rmin=Rmin, Rmax=Rmax, particle_type='dm', **dm_kwargs, **kwargs)]
     if suffix == 'b_only' or suffix is None:
         b_class = Cored if name == 'Draco' else Hernquist
-        distributions += [b_class.from_example(name, Rmin=Rmin, Rmax=Rmax, **b_kwargs, **kwargs)]
+        distributions += [
+            b_class.from_example(name, Rmin=Rmin, Rmax=Rmax, particle_type='baryon', **b_kwargs, **kwargs)
+        ]
     Distribution.merge_distributions(distributions)
     return distributions
 
