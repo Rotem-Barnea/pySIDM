@@ -1,6 +1,8 @@
 from typing import TYPE_CHECKING, Any, Self, Literal
+from functools import partial
 
 import numpy as np
+import scipy
 from numba import njit
 from astropy import cosmology
 from astropy.units import Quantity
@@ -70,6 +72,64 @@ class NFW(Distribution):
         """Calculate the virial radius based on the theoretical density profile (without truncation)."""
         return ((3 * M / (4 * np.pi * 200 * cosmology.Planck18.critical_density0)) ** (1 / 3)).to(run_units.length)
 
+    @staticmethod
+    def calculate_from_half_light(
+        R_half_light: Quantity['length'],
+        M_half_light: Quantity['mass'],
+        c: float = 10,
+        rho_crit: Quantity['mass density'] = cosmology.Planck18.critical_density0,
+        H0: Quantity = cosmology.Planck18.H0,
+    ) -> dict[str, Any]:
+        """Calculate the distribution's parameters from the half-light radius and mass.
+
+        Parameters:
+            R_half_light: The half-light radius of the distribution.
+            M_half_light: The half-light mass (dynamic) of the distribution.
+            c: The concentration parameter `c`.
+            rho_crit: The critical density of the universe.
+            H0: The Hubble constant.
+            projection_factor: The projection factor to transfrom from projected 2D distance to a 3D radius.
+
+        Returns:
+            Rs, Mtot
+        """
+
+        def calculate_M200(R200: float, rho_crit: float) -> float:
+            """Helper function to calculate the virial mass"""
+            return (4 * np.pi / 3) * 200 * rho_crit * R200**3
+
+        def equations(
+            params: tuple[float, float], m_half_light: float, r_half_light: float, c: float, rho_crit: float, H0: float
+        ) -> tuple[float, float]:
+            """Helper function for the optimizer"""
+            log_M200, log_rs = params
+            M200, rs = np.exp(log_M200), np.exp(log_rs)
+
+            x_half = 1.4 * r_half_light / rs
+            m_half_calc = M200 * (np.log(1 + x_half) - x_half / (1 + x_half)) / (np.log(1 + c) - c / (1 + c))
+
+            return (
+                np.log(m_half_calc) - np.log(m_half_light),
+                np.log(calculate_M200(R200=c * rs, rho_crit=rho_crit)) - np.log(M200),
+            )
+
+        Mvir, rs = scipy.optimize.fsolve(
+            partial(
+                equations,
+                m_half_light=(m0 := M_half_light.decompose(run_units.system).value),
+                r_half_light=(r0 := R_half_light.decompose(run_units.system).value),
+                c=c,
+                rho_crit=rho_crit.decompose(run_units.system).value,
+                H0=H0.decompose(run_units.system).value,
+            ),
+            [np.log(m0), np.log(r0)],
+        )
+        return {
+            'Rs': Quantity(np.exp(rs), run_units.length),
+            'Mtot': Quantity(np.exp(Mvir), run_units.mass),
+            'c': c,
+        }
+
     def to_agama_potential(
         self, type: str | None = 'Spheroid', gamma: int | None = 1, beta: int | None = 3, **kwargs: Any
     ) -> agama_wrappers.Potential:
@@ -90,7 +150,7 @@ class NFW(Distribution):
         elif name == 'Draco':  # Numbers taken from arXiv:2407.07769
             return cls(
                 Mtot=Quantity(0.80e8, 'Msun'),
-                Rs=Quantity(2.47e2, 'pc'),
+                Rs=Quantity(247, 'pc'),
                 Rvir='From mass',
                 name=name,
                 **kwargs,

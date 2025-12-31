@@ -1,6 +1,8 @@
 from typing import Any, Literal, cast, get_args
+from pathlib import Path
 
 import regex
+import pandas as pd
 from astropy.units import Quantity
 
 from .nfw import NFW
@@ -60,3 +62,30 @@ def validate_input(name: str) -> tuple[physical_examples, distribution_options]:
             suffix = option
     assert name in get_args(physical_examples), f'Unknown physical example: {name}'
     return cast(physical_examples, name), suffix
+
+
+def load_db(path: str | Path = 'local_volume_database/comb_all.csv'):
+    """Loads the galaxy db table.
+
+    See `https://local-volume-database.readthedocs.io/en/latest/index.html` for reference.
+    """
+    return pd.read_csv(path, index_col='key')
+
+
+def get_db_parameters(name: physical_examples, **kwargs: Any):
+    """Return the parameters of the given physical example from the database. Additional keyword arguments are passed to the loading function `load_db()`."""
+    db = load_db(**kwargs)
+    if name == 'Sague-1':
+        raise ValueError('Sague-1 is not available in the database')
+    elif name == 'Draco':
+        key = 'draco_1'
+    elif name == 'Fornax dSph':
+        key = 'fornax_1'
+    else:
+        raise ValueError(f'Unknown physical example in db: {name}')
+    entry = db.loc[key]
+    return {
+        'mass_stellar': Quantity(10 ** entry['mass_stellar'], 'Msun'),
+        'mass_half_light': Quantity(10 ** entry['mass_dynamical_wolf'], 'Msun'),
+        'r_half_light': Quantity(10 ** entry['rhalf_physical'], 'pc'),
+    }
