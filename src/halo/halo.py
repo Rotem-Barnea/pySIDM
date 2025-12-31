@@ -21,13 +21,15 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
+from src.phase_space import PhaseSpace
+
 from . import io
 from .. import plot, utils, report, physics, run_units
 from ..tqdm import tqdm
 from ..types import ParticleType
 from ..physics import sidm, leapfrog
 from ..background import Mass_Distribution
-from ..distribution.distribution import Distribution
+from ..distribution.distribution import Distribution, backends
 
 
 class Halo:
@@ -334,12 +336,20 @@ class Halo:
         )
 
     @property
-    def name(self) -> str:
+    def name(self) -> str | list[str]:
         """If the halo is made out of a physical example, return it's name"""
         unique_names = np.unique([distribution.name for distribution in self.distributions])
         if len(unique_names) == 1 and unique_names[0] != '':
             return unique_names[0]
-        return ''
+        return [distribution.name for distribution in self.distributions]
+
+    @property
+    def backend(self) -> backends | list[backends]:
+        """If the halo is made out of a physical example, return it's name"""
+        unique_backends = np.unique([distribution.backend for distribution in self.distributions])
+        if len(unique_backends) == 1 and unique_backends[0] != '':
+            return self.distributions[0].backend
+        return [distribution.backend for distribution in self.distributions]
 
     @staticmethod
     def to_dataframe(
@@ -414,6 +424,7 @@ class Halo:
             E: Relative energy (`Psi-1/2*m*v_norm**2`).
             particle_type: Type of particle.
             particle_index: Index of particle.
+            distribution_id: Identifier of the source distribution.
         """
         self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
         data = table.QTable(
@@ -429,6 +440,7 @@ class Halo:
                 'E': self.E,
                 'particle_type': self._particles['particle_type'],
                 'particle_index': self._particles.index,
+                'distribution_id': self._particles['distribution_id'],
             }
         )
         return data
@@ -438,6 +450,28 @@ class Halo:
         """Return the `particles` QTable split by particle type (as a dictionary)."""
         groups = self.particles.group_by('particle_type').groups
         return dict(zip(np.array(dict(groups.keys)['particle_type']), groups))
+
+    @property
+    def phase_space(self) -> PhaseSpace:
+        """Return the phase space object for the halo's particles (all of them)."""
+        return PhaseSpace.from_particles(self.distributions[0], self.particles)
+
+    @property
+    def phase_space_by_type(self) -> dict[str, PhaseSpace]:
+        """Return the phase space object for the halo's particles split by particle type (as a dictionary)."""
+        return {
+            group['particle_type'][0]: PhaseSpace.from_particles(
+                self.get_distribution(group['distribution_id'][0]), group
+            )
+            for group in self.particles.group_by('particle_type').groups
+        }
+
+    def get_distribution(self, id: int) -> Distribution:
+        """Return the distribution with the given id."""
+        for distribution in self.distributions:
+            if distribution.id == id:
+                return distribution
+        raise ValueError(f'Distribution with id {id} not found')
 
     def get_particle_states(
         self,
@@ -1188,6 +1222,7 @@ class Halo:
             v=cast(Quantity, np.vstack([vx, vy, vr]).T),
             particle_type=cast(list[ParticleType], particles['particle_type']),
             m=m,
+            distribution_id=np.array(particles['distribution_id']),
             distributions=io.load_distributions(path, verbose=verbose),
             **(io.load_pickle(path, 'metadata', verbose=verbose) if not legacy_payload else {}),
             **(io.load_pickle(path, 'heavy_payload', verbose=verbose) if not legacy_payload else {}),
@@ -2088,7 +2123,7 @@ class Halo:
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
-        grid, extent = plot.aggregate_evolution_data(
+        grid, extent, (x_range, y_range) = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
             time_range=time_range,
@@ -2098,6 +2133,8 @@ class Halo:
 
         fig, ax = plot.heatmap(
             grid=grid,
+            x_range=x_range,
+            y_range=y_range,
             extent=extent,
             x_unit=length_unit,
             y_unit=time_unit,
@@ -2153,7 +2190,7 @@ class Halo:
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
-        grid, extent = plot.aggregate_evolution_data(
+        grid, extent, (x_range, y_range) = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
             time_range=time_range,
@@ -2165,6 +2202,8 @@ class Halo:
         fig, ax = plot.heatmap(
             grid=grid,
             extent=extent,
+            x_range=x_range,
+            y_range=y_range,
             x_unit=length_unit,
             y_unit=time_unit,
             xlabel=xlabel,
@@ -2224,7 +2263,7 @@ class Halo:
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
             data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
-        grid, extent = plot.aggregate_evolution_data(
+        grid, extent, (x_range, y_range) = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
             time_range=time_range,
@@ -2237,6 +2276,8 @@ class Halo:
         fig, ax = plot.heatmap(
             grid=grid,
             extent=extent,
+            x_range=x_range,
+            y_range=y_range,
             x_unit=length_unit,
             y_unit=time_unit,
             xlabel=xlabel,
@@ -2315,7 +2356,7 @@ class Halo:
                 'r': Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_unit),
             }
         )
-        grid, extent = plot.aggregate_evolution_data(
+        grid, extent, (x_range, y_range) = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
             time_range=time_range,
@@ -2330,7 +2371,7 @@ class Halo:
                 np.searchsorted(time_bins, cast(NDArray[np.float64], location_data['time']))
             ]
 
-            location_grid, _ = plot.aggregate_evolution_data(
+            location_grid, _, _ = plot.aggregate_evolution_data(
                 data=location_data,
                 radius_bins=radius_bins,
                 time_range=time_range,
@@ -2342,6 +2383,8 @@ class Halo:
         fig, ax = plot.heatmap(
             grid=grid,
             extent=extent,
+            x_range=x_range,
+            y_range=y_range,
             x_unit=length_unit,
             y_unit=time_unit,
             xlabel=xlabel,
@@ -2574,7 +2617,7 @@ class Halo:
         ylabel: str | None = 'Fraction of scattering DM particles',
         title: str | None = 'Per particle scattering amount distribution',
         minorticks: bool = True,
-        xscale: str = 'log',
+        xscale: plot.Scale = 'log',
         plot_labels: bool = True,
         bar_kwargs: dict[str, Any] = {'align': 'center', 'edgecolor': 'black', 'alpha': 0.7},
         save_kwargs: dict[str, Any] | None = None,
@@ -2795,7 +2838,7 @@ class Halo:
         ylabel: str | None = 'Cumulative number of scattering events',
         title: str | None = 'Cumulative number of scattering events',
         label: str | None = None,
-        yscale: str = 'log',
+        yscale: plot.Scale = 'log',
         lineplot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
@@ -2888,7 +2931,7 @@ class Halo:
         label: str | None = None,
         time_format: str | None = None,
         title_time_unit: str | None = 'Myr',
-        yscale: str = 'log',
+        yscale: plot.Scale = 'log',
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -3044,8 +3087,8 @@ class Halo:
         radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
         limit_radius_by_Rvir: bool = True,
         distributions: list[Distribution] | list[int] | None = None,
-        xscale: str = 'log',
-        yscale: str = 'log',
+        xscale: plot.Scale = 'log',
+        yscale: plot.Scale = 'log',
         fig: Figure | None = None,
         ax: Axes | None = None,
         setup_kwargs: dict[str, Any] = {},
@@ -3225,8 +3268,8 @@ class Halo:
         cbar_label: str | None = 'Number of particles',
         time_unit: UnitLike = 'Gyr',
         time_format: str = '.1f',
-        xscale: str = 'log',
-        yscale: str = 'log',
+        xscale: plot.Scale = 'log',
+        yscale: plot.Scale = 'log',
         plot_method: Literal['imshow', 'pcolormesh'] = 'pcolormesh',
         fig: Figure | None = None,
         ax: Axes | None = None,

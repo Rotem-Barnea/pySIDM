@@ -20,6 +20,8 @@ from ..physics.eddington import QuantitySpline
 if TYPE_CHECKING:
     from ..phase_space import PhaseSpace
 
+backends = Literal['python', 'agama']
+
 
 class Distribution:
     """General mass distribution profile."""
@@ -43,7 +45,7 @@ class Distribution:
         particle_type: ParticleType = 'dm',
         name: str = '',
         id: int | None = None,
-        backend: Literal['python', 'agama'] = 'python',
+        backend: backends = 'python',
         agama_potential: agama_wrappers.Potential | None = None,
         agama_total_potential: agama_wrappers.Potential | None = None,
         agama_truncation_power: int = 1,
@@ -89,7 +91,7 @@ class Distribution:
         self.truncate_power = truncate_power
         self.memoization = {}
         self.id = utils.make_id(id)
-        self.backend = backend
+        self.backend: backends = backend
 
         if c == 'Dutton14':
             assert Mtot is not None, 'Mtot must be provided when using Dutton14'
@@ -187,9 +189,9 @@ class Distribution:
         )
 
     @staticmethod
-    def r_half_light_to_Rs(r: Quantity['length']) -> Quantity['length']:
+    def r_half_light_to_Rs(r: Quantity['length'], projection_factor: float = 1.8) -> Quantity['length']:
         """Calculates the scale radius (`Rs`) from the half-light radius."""
-        return r / (1 + np.sqrt(2))
+        return projection_factor * r / (1 + np.sqrt(2))
 
     @property
     def label(self) -> str:
@@ -914,8 +916,8 @@ class Distribution:
         length_unit: UnitLike = 'kpc',
         label: str | None = None,
         add_markers: bool = True,
-        xscale: str = 'log',
-        yscale: str = 'log',
+        xscale: plot.Scale = 'log',
+        yscale: plot.Scale = 'log',
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the density distribution (`rho`) of the density profile.

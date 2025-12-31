@@ -1,3 +1,4 @@
+import warnings
 from typing import Any, Literal, cast
 from pathlib import Path
 from collections.abc import Iterable
@@ -13,14 +14,19 @@ from matplotlib import pyplot as plt
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 from matplotlib.axes import Axes
+from matplotlib.image import AxesImage
 from matplotlib.figure import Figure
+from matplotlib.colorbar import Colorbar
 from astropy.units.typing import UnitLike
 from matplotlib.transforms import BboxTransformTo
+from matplotlib.collections import QuadMesh
 from numba.misc.coverage_support import Callable
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from . import utils, run_units
 from .tqdm import tqdm
+
+Scale = Literal['linear', 'log', 'guess']
 
 
 def pretty_ax_text(
@@ -66,8 +72,8 @@ def setup(
     grid: bool = True,
     minorticks: bool = False,
     figsize: tuple[int, int] | None = (6, 5),
-    xscale: str = 'linear',
-    yscale: str = 'linear',
+    xscale: Scale = 'linear',
+    yscale: Scale = 'linear',
     ax_set: dict[str, str] | None = None,
     x_axis_percent_formatter: dict[str, Any] | None = None,
     y_axis_percent_formatter: dict[str, Any] | None = None,
@@ -198,6 +204,126 @@ def default_unit_type(key: str, plot_unit: UnitLike | None = None) -> UnitLike:
     return ''
 
 
+def format_ax_ticks(
+    ax: Axes,
+    axis: Literal['x', 'y'],
+    align: bool = True,
+    nbins: int | None = None,
+    scale: Literal['log', 'linear'] = 'linear',
+    tick_format: str | Literal['auto'] = 'auto',
+    axis_range: Quantity | NDArray[np.float64] | tuple[float, float] | tuple[Quantity, Quantity] | None = None,
+    base: float = 10,
+    subs: list[float] | Literal['auto', 'all'] | None = list(np.arange(2, 10, dtype=float)),
+    numticks: int | None = 999,
+) -> Axes:
+    """Format the ticks on an axis.
+
+    Parameters:
+        ax: The axis to format.
+        axis: The axis to format (`x` or `y`). Primarily relevant for `align`.
+        align: Whether to align the ticks of the x axis at the bottom to avoid collision. Only relevant if `axis == 'x'`.
+        nbins: The number of bins to use.
+        scale: The scale of the axis.
+        tick_format: The format of the ticks. `auto` selects the rounding based on `axis_range` to avoid duplicate labels, and is only relevant for `scale == 'linear'`.
+        axis_range: The range of the axis. Only relevant if `tick_format == 'auto'` and `scale == 'linear'`. Only the minimum and maximum values are used.
+        base: The base of the logarithm. Only relevant if `scale == 'log'`.
+        subs: The subticks, passed to `ticker.LogLocator`. Only relevant if `scale == 'log'`.
+        numticks: The number of subticks, passed to `ticker.LogLocator`. Only relevant if `scale == 'log'`.
+
+    Returns:
+        ax
+    """
+    if nbins is None:
+        return ax
+    ax_axis = ax.xaxis if axis == 'x' else ax.yaxis
+    if scale == 'log':
+        ax_axis.set_major_locator(ticker.LogLocator(base=base, numticks=nbins))
+        ax_axis.set_major_formatter(ticker.LogFormatterSciNotation(base=base))
+        ax_axis.set_minor_locator(ticker.LogLocator(base=base, subs=subs, numticks=numticks))
+    else:
+        ax_axis.set_major_locator(ticker.MaxNLocator(nbins=nbins))
+        ax_axis.set_major_formatter(ticker.StrMethodFormatter('{x:.0f}'))
+        if tick_format == 'auto':
+            if axis_range is None:
+                warnings.warn('`axis_range` is not provided even though `tick_format` is set to `auto`')
+            else:
+                bins = np.linspace(np.array(axis_range).min(), np.array(axis_range).max(), nbins)
+                for rounding in range(5):
+                    tick_format = f'.{rounding}f'
+                    if len(np.unique([f'{x:{tick_format}}' for x in bins])) == nbins:
+                        ax_axis.set_major_formatter(ticker.StrMethodFormatter(f'{{x:{tick_format}}}'))
+                        break
+    if axis == 'x' and align:
+        ax_axis.tick_bottom()
+        for lab in ax.get_xticklabels():
+            lab.set_rotation(0)
+            lab.set_horizontalalignment('center')
+    return ax
+
+
+# class cbar_kwargs(TypedDict, total=False):
+#     label: str | None
+#     label_autosuffix: bool
+#     format: str | None
+#     log_numticks: int | None
+#     unit: UnitLike
+#     grid_row_normalization: Literal['max', 'sum', 'integral'] | float | None
+
+
+def format_cbar(
+    fig: Figure,
+    ax: Axes,
+    im: AxesImage | QuadMesh,
+    cbar_label: str | None = None,
+    cbar_label_autosuffix: bool = True,
+    cbar_format: str | None = None,
+    cbar_log_numticks: int | None = None,
+    cbar_unit: UnitLike = '',
+    grid_row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
+) -> tuple[Figure, Axes, Colorbar]:
+    """Format the colorbar.
+
+    Parameters:
+        fig: Figure to add the colorbar to.
+        ax: Axes to add the colorbar to.
+        im: Image to add the colorbar to.
+        cbar_label: Label for the colorbar.
+        cbar_label_autosuffix: Add a prefix and suffix based on the `row_normalization` selected.
+        cbar_format: Format string for the colorbar.
+        cbar_log_numticks: Number of ticks for the colorbar when using a log scale. If `None` ignores.
+        grid_row_normalization: Normalization applied to the grid row values, used for the cbar label prefix and suffix.
+
+    Returns:
+        fig, ax, cbar
+    """
+    cbar = fig.colorbar(im, ax=ax)
+
+    if cbar_label_autosuffix and cbar_label is not None:
+        if grid_row_normalization is None:
+            cbar_label = f'#{cbar_label}'
+        elif grid_row_normalization == 'max':
+            cbar_label = f'{cbar_label} fraction from max bin in row'
+        elif type(grid_row_normalization) is float:
+            cbar_label = f'{cbar_label} fraction from the {grid_row_normalization:.0%}-th quantile bin in row'
+        elif grid_row_normalization == 'sum':
+            cbar_label = f'%{cbar_label} per bin in row'
+        elif grid_row_normalization == 'integral':
+            cbar_label = f'{cbar_label} density per unit length'
+
+    cbar_label = utils.add_label_unit(cbar_label, cbar_unit)
+    if cbar_label:
+        cbar.set_label(cbar_label)
+
+    if cbar_log_numticks is not None:
+        cbar.locator = ticker.LogLocator(numticks=cbar_log_numticks)
+        cbar.update_ticks()
+    if cbar_format is not None:
+        cbar.formatter = ticker.StrMethodFormatter(cbar_format)
+        cbar.update_ticks()
+
+    return fig, ax, cbar
+
+
 def trace(
     key: str,
     data: table.QTable,
@@ -271,7 +397,7 @@ def trace(
 def heatmap(
     grid: Quantity,
     extent: tuple[Quantity, Quantity, Quantity, Quantity] | None = None,
-    plot_method: Literal['imshow', 'pcolormesh'] = 'imshow',
+    plot_method: Literal['imshow', 'pcolormesh', 'auto'] = 'auto',
     x_range: Quantity | None = None,
     y_range: Quantity | None = None,
     x_unit: UnitLike = run_units.length,
@@ -281,10 +407,10 @@ def heatmap(
     transparent_range: tuple[float, float] | None = None,
     x_nbins: int | None = 6,
     y_nbins: int | None = 6,
-    x_tick_format: str = '.0f',
-    y_tick_format: str = '.0f',
-    xscale: str | Literal['guess'] = 'guess',
-    yscale: str | Literal['guess'] = 'guess',
+    x_tick_format: str | Literal['auto'] = 'auto',
+    y_tick_format: str | Literal['auto'] = 'auto',
+    xscale: Scale = 'guess',
+    yscale: Scale = 'guess',
     xclip: bool = False,
     yclip: bool = False,
     title: str | None = None,
@@ -297,9 +423,6 @@ def heatmap(
     log_scale: bool = False,
     percentile_clip_scale: tuple[float, float] | None = None,
     grid_row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
-    hlines: list[dict[str, Any]] = [],  # TODO - deprecate
-    vlines: list[dict[str, Any]] = [],  # TODO - deprecate
-    texts: list[dict[str, Any]] = [],  # TODO - deprecate
     fig: Figure | None = None,
     ax: Axes | None = None,
     setup_kwargs: dict[str, Any] = {},
@@ -311,7 +434,7 @@ def heatmap(
     Parameters:
         grid: 2d array of data to plot.
         extent: Range of values to plot, used to define the x and y axes. If `None` derive from `x_range` and `y_range`, otherwise takes priority. Only used if `plot_method` is `imshow`.
-        plot_method: Method to use for plotting.
+        plot_method: Method to use for plotting. `auto` will choose `imshow` if `xscale` and `yscale` are `'linear'`, otherwise `pcolormesh`.
         x_range: Range of x values to plot, used to define the extent. Must be provided if `plot_method` is `pcolormesh` or if `extent` is `None`, otherwise ignored.
         y_range: Range of y values to plot, used to define the extent. Must be provided if `plot_method` is `pcolormesh` or if `extent` is `None`, otherwise ignored.
         x_unit: Units to use for the x-axis.
@@ -337,9 +460,6 @@ def heatmap(
         log_scale: Whether to use a log scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `colors.LogNorm()`. Ignored if the grid has no variance.
         percentile_clip_scale: Whether to use a percentile clip scale for the colorbar. If `True` overwrites the `norm` argument if provided (in `kwargs`), and sets the `norm` to `colors.PercentileNorm()`.
         grid_row_normalization: Normalization applied to the grid row values, used for the cbar label prefix and suffix.
-        hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
-        vlines: List of vertical lines to plot. Each element contains the keywords arguments passed to `ax.axvline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
-        texts: List of texts to plot. Each element contains the keywords arguments passed to `ax.text()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
         fig: Figure to plot on.
         ax: Axes to plot on.
         setup_kwargs: Additional keyword arguments to pass to `setup()`.
@@ -397,6 +517,9 @@ def heatmap(
         **cast(Any, {**setup_kwargs, 'xscale': xscale, 'yscale': yscale}),
     )
 
+    if plot_method == 'auto':
+        plot_method = 'imshow' if xscale == 'linear' and yscale == 'linear' else 'pcolormesh'
+
     if plot_method == 'imshow':
         im = ax.imshow(
             grid.decompose(run_units.system).value, origin='lower', aspect='auto', extent=extent_value, **kwargs
@@ -411,69 +534,21 @@ def heatmap(
             **kwargs,
         )
 
-    cbar = fig.colorbar(im, ax=ax)
+    fig, ax, _ = format_cbar(
+        fig=fig,
+        ax=ax,
+        im=im,
+        cbar_label=cbar_label,
+        cbar_label_autosuffix=cbar_label_autosuffix,
+        cbar_format=cbar_format,
+        cbar_log_numticks=cbar_log_numticks,
+        cbar_unit=cbar_unit,
+        grid_row_normalization=grid_row_normalization,
+    )
 
-    if cbar_label_autosuffix and cbar_label is not None:
-        if grid_row_normalization is None:
-            cbar_label = f'#{cbar_label}'
-        elif grid_row_normalization == 'max':
-            cbar_label = f'{cbar_label} fraction from max bin in row'
-        elif type(grid_row_normalization) is float:
-            cbar_label = f'{cbar_label} fraction from the {grid_row_normalization:.0%}-th quantile bin in row'
-        elif grid_row_normalization == 'sum':
-            cbar_label = f'%{cbar_label} per bin in row'
-        elif grid_row_normalization == 'integral':
-            cbar_label = f'{cbar_label} density per unit length'
+    ax = format_ax_ticks(ax=ax, axis='x', nbins=x_nbins, scale=xscale, tick_format=x_tick_format, axis_range=x_range)
+    ax = format_ax_ticks(ax=ax, axis='y', nbins=y_nbins, scale=yscale, tick_format=y_tick_format, axis_range=y_range)
 
-    cbar_label = utils.add_label_unit(cbar_label, cbar_unit)
-    if cbar_label:
-        cbar.set_label(cbar_label)
-
-    if cbar_log_numticks is not None:
-        cbar.locator = ticker.LogLocator(numticks=cbar_log_numticks)
-        cbar.update_ticks()
-    if cbar_format is not None:
-        cbar.formatter = ticker.StrMethodFormatter(cbar_format)
-        cbar.update_ticks()
-
-    if x_nbins is not None:
-        if xscale == 'log':
-            ax.xaxis.set_major_locator(ticker.LogLocator(base=10, numticks=x_nbins))
-            ax.xaxis.set_major_formatter(ticker.LogFormatterSciNotation(base=10))
-            ax.xaxis.set_minor_locator(
-                ticker.LogLocator(base=10, subs=list(np.arange(2, 10, dtype=float)), numticks=999)
-            )
-        else:
-            ax.xaxis.set_major_locator(ticker.MaxNLocator(nbins=x_nbins))
-            ax.xaxis.set_major_formatter(ticker.StrMethodFormatter(f'{{x:{x_tick_format}}}'))
-        ax.xaxis.tick_bottom()
-        for lab in ax.get_xticklabels():
-            lab.set_rotation(0)
-            lab.set_horizontalalignment('center')
-
-    if y_nbins is not None:
-        if yscale == 'log':
-            ax.yaxis.set_major_locator(ticker.LogLocator(base=10, numticks=y_nbins))
-            ax.yaxis.set_major_formatter(ticker.LogFormatterSciNotation(base=10))
-            ax.yaxis.set_minor_locator(
-                ticker.LogLocator(base=10, subs=list(np.arange(2, 10, dtype=float)), numticks=999)
-            )
-        else:
-            ax.yaxis.set_major_locator(ticker.MaxNLocator(nbins=y_nbins))
-            ax.yaxis.set_major_formatter(ticker.StrMethodFormatter(f'{{x:{y_tick_format}}}'))
-
-    for line in hlines:
-        if line.get('transform', None) == 'transAxes':
-            line['transform'] = ax.transAxes
-        ax.axhline(**line)
-    for line in vlines:
-        if line.get('transform', None) == 'transAxes':
-            line['transform'] = ax.transAxes
-        ax.axvline(**line)
-    for text in texts:
-        if text.get('transform', None) == 'transAxes':
-            text['transform'] = ax.transAxes
-        ax.text(**text)
     if save_kwargs is not None:
         save(fig=fig, **save_kwargs)
     return fig, ax
@@ -508,8 +583,8 @@ def density(
     title: str | None = None,
     length_unit: UnitLike = 'kpc',
     density_unit: UnitLike = 'Msun/kpc^3',
-    xscale: str = 'log',
-    yscale: str = 'log',
+    xscale: Scale = 'log',
+    yscale: Scale = 'log',
     minorticks: bool = True,
     label: str | None = None,
     cleanup_nonpositive: bool = True,
@@ -592,7 +667,11 @@ def aggregate_evolution_data(
     data_specific_energy_unit: UnitLike = 'kpc^2/Myr^2',
     data_mass_unit: UnitLike = 'Msun',
     output_grid_unit: UnitLike | None = None,
-) -> tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']]]:
+) -> tuple[
+    Quantity,
+    tuple[Quantity['length'], Quantity['length'], Quantity['time'], Quantity['time']],
+    tuple[Quantity['length'], Quantity['time']],
+]:
     """Prepares data to be plotted in a 2d evolution heatmap plot, with radius x-axis and time y-axis. Intended to be passed on to `heatmap()`.
 
     Parameters:
@@ -610,7 +689,7 @@ def aggregate_evolution_data(
         data_mass_unit: The units for the mass in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
 
     Returns:
-        data, extent.
+        data, extent, (radius_bins, time_bins)
     """
     keep_columns = ['r', 'time']
     if output_type in ['temperature', 'specific heat flux']:
@@ -686,13 +765,18 @@ def aggregate_evolution_data(
             np.trapezoid(y=grid, x=np.matlib.repmat(radius_bins[:-1], len(grid), 1), axis=1), 1
         )
 
+    # time_bins = Quantity(np.unique(sub['time']), data_time_unit)
+    time_values = np.unique(sub['time'])
+    dt = time_values[1] - time_values[0]
+    time_bins = Quantity(np.arange(time_values[0] - dt / 2, time_values[-1] + dt, dt), data_time_unit)
+
     extent = (
         radius_bins.min(),
         radius_bins.max(),
-        Quantity(sub['time'].min(), data_time_unit),
-        Quantity(sub['time'].max(), data_time_unit),
+        time_bins.min(),
+        time_bins.max(),
     )
-    return cast(Quantity, grid_quantity), extent
+    return cast(Quantity, grid_quantity), extent, (radius_bins, time_bins)
 
 
 def aggregate_2d_data(

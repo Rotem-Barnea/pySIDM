@@ -4,10 +4,12 @@ from pathlib import Path
 
 import numpy as np
 import scipy
+import pandas as pd
 import seaborn as sns
+from astropy import table
 from matplotlib import colors
 from numpy.typing import NDArray
-from astropy.units import Quantity
+from astropy.units import Unit, Quantity
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
@@ -78,6 +80,62 @@ class PhaseSpace:
             self.generator = generator
             self.seed = rng.get_seed(self.generator)
 
+    @classmethod
+    def from_particles(
+        cls,
+        distribution: Distribution,
+        data: table.QTable | pd.DataFrame | None = None,
+        r: Quantity['length'] | None = None,
+        vx: Quantity['velocity'] | None = None,
+        vy: Quantity['velocity'] | None = None,
+        vr: Quantity['velocity'] | None = None,
+        m: Quantity['mass'] | None = None,
+        r_range: Quantity['length'] | int | None = 50,
+        v_range: Quantity['velocity'] | int | None = 50,
+        **kwargs: Any,
+    ) -> 'PhaseSpace':
+        """Creates a phase space object from a set of particles' positions and velocities.
+
+        Parameters:
+            distribution: The base distribution for the particles. Defines metadata and doesn't need to be exact.
+            data: The particles' data. If provided prefered over `r`, `vx`, `vy`, `vr`, and `m`. If provided as a `DataFrame`, assumes the default units, otherwise (`QTable`) draws directly from the table.
+            r: The particles' position. Mandatory if `data=None`, otherwise ignored.
+            vx: The particles' first perpendicular component (to the radial direction) of the velocity. Mandatory if `data=None`, otherwise ignored.
+            vy: The particles' second perpendicular component (to the radial direction) of the velocity. Mandatory if `data=None`, otherwise ignored.
+            vr: The particles' radial velocity. Mandatory if `data=None`, otherwise ignored.
+            m: The particles' mass. Mandatory if `data=None`, otherwise ignored.
+            r_range: Passed on to the `PhaseSpace` constructor to define the integration grid. If an `int`, create a logarithmic grid from the minimum to maximum radiuses with the provided number of posts. If `None` use the default constructor value.
+            v_range: Passed on to the `PhaseSpace` constructor to define the integration grid. If an `int` create a logarithmic grid from the minimum to maximum velocity norms with with the provided number of posts. If `None` use the default constructor value.
+            **kwargs: Additional keyword arguments passed to the `PhaseSpace` constructor.
+        """
+        if data is not None:
+            if isinstance(data, table.QTable):
+                r, vx, vy, vr, m = cast(
+                    tuple[Quantity, Quantity, Quantity, Quantity, Quantity],
+                    (data['r'], data['vx'], data['vy'], data['vr'], data['m']),
+                )
+            else:
+                r, vx, vy, vr, m = (
+                    Quantity(data['r'], run_units.length),
+                    Quantity(data['vx'], run_units.velocity),
+                    Quantity(data['vy'], run_units.velocity),
+                    Quantity(data['vr'], run_units.velocity),
+                    Quantity(data['m'], run_units.mass),
+                )
+        assert r is not None, 'Failed to parse `r`'
+        assert vx is not None, 'Failed to parse `vx`'
+        assert vy is not None, 'Failed to parse `vy`'
+        assert vr is not None, 'Failed to parse `vr`'
+        assert m is not None, 'Failed to parse `m`'
+        if isinstance(r_range, int):
+            r_range = cast(Quantity, np.geomspace(r.min(), r.max(), r_range))
+        if isinstance(v_range, int):
+            v = np.sqrt(vx**2 + vy**2 + vr**2)
+            v_range = cast(Quantity, np.geomspace(v.min(), v.max(), v_range))
+        ps = cls(distribution, **utils.drop_None(r_range=r_range, v_range=v_range), **kwargs)
+        ps.mass_grid = ps.particles_to_mass_grid(r=r, vx=vx, vy=vy, vr=vr, m=m)
+        return ps
+
     @property
     def jacobian_r(self) -> Quantity:
         """Jacobian of the distribution function with respect to radius"""
@@ -133,14 +191,40 @@ class PhaseSpace:
         """Total mass of the distribution function"""
         return self.mass_grid.sum()
 
+    def to_f_grid(self, mass_grid: Quantity['mass']) -> Quantity[run_units.f_unit]:
+        """Calcualte the f grid from the provided mass grid"""
+        return (mass_grid / (self.jacobian_rv * self.volume_element)).decompose(run_units.system)
+
+    def integrate(self, grid: Quantity, axis: Literal['r', 'v', 'rv']) -> Quantity:
+        """Integrate the grid over the provided axis"""
+        if axis == 'r':
+            return (grid * self.jacobian_r[np.newaxis, ...] * self.dr_grid).sum(axis=1)
+        elif axis == 'v':
+            return (grid * self.jacobian_v[..., np.newaxis] * self.dv_grid).sum(axis=0)
+        else:
+            return (grid * self.jacobian_rv * self.volume_element).sum()
+
     def calculate_rho(self, mass_grid: Quantity['mass']) -> Quantity['mass density']:
         """Calcualte the density as a function of radius (without the Jacobian) for the provided mass grid"""
-        return (mass_grid.sum(axis=0) / (self.dr * self.jacobian_r)).to(run_units.density)
+        return self.integrate(self.to_f_grid(mass_grid), axis='v').to(run_units.density)
+
+    def calculate_temperature(self, mass_grid: Quantity['mass']) -> Quantity['specific energy']:
+        """Calcualte the temperature as a function of radius for the provided mass grid"""
+        num = self.integrate(self.v_grid**2 * self.to_f_grid(mass_grid), axis='v')
+        den = self.calculate_rho(mass_grid)
+        temperature = Quantity(np.full(num.shape, np.nan), cast(Unit, num.unit) / cast(Unit, den.unit))
+        temperature[den != 0] = num[den != 0] / den[den != 0]
+        return temperature.to(run_units.specific_energy)
 
     @property
     def rho(self) -> Quantity['mass density']:
         """Density as a function of radius (without the Jacobian)"""
         return self.calculate_rho(self.mass_grid)
+
+    @property
+    def temperature(self) -> Quantity['specific energy']:
+        """Temperature as a function of radius"""
+        return self.calculate_temperature(self.mass_grid)
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
         """If the `unit` is `Tdyn` return `self.Tdyn`. Otherwise return `unit`."""
@@ -493,6 +577,7 @@ class PhaseSpace:
         self,
         mass_grid: Quantity | None = None,
         smoothing_sigma: float | None = None,
+        smooth_holes: bool = True,
         plot_distribution: bool = False,
         length_unit: UnitLike = 'kpc',
         density_unit: UnitLike = 'Msun/kpc^3',
@@ -515,13 +600,50 @@ class PhaseSpace:
         else:
             fig, ax = plot.setup(**kwargs)
 
-        rho = self.rho if mass_grid is None else self.calculate_rho(mass_grid)
+        x = self.r_array
+        y = self.rho if mass_grid is None else self.calculate_rho(mass_grid)
+        y = utils.smooth_holes_1d(x=x, y=y, include_zero=True)
         if smoothing_sigma is not None:
-            rho = Quantity(scipy.ndimage.gaussian_filter(rho.value, smoothing_sigma), rho.unit)
+            y = Quantity(scipy.ndimage.gaussian_filter(y.value, smoothing_sigma), y.unit)
 
         sns.lineplot(
-            x=self.r_array.to(length_unit).value,
-            y=rho.to(density_unit).value,
+            x=x.to(length_unit).value,
+            y=y.to(density_unit).value,
+            ax=ax,
+            **lineplot_kwargs,
+        )
+        return fig, ax
+
+    def plot_temperature(
+        self,
+        mass_grid: Quantity | None = None,
+        smoothing_sigma: float | None = None,
+        length_unit: UnitLike = 'kpc',
+        temperature_unit: UnitLike = 'km^2/second^2',
+        lineplot_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the radial temperature profile of the distribution function.
+
+        Parameters:
+            mass_grid: Mass grid to calculate the density at. If `None`, the current density is used.
+            smoothing_sigma: Smoothing parameter for the temperature profile. If `None`, no smoothing is applied.
+            length_unit: Unit of length.
+            temperature_unit: Unit of density.
+            lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot`.
+            **kwargs: Additional keyword arguments passed to `plot.setup` if `plot_distribution` is `False` or to `distribution.plot_rho` if `plot_distribution` is `True`.
+        """
+        fig, ax = plot.setup(**kwargs)
+
+        x = self.r_array
+        y = self.temperature if mass_grid is None else self.calculate_temperature(mass_grid)
+        y = utils.smooth_holes_1d(x=x, y=y, include_zero=True)
+        if smoothing_sigma is not None:
+            y = Quantity(scipy.ndimage.gaussian_filter(y.value, smoothing_sigma), y.unit)
+
+        sns.lineplot(
+            x=x.to(length_unit).value,
+            y=y.to(temperature_unit).value,
             ax=ax,
             **lineplot_kwargs,
         )
