@@ -442,6 +442,7 @@ def smooth_holes_1d(
     x: QuantityOrArray,
     y: QuantityOrArray,
     mask: NDArray[np.bool_] | None = None,
+    include_zero: bool = False,
     assume_sorted: bool = False,
     bounds_error: bool = False,
     fill_value: str = 'extrapolate',
@@ -455,6 +456,7 @@ def smooth_holes_1d(
         x: The x values used for the interpolation.
         y: The y values used for the interpolation.
         mask: The mask indicating the holes to be smoothed. If `None` treat all negative values as holes.
+        include_zero: Only relevant if `mask` is not provided. Define "hole" as any `y<=0`, otherwise only fill `y<0`.
         assume_sorted: Whether the x values are sorted.
         bounds_error: Whether to raise an error if the x values are out of bounds.
         fill_value: The value to use for extrapolation. Must be accepted by zscipy.interpolate.interp1d()`.
@@ -464,7 +466,10 @@ def smooth_holes_1d(
         The smoothed y values.
     """
     if mask is None:
-        mask = np.array(y) < 0
+        if include_zero:
+            mask = np.array(y) <= 0
+        else:
+            mask = np.array(y) < 0
     smoothed = np.array(y).copy()
     smoothed[mask] = scipy.interpolate.interp1d(
         x=np.array(x[~mask]),
@@ -479,7 +484,9 @@ def smooth_holes_1d(
     return smoothed
 
 
-def smooth_holes_2d(data: QuantityOrArray, mask: NDArray[np.bool_] | None = None, **kwargs: Any) -> QuantityOrArray:
+def smooth_holes_2d(
+    data: QuantityOrArray, mask: NDArray[np.bool_] | None = None, include_zero: bool = False, **kwargs: Any
+) -> QuantityOrArray:
     """Smooths holes in a 2D array, defined by the provided mask.
 
     Smoothing is done by interpolating the values around the holes.
@@ -487,13 +494,17 @@ def smooth_holes_2d(data: QuantityOrArray, mask: NDArray[np.bool_] | None = None
     Parameters:
         data: The data to be smoothed.
         mask: The mask indicating the holes to be smoothed. If `None` treat all negative values as holes.
+        include_zero: Only relevant if `mask` is not provided. Define "hole" as any `data<=0`, otherwise only fill `data<0`.
         kwargs: Additional keyword arguments to pass to the interpolation function.
 
     Returns:
         The smoothed data values.
     """
     if mask is None:
-        mask = np.array(data) < 0
+        if include_zero:
+            mask = np.array(data) <= 0
+        else:
+            mask = np.array(data) < 0
     smoothed = np.array(data).copy()
     y, x = np.indices(data.shape)
     smoothed[mask] = scipy.interpolate.griddata(
