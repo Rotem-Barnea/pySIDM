@@ -49,6 +49,7 @@ class Distribution:
         agama_potential: agama_wrappers.Potential | None = None,
         agama_total_potential: agama_wrappers.Potential | None = None,
         agama_truncation_power: int = 1,
+        **kwargs: Any,
     ) -> None:
         """General mass distribution profile.
 
@@ -71,6 +72,7 @@ class Distribution:
             id: Unique identifier for the distribution profile.
             bypass_init_checks: Whether to bypass initialization checks.
             backend: Backend to use for calculations. Either 'python' (explicit functions defined in this class) or 'agama' (create the relevant potential and distribution functions on the fly and forward the calculations to them).
+            **kwargs: Unused keyword arguments.
 
         Returns:
             General mass distribution object.

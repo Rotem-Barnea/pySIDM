@@ -14,8 +14,21 @@ if TYPE_CHECKING:
 class Hernquist(Distribution):
     """Hernquist density profile."""
 
-    def __init__(self, c: float | None = 1, truncate: bool = False, **kwargs: Any) -> None:
-        super().__init__(truncate=truncate, c=c, **kwargs)
+    def __init__(
+        self,
+        Rs: Quantity['length'] | None = None,
+        Mtot: Quantity['mass'] | None = None,
+        mass_stellar: Quantity['mass'] | None = None,
+        r_half_light: Quantity['length'] | None = None,
+        c: float | None = 1,
+        truncate: bool = False,
+        **kwargs: Any,
+    ) -> None:
+        if mass_stellar is not None and Mtot is None:
+            Mtot = mass_stellar
+        if r_half_light is not None and Rs is None:
+            Rs = self.r_half_light_to_Rs(r_half_light)
+        super().__init__(Rs=Rs, Mtot=Mtot, c=c, truncate=truncate, **kwargs)
         self.title = 'Hernquist'
 
     @staticmethod
@@ -74,10 +87,8 @@ class Hernquist(Distribution):
         #         **kwargs,
         #     )
         elif name == 'Fornax dSph':  # Calculation.
-            params = example_db.get_db_parameters(name=name)
             return cls(
-                Rs=cls.r_half_light_to_Rs(params['r_half_light']),
-                Mtot=params['mass_stellar'],
+                **example_db.get_db_parameters(name=name),
                 name=name,
                 **kwargs,
             )
