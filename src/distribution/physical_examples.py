@@ -64,11 +64,13 @@ def validate_input(name: str) -> tuple[physical_examples, distribution_options]:
     return cast(physical_examples, name), suffix
 
 
-def load_db(path: str | Path = 'local_volume_database/comb_all.csv'):
-    """Loads the galaxy db table.
+def load_db(path: str | Path | None = None):
+    """Loads the galaxy db table. Defaults to the local volume database csv file.
 
     See `https://local-volume-database.readthedocs.io/en/latest/index.html` for reference.
     """
+    if path is None:
+        path = Path(__file__).parent / 'local_volume_database' / 'comb_all.csv'
     return pd.read_csv(path, index_col='key')
 
 
@@ -87,5 +89,5 @@ def get_db_parameters(name: physical_examples, **kwargs: Any):
     return {
         'mass_stellar': Quantity(10 ** entry['mass_stellar'], 'Msun'),
         'mass_half_light': Quantity(10 ** entry['mass_dynamical_wolf'], 'Msun'),
-        'r_half_light': Quantity(10 ** entry['rhalf_physical'], 'pc'),
+        'r_half_light': Quantity(entry['rhalf_physical'], 'pc'),
     }
