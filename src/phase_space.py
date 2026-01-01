@@ -218,6 +218,10 @@ class PhaseSpace:
             )(r_m.value),
             M.unit,
         )
+
+        # https://galaxiesbook.org/chapters/I-01.-Gravitation_3-Circular-velocity-and-dynamical-time.html
+        # $ T = sqrt((3 pi)/(G dot expval(rho))) = sqrt((3 pi)/(G dot (M(<r_m))/(4/3 pi r_m^3))) = 2 pi sqrt(r^3/(G dot M)) $
+        # Should it have the factor of 2*pi at the start? the paper drops it.
         return def_unit(
             'Tdyn',
             2 * np.pi * np.sqrt(r_m**3 / (constants.G * M_m)).decompose(run_units.system),
