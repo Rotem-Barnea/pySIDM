@@ -35,7 +35,7 @@ class PhaseSpace:
         mass_grid: Quantity['mass'] | None = None,
         f_grid: Quantity[run_units.f_unit] | None = None,
         r_range: Quantity['length'] = Quantity(np.geomspace(1e-5, 1e3, 500), 'kpc'),
-        v_range: Quantity['velocity'] = Quantity(np.geomspace(1e-5, 1e3, 400), 'km/second'),
+        v_range: Quantity['velocity'] = Quantity(np.linspace(0, 1e3, 200), 'km/second'),
         t: Quantity['time'] = Quantity(0, run_units.time),
         dt: Quantity['time'] | float = 1,
         gravitation_subdivision: int = 5,

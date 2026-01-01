@@ -7,7 +7,7 @@ from numba import njit
 from astropy import cosmology
 from astropy.units import Quantity
 
-from . import agama_wrappers
+from . import example_db, agama_wrappers
 from .. import run_units
 from ..types import FloatOrArray
 from .distribution import Distribution
@@ -74,11 +74,12 @@ class NFW(Distribution):
 
     @staticmethod
     def calculate_from_half_light(
-        R_half_light: Quantity['length'],
-        M_half_light: Quantity['mass'],
+        r_half_light: Quantity['length'],
+        mass_half_light: Quantity['mass'],
         c: float = 10,
         rho_crit: Quantity['mass density'] = cosmology.Planck18.critical_density0,
         H0: Quantity = cosmology.Planck18.H0,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """Calculate the distribution's parameters from the half-light radius and mass.
 
@@ -88,7 +89,7 @@ class NFW(Distribution):
             c: The concentration parameter `c`.
             rho_crit: The critical density of the universe.
             H0: The Hubble constant.
-            projection_factor: The projection factor to transfrom from projected 2D distance to a 3D radius.
+            kwargs: Unused keyword arguments.
 
         Returns:
             Rs, Mtot
@@ -116,8 +117,8 @@ class NFW(Distribution):
         Mvir, rs = scipy.optimize.fsolve(
             partial(
                 equations,
-                m_half_light=(m0 := M_half_light.decompose(run_units.system).value),
-                r_half_light=(r0 := R_half_light.decompose(run_units.system).value),
+                m_half_light=(m0 := mass_half_light.decompose(run_units.system).value),
+                r_half_light=(r0 := r_half_light.decompose(run_units.system).value),
                 c=c,
                 rho_crit=rho_crit.decompose(run_units.system).value,
                 H0=H0.decompose(run_units.system).value,
@@ -137,13 +138,18 @@ class NFW(Distribution):
         return super().to_agama_potential(type=type, gamma=gamma, beta=beta, **kwargs)
 
     @classmethod
-    def from_example(cls, name: 'physical_examples' = 'default', **kwargs: Any) -> Self:
+    def from_example(
+        cls,
+        name: 'physical_examples' = 'default',
+        c: float | Literal['Dutton14'] | None = None,
+        **kwargs: Any,
+    ) -> Self:
         """Create an NFW distribution from a predefined list of examples matching real galaxies."""
         if name == 'Sague-1':  # Numbers taken from arXiv:0809.2781
             return cls(
                 Mtot=Quantity(4.5e5, 'Msun'),
                 Rvir='From mass',
-                c='Dutton14',
+                c=c or 'Dutton14',
                 name=name,
                 **kwargs,
             )
@@ -152,21 +158,29 @@ class NFW(Distribution):
                 Mtot=Quantity(0.80e8, 'Msun'),
                 Rs=Quantity(247, 'pc'),
                 Rvir='From mass',
+                c=c,
                 name=name,
                 **kwargs,
             )
-        elif name == 'Fornax dSph':  # Numbers taken from doi:10.1093/mnrasl/sls031
+        # elif name == 'Fornax dSph':  # Numbers taken from doi:10.1093/mnrasl/sls031
+        #     return cls(
+        #         Mtot=Quantity((9 * 2 - 1) * (1e8 / 1.5) + 1e8, 'Msun'),
+        #         Rs=Quantity(2, 'kpc'),
+        #         c=9,
+        #         name=name,
+        #         **kwargs,
+        #     )
+        elif name == 'Fornax dSph':  # Calculation. Defaults to `c=18` if not provided.
+            assert c is None or isinstance(c, float), 'cannot use Dutton14 to calculate c when calculating from the db'
             return cls(
-                Mtot=Quantity((9 * 2 - 1) * (1e8 / 1.5) + 1e8, 'Msun'),
-                Rs=Quantity(2, 'kpc'),
-                c=9,
+                **cls.calculate_from_half_light(**example_db.get_db_parameters(name=name), c=c or 18),
                 name=name,
                 **kwargs,
             )
         return cls(
             rho_s=Quantity(2.73e7, 'Msun/kpc**3'),
             Rs=Quantity(1.18, 'kpc'),
-            c=19,
+            c=c or 19,
             name=name,
             **kwargs,
         )
