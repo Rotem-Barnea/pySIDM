@@ -1,5 +1,6 @@
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Any, Self, Literal
 
+import numpy as np
 from numba import njit
 from astropy.units import Quantity
 
@@ -64,7 +65,12 @@ class Hernquist(Distribution):
         return super().to_agama_potential(type=type, gamma=gamma, beta=beta, **kwargs)
 
     @classmethod
-    def from_example(cls, name: 'physical_examples' = 'default', **kwargs: Any) -> Self:
+    def from_example(
+        cls,
+        name: 'physical_examples' = 'default',
+        on_unknown: Literal['error', 'warning', 'suppress'] = 'suppress',
+        **kwargs: Any,
+    ) -> Self:
         """Create a Hernquist distribution from a predefined list of examples matching real galaxies."""
         if name == 'Sague-1':
             return cls(
@@ -73,8 +79,8 @@ class Hernquist(Distribution):
                 name=name,
                 **kwargs,
             )
-        elif name == 'Draco':
-            raise NotImplementedError('Draco example not implemented for Hernquist (try Plummer for baryons).')
+        # elif name == 'Draco':
+        #     raise NotImplementedError('Draco example not implemented for Hernquist (try Plummer for baryons).')
         # elif name == 'Fornax dSph':
         #     return cls(
         #         R_half_light=Quantity(668, 'pc'),  # doi:10.1111/j.1365-2966.2012.21885.x
@@ -82,15 +88,16 @@ class Hernquist(Distribution):
         #         name=name,
         #         **kwargs,
         #     )
-        elif name == 'Fornax dSph':  # Calculation.
-            return cls(
-                **example_db.get_db_parameters(name=name),
-                name=name,
-                **kwargs,
-            )
         return cls(
-            Rs=Quantity(1.18, 'kpc'),
-            rho_s=Quantity(1.1e4, 'Msun/kpc**3'),
+            **example_db.get_db_parameters(
+                name=name,
+                on_unknown=on_unknown,
+                defualt=example_db.ExampleParameters(
+                    mass_stellar=Quantity(1.11e5, 'Msun'),
+                    mass_half_light=Quantity(np.nan, 'Msun'),
+                    R_half_light=Quantity(1.18, 'kpc'),
+                ),
+            ),
             name=name,
             **kwargs,
         )

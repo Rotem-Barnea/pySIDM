@@ -110,7 +110,7 @@ class NFW(Distribution):
             m_half_calc = M200 * (np.log(1 + x_half) - x_half / (1 + x_half)) / (np.log(1 + c) - c / (1 + c))
 
             return (
-                np.log(m_half_calc) - np.log(m_half_light),
+                np.log(m_half_calc) - np.log(M_half_light),
                 np.log(calculate_M200(R200=c * rs, rho_crit=rho_crit)) - np.log(M200),
             )
 
