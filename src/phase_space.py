@@ -6,10 +6,10 @@ import numpy as np
 import scipy
 import pandas as pd
 import seaborn as sns
-from astropy import table
+from astropy import table, constants
 from matplotlib import colors
 from numpy.typing import NDArray
-from astropy.units import Unit, Quantity
+from astropy.units import Unit, Quantity, def_unit
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
@@ -31,7 +31,9 @@ class PhaseSpace:
 
     def __init__(
         self,
-        distribution: Distribution,
+        distribution: Distribution | None = None,
+        mass_grid: Quantity['mass'] | None = None,
+        f_grid: Quantity[run_units.f_unit] | None = None,
         r_range: Quantity['length'] = Quantity(np.geomspace(1e-5, 1e3, 500), 'kpc'),
         v_range: Quantity['velocity'] = Quantity(np.geomspace(1e-5, 1e3, 400), 'km/second'),
         t: Quantity['time'] = Quantity(0, run_units.time),
@@ -43,16 +45,16 @@ class PhaseSpace:
         generator: np.random.Generator | None = None,
         seed: int | None = None,
     ) -> None:
+        assert distribution is not None or mass_grid is not None or f_grid is not None, (
+            'Either `distribution` or a `grid` must be provided.'
+        )
+
         self.distribution = distribution
-        self.Tdyn = self.distribution.Tdyn
         self.r_array: Quantity = r_range.to(run_units.length)
         self.v_array: Quantity = v_range.to(run_units.velocity)
-        self.time: Quantity = t.copy()
-        self.dt: Quantity = (dt if isinstance(dt, Quantity) else self.distribution.Tdyn * dt).to(run_units.time)
         self.gravitation_subdivision = gravitation_subdivision
         self.gravitation_mass_cutoff = gravitation_mass_cutoff
         self.scatter_factor = scatter_factor
-        self.save_every_t = save_every_t
 
         self.r_grid, self.v_grid = cast(tuple[Quantity, Quantity], np.meshgrid(self.r_array, self.v_array))
 
@@ -62,7 +64,14 @@ class PhaseSpace:
         self.dr_grid, self.dv_grid = cast(tuple[Quantity, Quantity], np.meshgrid(self.dr, self.dv))
         self.volume_element = cast(Quantity, self.dv_grid * self.dr_grid)
 
-        self.f_grid: Quantity = self.distribution.f(v=self.v_grid, r=self.r_grid)
+        if self.distribution is not None:
+            self.f_grid = self.distribution.f(v=self.v_grid, r=self.r_grid)
+        elif f_grid is not None:
+            self.f_grid = f_grid
+        elif mass_grid is not None:
+            self.mass_grid = mass_grid
+        else:
+            raise NotImplementedError('Either `distribution`, `f_grid`, or `mass_grid` must be provided.')
 
         self.mass_grids: Quantity = self.mass_grid[np.newaxis, ...].copy()
         self.grids_time: Quantity = t[np.newaxis, ...].copy()
@@ -79,6 +88,14 @@ class PhaseSpace:
         else:
             self.generator = generator
             self.seed = rng.get_seed(self.generator)
+
+        if self.distribution is not None:
+            self.Tdyn = self.distribution.Tdyn
+        else:
+            self.Tdyn = self.calculate_Tdyn()
+        self.time: Quantity = t.copy()
+        self.dt: Quantity = (dt if isinstance(dt, Quantity) else self.Tdyn * dt).to(run_units.time)
+        self.save_every_t = save_every_t
 
     @classmethod
     def from_particles(
@@ -191,12 +208,44 @@ class PhaseSpace:
         """Total mass of the distribution function"""
         return self.mass_grid.sum()
 
+    def calculate_Tdyn(self, mass_grid: Quantity | None = None) -> Unit:
+        """Calculate the dynamical time of the distribution function. If `mass_grid` is not provided, the internal (current) grid will be used."""
+        r_m = Quantity(scipy.stats.gmean(self.r_array.value), self.r_array.unit)
+        M_m = Quantity(
+            scipy.interpolate.interp1d(
+                x=self.r_array.value,
+                y=(M := (mass_grid if mass_grid is not None else self.mass_grid)).sum(axis=0).cumsum().value,
+            )(r_m.value),
+            M.unit,
+        )
+        return def_unit(
+            'Tdyn',
+            2 * np.pi * np.sqrt(r_m**3 / (constants.G * M_m)).decompose(run_units.system),
+            doc='phase space dynamic time',
+        )
+
     def to_f_grid(self, mass_grid: Quantity['mass']) -> Quantity[run_units.f_unit]:
         """Calcualte the f grid from the provided mass grid"""
         return (mass_grid / (self.jacobian_rv * self.volume_element)).decompose(run_units.system)
 
-    def integrate(self, grid: Quantity, axis: Literal['r', 'v', 'rv']) -> Quantity:
-        """Integrate the grid over the provided axis"""
+    def integrate(
+        self,
+        integrand: Quantity | None = None,
+        full_grid: Quantity | None = None,
+        axis: Literal['r', 'v', 'rv'] = 'rv',
+    ) -> Quantity:
+        """Integrate the grid over the provided axis.
+
+        Parameters:
+            integrand: The integrand to integrate over the grid. Either `integrand` or `full_grid` must be provided. Will perform: `integral (integrand)*f*J dV`
+            full_grid: Same as `integrand` but assumes the distribution function (df) is already contained in the input, i.e. calculating `integral (full_grid)*J dV`. Either `integrand` or `full_grid` must be provided, and `full_grid` takes priority.
+            axis: The axis to integrate over. `r` gives `G(v) = integral g(r,v)*4*pi*r^2 dr`, `v` gives `G(r) = integral g(r,v)*4*pi*r^2 v^2 dv`, and `rv` gives `G = integral g(r,v)*8*pi^2*r^2*v^2 drdv`
+        """
+        assert integrand is not None or full_grid is not None, 'Either `integrand` or `full_grid` must be provided'
+        if full_grid is not None:
+            grid = full_grid
+        else:
+            grid = integrand * self.f_grid
         if axis == 'r':
             return (grid * self.jacobian_r[np.newaxis, ...] * self.dr_grid).sum(axis=1)
         elif axis == 'v':
@@ -206,11 +255,11 @@ class PhaseSpace:
 
     def calculate_rho(self, mass_grid: Quantity['mass']) -> Quantity['mass density']:
         """Calcualte the density as a function of radius (without the Jacobian) for the provided mass grid"""
-        return self.integrate(self.to_f_grid(mass_grid), axis='v').to(run_units.density)
+        return self.integrate(full_grid=self.to_f_grid(mass_grid), axis='v').to(run_units.density)
 
     def calculate_temperature(self, mass_grid: Quantity['mass']) -> Quantity['specific energy']:
         """Calcualte the temperature as a function of radius for the provided mass grid"""
-        num = self.integrate(self.v_grid**2 * self.to_f_grid(mass_grid), axis='v')
+        num = self.integrate(full_grid=self.v_grid**2 * self.to_f_grid(mass_grid), axis='v')
         den = self.calculate_rho(mass_grid)
         temperature = Quantity(np.full(num.shape, np.nan), cast(Unit, num.unit) / cast(Unit, den.unit))
         temperature[den != 0] = num[den != 0] / den[den != 0]
@@ -595,7 +644,7 @@ class PhaseSpace:
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot`.
             **kwargs: Additional keyword arguments passed to `plot.setup` if `plot_distribution` is `False` or to `distribution.plot_rho` if `plot_distribution` is `True`.
         """
-        if plot_distribution:
+        if plot_distribution and self.distribution is not None:
             fig, ax = self.distribution.plot_rho(**kwargs)
         else:
             fig, ax = plot.setup(**kwargs)
