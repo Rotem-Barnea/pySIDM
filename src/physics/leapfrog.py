@@ -47,7 +47,7 @@ default_params: Params = {
     'richardson_extrapolation': True,
     'adaptive': True,
     'grid_window_radius': 50,
-    'raise_warning': True,
+    'raise_warning': False,
     'levi_civita_mode': 'adaptive',
     'levi_civita_condition_coefficient': 1 / 20,
     'guess_dt_factor': False,
