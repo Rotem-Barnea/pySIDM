@@ -287,7 +287,7 @@ class Halo:
     def setup(
         cls,
         distributions: list[Distribution],
-        n_particles: list[int | float],
+        n_particles: NDArray[np.int64] | NDArray[np.float64] | list[int | float] | int | float,
         seed: int | None = None,
         generator: np.random.Generator | None = None,
         sample_kwargs: dict[str, Any] = {},
@@ -298,7 +298,7 @@ class Halo:
 
         Parameters:
             distributions: List of distributions for each particle type.
-            n_particles: List of number of particles for each particle type.
+            n_particles: List of number of particles for each particle type. If a number, use the same given amount for all distributions.
             seed: Seed for the random number generator. Ignore if `generator` is provided.
             generator: If `None` use the default generator from `rng.generator`.
             sample_kwargs: Additional keyword argumants to pass ot the sampling function.
@@ -314,6 +314,8 @@ class Halo:
             generator = np.random.default_rng(seed)
         if join_distributions:
             Distribution.merge_distributions(distributions)
+        if isinstance(n_particles, int) or isinstance(n_particles, float):
+            n_particles = [n_particles] * len(distributions)
         for distribution, n in zip(distributions, n_particles):
             r_, v_, m_, particle_type_, distribution_id_ = distribution.full_sample(
                 n_particles=n, generator=generator, **sample_kwargs

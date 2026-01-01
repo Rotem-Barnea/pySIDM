@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Self
 from numba import njit
 from astropy.units import Quantity
 
-from . import agama_wrappers
+from . import example_db, agama_wrappers
 from ..types import FloatOrArray
 from .distribution import Distribution
 
@@ -66,10 +66,18 @@ class Hernquist(Distribution):
             )
         elif name == 'Draco':
             raise NotImplementedError('Draco example not implemented for Hernquist (try Plummer for baryons).')
-        elif name == 'Fornax dSph':
+        # elif name == 'Fornax dSph':
+        #     return cls(
+        #         R_half_light=Quantity(668, 'pc'),  # doi:10.1111/j.1365-2966.2012.21885.x
+        #         Mtot=Quantity(3e7, 'Msun'),  # Why?
+        #         name=name,
+        #         **kwargs,
+        #     )
+        elif name == 'Fornax dSph':  # Calculation.
+            params = example_db.get_db_parameters(name=name)
             return cls(
-                R_half_light=Quantity(668, 'pc'),  # doi:10.1111/j.1365-2966.2012.21885.x
-                Mtot=Quantity(3e7, 'Msun'),  # Why?
+                Rs=cls.r_half_light_to_Rs(params['r_half_light']),
+                Mtot=params['mass_stellar'],
                 name=name,
                 **kwargs,
             )
