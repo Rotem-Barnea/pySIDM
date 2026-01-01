@@ -13,7 +13,7 @@ class ExampleParameters(TypedDict):
 
     mass_stellar: Quantity['mass']
     mass_half_light: Quantity['mass']
-    r_half_light: Quantity['length']
+    R_half_light: Quantity['length']
 
 
 def load_db(path: str | Path | None = None):
@@ -41,5 +41,5 @@ def get_db_parameters(name: 'physical_examples', **kwargs: Any) -> ExampleParame
     return ExampleParameters(
         mass_stellar=Quantity(10 ** entry['mass_stellar'], 'Msun'),
         mass_half_light=Quantity(10 ** entry['mass_dynamical_wolf'], 'Msun'),
-        r_half_light=Quantity(entry['rhalf_physical'], 'pc'),
+        R_half_light=Quantity(entry['rhalf_physical'], 'pc'),
     )

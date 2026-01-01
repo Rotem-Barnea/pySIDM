@@ -100,7 +100,7 @@ class Distribution:
             c = self.c_from_M_Dutton14(Mtot)
 
         if Rs is None and R_half_light is not None:
-            Rs = self.r_half_light_to_Rs(R_half_light)
+            Rs = self.R_half_light_to_Rs(R_half_light)
 
         if Rs is not None and Rvir is not None:
             c = (Rvir / Rs).decompose(run_units.system).value
@@ -191,7 +191,7 @@ class Distribution:
         )
 
     @staticmethod
-    def r_half_light_to_Rs(r: Quantity['length'], projection_factor: float = 1.8) -> Quantity['length']:
+    def R_half_light_to_Rs(r: Quantity['length'], projection_factor: float = 1.8) -> Quantity['length']:
         """Calculates the scale radius (`Rs`) from the half-light radius."""
         return projection_factor * r / (1 + np.sqrt(2))
 
