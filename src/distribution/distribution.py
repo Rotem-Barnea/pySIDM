@@ -617,8 +617,8 @@ class Distribution:
         return Quantity(
             self.sample_v_norm_fast(
                 Psi=self.Psi(r).to(run_units.specific_energy),
-                E_grid=self.E_grid,
-                f_grid=self.f_grid,
+                E_grid=(E := cast(Quantity, np.sort(self.Psi_grid))),
+                f_grid=self.f(E=E),
                 rolls=generator.random(len(r)),
                 num=num,
             ),
