@@ -271,15 +271,6 @@ class Distribution:
             self.memoization['geomspace_grid'] = cast(Quantity, np.geomspace(self.Rmin, self.Rmax, self.space_steps))
         return self.memoization['geomspace_grid']
 
-    @property
-    def linspace_grid(self) -> Quantity['length']:
-        """Calculate the  `internal linear grid` (memoized)."""
-        if 'linspace_grid' not in self.memoization:
-            self.memoization['linspace_grid'] = cast(
-                Quantity, np.linspace(start=self.Rmin, stop=self.Rmax, num=self.space_steps)
-            )
-        return self.memoization['linspace_grid']
-
     @staticmethod
     @njit
     def calculate_rho(
