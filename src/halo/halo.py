@@ -456,19 +456,21 @@ class Halo:
     @property
     def phase_space(self) -> PhaseSpace:
         """Return the phase space object for the halo's particles (all of them, currently)."""
-        return PhaseSpace.from_particles(self.distributions[0], self.particles)
+        return PhaseSpace.from_particles(self.distributions[0], self.particles, save_path=self.save_path)
 
     @property
     def phase_space_snapshots(self) -> PhaseSpace:
         """Return the phase space object for the halo's particles (all of them), including all the snapshots in the historical mass grids."""
-        return PhaseSpace.from_particles(self.distributions[0], snapshots=self.get_particle_states())
+        return PhaseSpace.from_particles(
+            self.distributions[0], snapshots=self.get_particle_states(), save_path=self.save_path
+        )
 
     @property
     def phase_space_by_type(self) -> dict[str, PhaseSpace]:
         """Return the phase space object for the halo's particles split by particle type (as a dictionary)."""
         return {
             group['particle_type'][0]: PhaseSpace.from_particles(
-                self.get_distribution(group['distribution_id'][0]), group
+                self.get_distribution(group['distribution_id'][0]), group, save_path=self.save_path
             )
             for group in self.particles.group_by('particle_type').groups
         }
@@ -480,6 +482,7 @@ class Halo:
             (particle_type := group['particle_type'][0]): PhaseSpace.from_particles(
                 self.get_distribution(group['distribution_id'][0]),
                 snapshots=self.get_particle_states(filter_particle_type=particle_type),
+                save_path=self.save_path,
             )
             for group in self.particles.group_by('particle_type').groups
         }

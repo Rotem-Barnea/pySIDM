@@ -16,6 +16,7 @@ from astropy.units.typing import UnitLike
 
 from . import rng, plot, utils, physics, run_units
 from .tqdm import tqdm
+from .types import ParticleType
 from .physics.leapfrog import FactorGuessKwargs
 from .distribution.distribution import Distribution
 
@@ -42,6 +43,9 @@ class PhaseSpace:
         gravitation_mass_cutoff: Quantity['mass'] = Quantity(1e-1, 'Msun'),
         scatter_factor: float = 1,
         save_every_t: Quantity['time'] | None = Quantity(1, 'Myr'),
+        label: str | None = None,
+        particle_type: ParticleType | None = None,
+        save_path: Path | str | None = None,
         generator: np.random.Generator | None = None,
         seed: int | None = None,
     ) -> None:
@@ -94,6 +98,9 @@ class PhaseSpace:
         self.time: Quantity = t.copy()
         self.dt: Quantity = (dt if isinstance(dt, Quantity) else self.Tdyn * dt).to(run_units.time)
         self.save_every_t = save_every_t
+        self.label = label or (self.distribution.label if self.distribution is not None else '')
+        self.particle_type = particle_type or (self.distribution.particle_type if self.distribution is not None else '')
+        self.save_path: Path | None = Path(save_path) if isinstance(save_path, str) else save_path
 
     @classmethod
     def from_particles(
@@ -312,6 +319,13 @@ class PhaseSpace:
         if unit == 'Tdyn':
             return self.Tdyn
         return unit
+
+    @property
+    def results_path(self) -> Path:
+        """Return the path to the results directory."""
+        if self.save_path is None:
+            raise ValueError('`save_path` is not set')
+        return self.save_path.parents[1] / 'results' / self.save_path.stem
 
     def is_save_round(self) -> bool:
         """Check if it's time to save a snapshot"""
@@ -607,6 +621,7 @@ class PhaseSpace:
         title_time_format: str = '.4f',
         cbar_label: str | None = None,
         cbar_label_autosuffix: bool = False,
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the given grid as a heatmap If `grid` is `None`, use the current mass grid. All parameters are passed on to `plot.heatmap()`."""
@@ -628,7 +643,7 @@ class PhaseSpace:
             r_array = self.r_array
             v_array = self.v_array
 
-        return plot.heatmap(
+        fig, ax = plot.heatmap(
             grid=grid,
             x_range=r_array,
             y_range=v_array,
@@ -644,13 +659,17 @@ class PhaseSpace:
             cbar_label_autosuffix=cbar_label_autosuffix,
             **kwargs,
         )
+        self.save_plot(fig=fig, save_kwargs=save_kwargs, default_stem='mass grid', default_suffix='.png')
+        return fig, ax
 
-    def animate_mass_grid(self, save_path: str | Path, undersample: int | None = None, **kwargs: Any) -> None:
+    def animate_mass_grid(
+        self, undersample: int | None = None, save_kwargs: dict[str, Any] = {}, **kwargs: Any
+    ) -> None:
         """Animate the phase space (mass grid) of the distribution function, and save as a gif.
 
         Parameters:
-            save_path: Path to save the animation.
             undersample: Undersample the phase space snapshots by this factor. Ignored if `None`.
+            save_kwargs: Keyword arguments to pass to `save_plot()`.
             **kwargs: Additional keyword arguments passed to `plot_grid()`.
         """
         plot.save_images(
@@ -658,7 +677,7 @@ class PhaseSpace:
                 iterator=self.snapshots if undersample is None else self.snapshots[::undersample],
                 plot_fn=lambda x: self.plot_grid(*x, **kwargs),
             ),
-            save_path=save_path,
+            save_path=self.get_save_path(save_kwargs, default_stem='mass grid animation', default_suffix='.gif'),
         )
 
     def plot_rho(
@@ -675,6 +694,7 @@ class PhaseSpace:
         xscale: plot.Scale = 'log',
         yscale: plot.Scale = 'log',
         lineplot_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the radial density profile of the distribution function.
@@ -691,6 +711,7 @@ class PhaseSpace:
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
+            save_kwargs: Keyword arguments to pass to `save_plot()`. If `None` ignores saving.
             **kwargs: Additional keyword arguments passed to `plot.setup()` if `plot_distribution` is `False` or to `distribution.plot_rho()` if `plot_distribution` is `True`.
         """
         if plot_distribution and self.distribution is not None:
@@ -721,6 +742,7 @@ class PhaseSpace:
             ax=ax,
             **lineplot_kwargs,
         )
+        self.save_plot(fig=fig, save_kwargs=save_kwargs, default_stem='rho', default_suffix='.png')
         return fig, ax
 
     def plot_temperature(
@@ -735,6 +757,7 @@ class PhaseSpace:
         xscale: plot.Scale = 'log',
         yscale: plot.Scale = 'log',
         lineplot_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the radial temperature profile of the distribution function.
@@ -750,6 +773,7 @@ class PhaseSpace:
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
+            save_kwargs: Keyword arguments to pass to `save_plot()`. If `None` ignores saving.
             **kwargs: Additional keyword arguments passed to `plot.setup()`.
         """
         fig, ax = plot.setup(
@@ -775,11 +799,11 @@ class PhaseSpace:
             ax=ax,
             **lineplot_kwargs,
         )
+        self.save_plot(fig=fig, save_kwargs=save_kwargs, default_stem='temperature', default_suffix='.png')
         return fig, ax
 
     def animate_plot(
         self,
-        save_path: str | Path,
         plot_type: Literal['rho', 'temperature'] = 'rho',
         times: Quantity['time'] | None = None,
         undersample: int | None = 1,
@@ -787,6 +811,7 @@ class PhaseSpace:
         text_label_text: Literal['auto'] | str = 'auto',
         text_label_unit: UnitLike | str = 'Tdyn',
         text_label_format: str = '.4f',
+        save_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> None:
         """Animate the radial profile of the distribution function, and save as a gif.
@@ -798,6 +823,7 @@ class PhaseSpace:
             undersample: Plot every `undersample`-th time from `self.grids_time`.
             text_label_unit: Unit used for the time label in the plot.
             text_label_format: Format string for the time label.
+            save_kwargs: Keyword arguments to pass to `save_plot()`.
             **kwargs: Additional keyword arguments passed to `plot_rho()`.
         """
         if text_label_text == 'auto':
@@ -821,7 +847,7 @@ class PhaseSpace:
                     **kwargs,
                 ),
             ),
-            save_path=save_path,
+            save_path=self.get_save_path(save_kwargs, default_stem=f'{plot_type} animation', default_suffix='.gif'),
         )
 
     def plot_multi_line(
@@ -834,6 +860,7 @@ class PhaseSpace:
         text_label_format: str = '.4f',
         lineplot_kwargs: dict[str, Any] = {},
         setup_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the radial profile of the distribution function at given times.
@@ -846,7 +873,8 @@ class PhaseSpace:
             text_label_unit: Unit used for the time label in the plot.
             text_label_format: Format string for the time label.
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
-            setup_kwargs: Additional keyword arguments passed to `plot.setup()`
+            setup_kwargs: Additional keyword arguments passed to `plot.setup()`.
+            save_kwargs: Keyword arguments to pass to `save_plot()`. If `None` ignores saving.
             **kwargs: Additional keyword arguments passed to `plot_temperature()`.
         """
 
@@ -868,4 +896,30 @@ class PhaseSpace:
                 ax=ax,
                 **kwargs,
             )
+        self.save_plot(fig=fig, save_kwargs=save_kwargs, default_stem=plot_type, default_suffix='.png')
         return fig, ax
+
+    def get_save_path(
+        self, save_kwargs: dict[str, Any], default_stem: str = 'figure', default_suffix: str = '.png'
+    ) -> Path:
+        """Returns the save path for the plot, filling in by the default properties as needed."""
+        if 'save_path' in save_kwargs:
+            return Path(save_kwargs['save_path'])
+        elif 'name' in save_kwargs:
+            return self.results_path / save_kwargs['name']
+        return self.results_path / f'{default_stem} {self.label}.{default_suffix}'
+
+    def save_plot(
+        self,
+        fig: Figure,
+        save_kwargs: dict[str, Any] | None = None,
+        default_stem: str = 'figure',
+        default_suffix: str = '.png',
+        **kwargs: Any,
+    ) -> None:
+        """Saves the plot."""
+        if save_kwargs is None:
+            return
+        save_kwargs = save_kwargs.copy()
+        save_kwargs['save_path'] = self.get_save_path(save_kwargs, default_stem, default_suffix)
+        plot.save(fig=fig, **save_kwargs)
