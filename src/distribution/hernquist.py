@@ -92,7 +92,7 @@ class Hernquist(Distribution):
             **example_db.get_db_parameters(
                 name=name,
                 on_unknown=on_unknown,
-                defualt=example_db.ExampleParameters(
+                default=example_db.ExampleParameters(
                     mass_stellar=Quantity(1.11e5, 'Msun'),
                     mass_half_light=Quantity(np.nan, 'Msun'),
                     R_half_light=Quantity(1.18, 'kpc'),
