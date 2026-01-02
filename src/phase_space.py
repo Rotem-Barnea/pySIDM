@@ -907,7 +907,7 @@ class PhaseSpace:
             return Path(save_kwargs['save_path'])
         elif 'name' in save_kwargs:
             return self.results_path / save_kwargs['name']
-        return self.results_path / f'{default_stem} {self.label}.{default_suffix}'
+        return self.results_path / f'{default_stem} {self.label}{default_suffix}'
 
     def save_plot(
         self,
