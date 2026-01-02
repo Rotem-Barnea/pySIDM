@@ -455,8 +455,13 @@ class Halo:
 
     @property
     def phase_space(self) -> PhaseSpace:
-        """Return the phase space object for the halo's particles (all of them)."""
+        """Return the phase space object for the halo's particles (all of them, currently)."""
         return PhaseSpace.from_particles(self.distributions[0], self.particles)
+
+    @property
+    def phase_space_snapshots(self) -> PhaseSpace:
+        """Return the phase space object for the halo's particles (all of them), including all the snapshots in the historical mass grids."""
+        return PhaseSpace.from_particles(self.distributions[0], snapshots=self.get_particle_states())
 
     @property
     def phase_space_by_type(self) -> dict[str, PhaseSpace]:
@@ -464,6 +469,17 @@ class Halo:
         return {
             group['particle_type'][0]: PhaseSpace.from_particles(
                 self.get_distribution(group['distribution_id'][0]), group
+            )
+            for group in self.particles.group_by('particle_type').groups
+        }
+
+    @property
+    def phase_space_snapshots_by_type(self) -> dict[str, PhaseSpace]:
+        """Return the phase space object for the halo's particles split by particle type (as a dictionary), including all the snapshots in the historical mass grids."""
+        return {
+            (particle_type := group['particle_type'][0]): PhaseSpace.from_particles(
+                self.get_distribution(group['distribution_id'][0]),
+                snapshots=self.get_particle_states(filter_particle_type=particle_type),
             )
             for group in self.particles.group_by('particle_type').groups
         }
@@ -1466,7 +1482,7 @@ class Halo:
         colors = sns.color_palette(color_palette, len(indices)) if color_palette is not None else None
 
         time_unit = self.fill_time_unit(time_unit)
-        fig, ax = plot.setup(**utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, x_unit)), **kwargs)
+        fig, ax = plot.setup(**utils.drop_None(title=title, xlabel=xlabel, u_unit=x_unit), **kwargs)
         clip = tuple(x_clip.to(x_unit).value) if x_clip is not None else None
         for i, group in enumerate(data.group_by('time').groups):
             if i not in indices:
@@ -1641,12 +1657,14 @@ class Halo:
             data=data,
             plot_fn=lambda x: self.plot_phase_space(
                 data=x,
-                texts=[
-                    {
-                        's': f'{x["time"][0].to("Gyr"):.2f}',
-                        **plot.pretty_ax_text(x=0.05, y=0.95, transform='transAxes'),
-                    }
-                ],
+                setup_kwargs={
+                    'texts': [
+                        {
+                            's': f'{x["time"][0].to("Gyr"):.2f}',
+                            **plot.pretty_ax_text(x=0.05, y=0.95, transform='transAxes'),
+                        }
+                    ]
+                },
                 **frame_plot_kwargs,
             ),
             **kwargs,
@@ -1677,6 +1695,7 @@ class Halo:
         y_unit: UnitLike = 'km/second',
         return_grid: bool = False,
         adjust_data_to_EL: bool = False,
+        setup_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes] | tuple[Quantity, tuple[Quantity, Quantity, Quantity, Quantity]]:
         """Plot the phase space distribution of the data.
@@ -1701,6 +1720,7 @@ class Halo:
             y_unit: Units to use for the y-axis.
             return_grid: Return the grid+extent variables instead of plotting.
             adjust_data_to_EL: Adds a specific angular momentum column to the data (`data['L'] = data['r'] * data['vp']`) and transforms the energy to specific energy.
+            setup_kwargs: Additional keyword arguments to pass to `setup()`.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
 
         Returns:
@@ -1743,6 +1763,7 @@ class Halo:
             y_range=y_bins,
             cmap=cmap,
             transparent_value=transparent_value,
+            setup_kwargs=setup_kwargs,
             **kwargs,
         )
         self.save_plot(fig=fig, **kwargs)
@@ -2071,7 +2092,7 @@ class Halo:
         fig, ax = plot.setup(
             fig,
             ax,
-            **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel),
+            **utils.drop_None(title=title, xlabel=xlabel, x_unit=time_unit, ylabel=ylabel),
             **kwargs,
         )
         sns.lineplot(
@@ -2491,14 +2512,15 @@ class Halo:
             fig, ax.
 
         """
-        xlabel = utils.add_label_unit(xlabel, length_unit)
         time_unit = self.fill_time_unit(time_unit)
         if title is not None:
             title = title.format(
                 time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
                 n_scatters=self.n_scatters.sum(),
             )
-        fig, ax = plot.setup(fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel))
+        fig, ax = plot.setup(
+            fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel), x_unit=length_unit
+        )
         sns.histplot(
             Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_unit),
             ax=ax,
@@ -2540,9 +2562,7 @@ class Halo:
             fig, ax.
 
         """
-        fig, ax = plot.setup(
-            fig, ax, **utils.drop_None(title=title, xlabel=utils.add_label_unit(xlabel, length_unit)), **setup_kwargs
-        )
+        fig, ax = plot.setup(fig, ax, **utils.drop_None(title=title, xlabel=xlabel, x_unit=length_unit), **setup_kwargs)
         radius = np.diff(np.hstack(self.scatter_track_radius).reshape(-1, 2)).ravel().to(length_unit)
         sns.histplot(radius, log_scale=log_scale, stat=stat, ax=ax, **kwargs)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
@@ -2599,15 +2619,19 @@ class Halo:
         )(r_bins)
         smoothed_density = scipy.ndimage.gaussian_filter1d(interpolated_density, sigma=smooth_sigma)
 
-        xlabel = utils.add_label_unit(xlabel, length_unit)
-        ylabel = utils.add_label_unit(ylabel, density_unit)
         time_unit = self.fill_time_unit(time_unit)
         if title is not None:
             title = title.format(
                 time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
                 n_scatters=self.n_scatters.sum(),
             )
-        fig, ax = plot.setup(**kwargs, yscale='log', **utils.drop_None(title=title, xlabel=xlabel))
+        fig, ax = plot.setup(
+            **kwargs,
+            yscale='log',
+            **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel),
+            x_unit=length_unit,
+            y_unit=density_unit,
+        )
         sns.lineplot(x=r_bins, y=smoothed_density, ax=ax)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
@@ -2719,9 +2743,9 @@ class Halo:
                 nn=self.scatter_params.get('max_radius_j', None),
                 time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
             )
-        xlabel = utils.add_label_unit(xlabel, x_unit)
-        ylabel = utils.add_label_unit(ylabel, density_unit)
-        fig, ax = plot.setup(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
+        fig, ax = plot.setup(
+            **kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel), x_unit=x_unit, y_unit=density_unit
+        )
         sns.lineplot(x=x, y=smoothed_local_density, ax=ax)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
@@ -2759,13 +2783,12 @@ class Halo:
             fig, ax.
         """
         time_unit = self.fill_time_unit(time_unit)
-        xlabel = utils.add_label_unit(xlabel, density_unit)
         if title is not None:
             title = title.format(
                 nn=self.scatter_params.get('max_radius_j', None),
                 time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
             )
-        fig, ax = plot.setup(**kwargs, **utils.drop_None(title=title, xlabel=xlabel))
+        fig, ax = plot.setup(**kwargs, **utils.drop_None(title=title, xlabel=xlabel), x_unit=density_unit)
         sns.histplot(
             self.local_density.to(density_unit),
             log_scale=log_scale,
@@ -2862,8 +2885,9 @@ class Halo:
             fig, ax.
         """
         fig, ax = plot.setup(
-            xlabel=utils.add_label_unit(xlabel, time_unit),
+            xlabel=xlabel,
             ylabel=ylabel,
+            x_unit=time_unit,
             title=title,
             yscale=yscale,
             **kwargs,
@@ -2911,7 +2935,7 @@ class Halo:
         Returns:
             fig, ax.
         """
-        fig, ax = plot.setup(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
+        fig, ax = plot.setup(xlabel=xlabel, ylabel=ylabel, x_unit=time_unit, title=title, **kwargs)
         sns.lineplot(
             x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit),
             y=self.n_scatters.cumsum() / self.n_particles['dm'],
@@ -2963,8 +2987,9 @@ class Halo:
             title = title.format(time=time_binning.to(title_time_unit).to_string(format='latex', formatter=time_format))
 
         fig, ax = plot.setup(
-            xlabel=utils.add_label_unit(xlabel, time_unit),
+            xlabel=xlabel,
             ylabel=ylabel,
+            x_unit=time_unit,
             title=title,
             yscale=yscale,
             **kwargs,
@@ -3014,7 +3039,7 @@ class Halo:
         Returns:
             fig, ax.
         """
-        fig, ax = plot.setup(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, title=title, **kwargs)
+        fig, ax = plot.setup(xlabel=xlabel, ylabel=ylabel, x_unit=time_unit, title=title, **kwargs)
         x = (np.arange(len(self.scatter_rounds)) * self.dt).to(time_unit)
         if total_required:
             y = np.array(self.scatter_rounds) + np.array(self.scatter_rounds_underestimated)
@@ -3481,10 +3506,12 @@ class Halo:
 
         fig, ax = plot.setup(
             **utils.drop_None(
-                xlabel=utils.add_label_unit(xlabel, time_unit),
-                ylabel=utils.add_label_unit(ylabel, length_unit),
+                xlabel=xlabel,
+                ylabel=ylabel,
                 title=title,
             ),
+            x_unit=time_unit,
+            y_unit=length_unit,
             vlines=vlines,
             texts=texts,
             **kwargs,

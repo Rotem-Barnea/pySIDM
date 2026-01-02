@@ -58,9 +58,7 @@ class PhaseSpace:
 
         self.r_grid, self.v_grid = cast(tuple[Quantity, Quantity], np.meshgrid(self.r_array, self.v_array))
 
-        self.dr, self.dv = [
-            cast(Quantity, np.pad(np.diff(array), (0, 1), mode='edge')) for array in [self.r_array, self.v_array]
-        ]
+        self.dr, self.dv = map(utils.diff, [self.r_array, self.v_array])
         self.dr_grid, self.dv_grid = cast(tuple[Quantity, Quantity], np.meshgrid(self.dr, self.dv))
         self.volume_element = cast(Quantity, self.dv_grid * self.dr_grid)
 
@@ -102,13 +100,16 @@ class PhaseSpace:
         cls,
         distribution: Distribution,
         data: table.QTable | pd.DataFrame | None = None,
+        snapshots: table.QTable | None = None,
         r: Quantity['length'] | None = None,
         vx: Quantity['velocity'] | None = None,
         vy: Quantity['velocity'] | None = None,
         vr: Quantity['velocity'] | None = None,
         m: Quantity['mass'] | None = None,
+        t: Quantity['time'] | None = None,
         r_range: Quantity['length'] | int | None = 50,
         v_range: Quantity['velocity'] | int | None = 50,
+        verbose: bool = True,
         **kwargs: Any,
     ) -> 'PhaseSpace':
         """Creates a phase space object from a set of particles' positions and velocities.
@@ -116,21 +117,35 @@ class PhaseSpace:
         Parameters:
             distribution: The base distribution for the particles. Defines metadata and doesn't need to be exact.
             data: The particles' data. If provided prefered over `r`, `vx`, `vy`, `vr`, and `m`. If provided as a `DataFrame`, assumes the default units, otherwise (`QTable`) draws directly from the table.
+            snapshots: The particles' data snapshots. If provided prefered over `data`. The latest time will be treated as "current", and other time snapshots will be saved to `mass_grids`.
             r: The particles' position. Mandatory if `data=None`, otherwise ignored.
             vx: The particles' first perpendicular component (to the radial direction) of the velocity. Mandatory if `data=None`, otherwise ignored.
             vy: The particles' second perpendicular component (to the radial direction) of the velocity. Mandatory if `data=None`, otherwise ignored.
             vr: The particles' radial velocity. Mandatory if `data=None`, otherwise ignored.
             m: The particles' mass. Mandatory if `data=None`, otherwise ignored.
+            t: The current time.
             r_range: Passed on to the `PhaseSpace` constructor to define the integration grid. If an `int`, create a logarithmic grid from the minimum to maximum radiuses with the provided number of posts. If `None` use the default constructor value.
             v_range: Passed on to the `PhaseSpace` constructor to define the integration grid. If an `int` create a logarithmic grid from the minimum to maximum velocity norms with with the provided number of posts. If `None` use the default constructor value.
+            verbose: Whether to print progress information when loading snapshots.
             **kwargs: Additional keyword arguments passed to the `PhaseSpace` constructor.
         """
+        if snapshots is not None:
+            groups = snapshots.group_by('time').groups
+            data = groups[-2]
+            if isinstance(r_range, int):
+                r = utils.get_columns(snapshots, ['r'])[0]
+                r_range = cast(Quantity, np.geomspace(r.min(), r.max(), r_range))
+            if isinstance(v_range, int):
+                vx, vy, vr = utils.get_columns(snapshots, ['vx', 'vy', 'vr'])
+                v = np.sqrt(vx**2 + vy**2 + vr**2)
+                v_range = cast(Quantity, np.geomspace(v.min(), v.max(), v_range))
+        else:
+            groups = None
         if data is not None:
             if isinstance(data, table.QTable):
-                r, vx, vy, vr, m = cast(
-                    tuple[Quantity, Quantity, Quantity, Quantity, Quantity],
-                    (data['r'], data['vx'], data['vy'], data['vr'], data['m']),
-                )
+                r, vx, vy, vr, m = utils.get_columns(data, columns=['r', 'vx', 'vy', 'vr', 'm'])
+                if 'time' in data.columns:
+                    t = utils.get_columns(data, ['time'])[0]
             else:
                 r, vx, vy, vr, m = (
                     Quantity(data['r'], run_units.length),
@@ -139,18 +154,31 @@ class PhaseSpace:
                     Quantity(data['vr'], run_units.velocity),
                     Quantity(data['m'], run_units.mass),
                 )
+                if 'time' in data.columns:
+                    t = Quantity(data['time'], run_units.time)
         assert r is not None, 'Failed to parse `r`'
         assert vx is not None, 'Failed to parse `vx`'
         assert vy is not None, 'Failed to parse `vy`'
         assert vr is not None, 'Failed to parse `vr`'
         assert m is not None, 'Failed to parse `m`'
+        r, vx, vy, vr, m = utils.unmask_quantity(r, vx, vy, vr, m)
+
         if isinstance(r_range, int):
             r_range = cast(Quantity, np.geomspace(r.min(), r.max(), r_range))
         if isinstance(v_range, int):
             v = np.sqrt(vx**2 + vy**2 + vr**2)
             v_range = cast(Quantity, np.geomspace(v.min(), v.max(), v_range))
-        ps = cls(distribution, **utils.drop_None(r_range=r_range, v_range=v_range), **kwargs)
+        ps = cls(distribution, **utils.drop_None(r_range=r_range, v_range=v_range, t=t), **kwargs)
         ps.mass_grid = ps.particles_to_mass_grid(r=r, vx=vx, vy=vy, vr=vr, m=m)
+        if groups is not None:
+            mass_grids = []
+            grids_time = []
+            for group in tqdm(groups, desc='Creating snapshot grids', disable=not verbose):
+                r, vx, vy, vr, m, t = utils.get_columns(group, ['r', 'vx', 'vy', 'vr', 'm', 'time'])
+                mass_grids += [ps.particles_to_mass_grid(r=r, vx=vx, vy=vy, vr=vr, m=m)]
+                grids_time += [t[0]]
+            ps.mass_grids = np.stack(mass_grids)
+            ps.grids_time = Quantity(grids_time)
         return ps
 
     @property
@@ -304,6 +332,11 @@ class PhaseSpace:
     def snapshots(self) -> list[tuple[Quantity['mass'], Quantity['time']]]:
         """List of snapshots of the distribution function with the appropriate time"""
         return list(zip(self.mass_grids, self.grids_time))
+
+    def closest_snapshots(self, times: Quantity) -> list[tuple[Quantity['mass'], Quantity['time']]]:
+        """List of the closest snapshots for each specified time"""
+        indices = np.unique([np.argmin(np.abs(self.grids_time - t)) for t in times])
+        return list(zip(self.mass_grids[indices], self.grids_time[indices]))
 
     def match_1d_index(self, value: Quantity, axis: Literal['r', 'v']) -> NDArray[np.int64]:
         """Match the value's index in the coordinate array (find it's position on the grid in that axis)"""
@@ -572,6 +605,7 @@ class PhaseSpace:
         title: str | None = 'Phase space distribution at time={time}',
         title_time_unit: UnitLike | str = 'Tdyn',
         title_time_format: str = '.4f',
+        cbar_label: str | None = None,
         cbar_label_autosuffix: bool = False,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -580,8 +614,8 @@ class PhaseSpace:
             t = self.time
         if title is not None:
             title = title.format(time=f'{t.to(self.fill_time_unit(title_time_unit)):{title_time_format}}')
-        if grid is None and 'cbar_label' not in kwargs:
-            kwargs['cbar_label'] = 'Mass'
+        if grid is None and cbar_label is None:
+            cbar_label = 'Mass'
         grid = grid if grid is not None else self.mass_grid
         if reduce_resolution > 1:
             r_array = cast(Quantity, self.r_array[::reduce_resolution])
@@ -606,6 +640,7 @@ class PhaseSpace:
             cmap=cmap,
             norm=norm,
             title=title,
+            cbar_label=cbar_label,
             cbar_label_autosuffix=cbar_label_autosuffix,
             **kwargs,
         )
@@ -616,7 +651,7 @@ class PhaseSpace:
         Parameters:
             save_path: Path to save the animation.
             undersample: Undersample the phase space snapshots by this factor. Ignored if `None`.
-            **kwargs: Additional keyword arguments passed to `plot_grid`.
+            **kwargs: Additional keyword arguments passed to `plot_grid()`.
         """
         plot.save_images(
             plot.to_images(
@@ -632,8 +667,13 @@ class PhaseSpace:
         smoothing_sigma: float | None = None,
         smooth_holes: bool = True,
         plot_distribution: bool = False,
+        title: str | None = r'Mass density ($\rho$)',
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = r'$\rho$',
         length_unit: UnitLike = 'kpc',
         density_unit: UnitLike = 'Msun/kpc^3',
+        xscale: plot.Scale = 'log',
+        yscale: plot.Scale = 'log',
         lineplot_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -643,15 +683,31 @@ class PhaseSpace:
             mass_grid: Mass grid to calculate the density at. If `None`, the current density is used.
             plot_distribution: Whether to plot the theoretical density from the source distribution.
             smoothing_sigma: Smoothing parameter for the density profile. If `None`, no smoothing is applied.
+            title: The title of the plot.
+            xlabel: The label of the x-axis.
+            ylabel: The label of the y-axis.
             length_unit: Unit of length.
             density_unit: Unit of density.
-            lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot`.
-            **kwargs: Additional keyword arguments passed to `plot.setup` if `plot_distribution` is `False` or to `distribution.plot_rho` if `plot_distribution` is `True`.
+            lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
+            xscale: The scale of the x-axis.
+            yscale: The scale of the y-axis.
+            **kwargs: Additional keyword arguments passed to `plot.setup()` if `plot_distribution` is `False` or to `distribution.plot_rho()` if `plot_distribution` is `True`.
         """
         if plot_distribution and self.distribution is not None:
-            fig, ax = self.distribution.plot_rho(**kwargs)
+            fig, ax = self.distribution.plot_rho(
+                xscale=xscale, yscale=yscale, title=title, xlabel=xlabel, ylabel=ylabel, **kwargs
+            )
         else:
-            fig, ax = plot.setup(**kwargs)
+            fig, ax = plot.setup(
+                xscale=xscale,
+                yscale=yscale,
+                title=title,
+                xlabel=xlabel,
+                ylabel=ylabel,
+                x_unit=length_unit,
+                y_unit=density_unit,
+                **kwargs,
+            )
 
         x = self.r_array
         y = self.rho if mass_grid is None else self.calculate_rho(mass_grid)
@@ -671,8 +727,13 @@ class PhaseSpace:
         self,
         mass_grid: Quantity | None = None,
         smoothing_sigma: float | None = None,
+        title: str | None = r'Temperature',
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = r'Temperature',
         length_unit: UnitLike = 'kpc',
         temperature_unit: UnitLike = 'km^2/second^2',
+        xscale: plot.Scale = 'log',
+        yscale: plot.Scale = 'log',
         lineplot_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -681,12 +742,26 @@ class PhaseSpace:
         Parameters:
             mass_grid: Mass grid to calculate the density at. If `None`, the current density is used.
             smoothing_sigma: Smoothing parameter for the temperature profile. If `None`, no smoothing is applied.
+            title: The title of the plot.
+            xlabel: The label of the x-axis.
+            ylabel: The label of the y-axis.
             length_unit: Unit of length.
             temperature_unit: Unit of density.
-            lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot`.
-            **kwargs: Additional keyword arguments passed to `plot.setup` if `plot_distribution` is `False` or to `distribution.plot_rho` if `plot_distribution` is `True`.
+            xscale: The scale of the x-axis.
+            yscale: The scale of the y-axis.
+            lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
+            **kwargs: Additional keyword arguments passed to `plot.setup()`.
         """
-        fig, ax = plot.setup(**kwargs)
+        fig, ax = plot.setup(
+            xscale=xscale,
+            yscale=yscale,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            x_unit=length_unit,
+            y_unit=temperature_unit,
+            **kwargs,
+        )
 
         x = self.r_array
         y = self.temperature if mass_grid is None else self.calculate_temperature(mass_grid)
@@ -702,30 +777,45 @@ class PhaseSpace:
         )
         return fig, ax
 
-    def animate_rho(
+    def animate_plot(
         self,
         save_path: str | Path,
-        undersample: int | None = None,
+        plot_type: Literal['rho', 'temperature'] = 'rho',
+        times: Quantity['time'] | None = None,
+        undersample: int | None = 1,
+        color_palette: str | None = None,
+        text_label_text: Literal['auto'] | str = 'auto',
         text_label_unit: UnitLike | str = 'Tdyn',
         text_label_format: str = '.4f',
         **kwargs: Any,
     ) -> None:
-        """Animate the radial density profile of the distribution function, and save as a gif.
+        """Animate the radial profile of the distribution function, and save as a gif.
 
         Parameters:
             save_path: Path to save the animation.
-            undersample: Undersample the phase space snapshots by this factor. Ignored if `None`.
+            plot_type: Type of plot to generate. Either 'rho' or 'temperature'.
+            times: Plot the closest times from `self.grids_time`. Takes priority over `undersample`.
+            undersample: Plot every `undersample`-th time from `self.grids_time`.
             text_label_unit: Unit used for the time label in the plot.
             text_label_format: Format string for the time label.
-            **kwargs: Additional keyword arguments passed to `plot_rho`.
+            **kwargs: Additional keyword arguments passed to `plot_rho()`.
         """
+        if text_label_text == 'auto':
+            text_label_text = r'$rho$' if plot_type == 'rho' else 'Temperature'
+        assert times is not None or undersample is not None, "Either 'times' or 'undersample' must be provided."
+
+        snapshots = self.closest_snapshots(times) if times is not None else self.snapshots[::undersample]
+        palette = sns.color_palette(color_palette, len(snapshots))
+        plot_fn = self.plot_rho if plot_type == 'rho' else self.plot_temperature
+
         plot.save_images(
             plot.to_images(
-                iterator=self.snapshots if undersample is None else self.snapshots[::undersample],
-                plot_fn=lambda x: self.plot_rho(
-                    mass_grid=x[0],
+                iterator=list(enumerate(snapshots)),
+                plot_fn=lambda x: plot_fn(
+                    mass_grid=x[1][0],
                     lineplot_kwargs={
-                        'label': rf'$\rho$(t={x[1].to(self.fill_time_unit(text_label_unit)):{text_label_format}})',
+                        'label': f'{text_label_text} (t={x[1][1].to(self.fill_time_unit(text_label_unit)):{text_label_format}})',
+                        'color': palette[x[0]] if color_palette is not None else None,
                         **kwargs.get('lineplot_kwargs', {}),
                     },
                     **kwargs,
@@ -733,3 +823,49 @@ class PhaseSpace:
             ),
             save_path=save_path,
         )
+
+    def plot_multi_line(
+        self,
+        plot_type: Literal['rho', 'temperature'] = 'rho',
+        times: Quantity['time'] | None = None,
+        undersample: int | None = None,
+        color_palette: str | None = None,
+        text_label_unit: UnitLike | str = 'Tdyn',
+        text_label_format: str = '.4f',
+        lineplot_kwargs: dict[str, Any] = {},
+        setup_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the radial profile of the distribution function at given times.
+
+        Parameters:
+            plot_type: Type of plot to generate. Either 'rho' or 'temperature'.
+            times: Plot the closest times from `self.grids_time`. Takes priority over `undersample`.
+            undersample: Plot every `undersample`-th time from `self.grids_time`.
+            color_palette: Color palette used for the plot.
+            text_label_unit: Unit used for the time label in the plot.
+            text_label_format: Format string for the time label.
+            lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
+            setup_kwargs: Additional keyword arguments passed to `plot.setup()`
+            **kwargs: Additional keyword arguments passed to `plot_temperature()`.
+        """
+
+        assert times is not None or undersample is not None, "Either 'times' or 'undersample' must be provided."
+        snapshots = self.closest_snapshots(times) if times is not None else self.snapshots[::undersample]
+        fig, ax = plot.setup(**setup_kwargs)
+        palette = sns.color_palette(color_palette, len(snapshots))
+        plot_fn = self.plot_rho if plot_type == 'rho' else self.plot_temperature
+        for i, (mass_grid, t) in enumerate(snapshots):
+            fig, ax = plot_fn(
+                mass_grid=mass_grid,
+                lineplot_kwargs={
+                    'label': f'{t.to(text_label_unit):{text_label_format}}',
+                    'color': palette[i],
+                    **lineplot_kwargs,
+                },
+                early_quit=False,
+                fig=fig,
+                ax=ax,
+                **kwargs,
+            )
+        return fig, ax

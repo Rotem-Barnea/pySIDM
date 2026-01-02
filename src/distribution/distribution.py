@@ -929,8 +929,10 @@ class Distribution:
         """
         fig, ax = plot.setup(
             title='Density distribution (rho)',
-            xlabel=utils.add_label_unit('Radius', length_unit),
-            ylabel=utils.add_label_unit('Density', density_unit),
+            xlabel='Radius',
+            ylabel='Density',
+            x_unit=length_unit,
+            y_unit=density_unit,
             xscale=xscale,
             yscale=yscale,
             **kwargs,
@@ -983,7 +985,14 @@ class Distribution:
             fig, ax.
         """
         title = 'Particle cumulative range distribution (cdf)' if cumulative else 'Particle range distribution (pdf)'
-        fig, ax = plot.setup(fig, ax, title=title, xlabel=utils.add_label_unit('Radius', length_unit), ylabel='Density')
+        fig, ax = plot.setup(
+            fig,
+            ax,
+            title=title,
+            xlabel='Radius',
+            ylabel='Density',
+            x_unit=length_unit,
+        )
 
         if r_start is None:
             r_start = self.Rmin
@@ -1021,8 +1030,6 @@ class Distribution:
             fig, ax
         """
 
-        xlabel = utils.add_label_unit(xlabel, energy_unit)
-        ylabel = utils.add_label_unit(ylabel, y_unit)
         fig, ax = plot.setup(
             fig,
             ax,
@@ -1031,6 +1038,8 @@ class Distribution:
             yscale='log',
             xlabel=xlabel,
             ylabel=ylabel,
+            x_unit=energy_unit,
+            y_unit=y_unit,
             title=title,
         )
         sns.lineplot(x=np.array(self.Psi_grid.to(energy_unit)), y=np.array(self.drho_dPsi_grid.to(y_unit)), ax=ax)
@@ -1062,8 +1071,6 @@ class Distribution:
             fig, ax
         """
 
-        xlabel = utils.add_label_unit(xlabel, energy_unit)
-        ylabel = utils.add_label_unit(ylabel, f_unit)
         fig, ax = plot.setup(
             fig,
             ax,
@@ -1072,6 +1079,8 @@ class Distribution:
             yscale='log',
             xlabel=xlabel,
             ylabel=ylabel,
+            x_unit=energy_unit,
+            y_unit=f_unit,
             title=title,
         )
         sns.lineplot(x=np.array(E.to(energy_unit)), y=np.array(self.f(E).to(f_unit)), ax=ax)

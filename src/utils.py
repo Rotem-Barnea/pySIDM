@@ -6,7 +6,7 @@ import scipy
 import pandas as pd
 from numba import njit, prange
 from astropy import table
-from numpy.typing import NDArray
+from numpy.typing import NDArray, ArrayLike
 from astropy.units import Unit, Quantity
 from astropy.units.typing import UnitLike
 
@@ -584,3 +584,38 @@ def mask_edge_zeros(grid: NDArray[Any] | Quantity, axis: int | None = None) -> N
     non_zero_indices = np.where(~zeros)[0]
     indices = np.arange(len(zeros))
     return np.where((indices >= non_zero_indices[0]) * (indices <= non_zero_indices[-1]), True, False)
+
+
+def diff(x: QuantityOrArray, pad_width: ArrayLike = (0, 1), mode: str = 'edge', **kwargs: Any) -> QuantityOrArray:
+    """Returns the difference between consecutive elements of an array.
+
+    By default, extend the difference array to match the original shape by duplicating the final value.
+
+    Parameters:
+        x: The array.
+        pad_width: The width of the padding to be added to the array.
+        mode: The mode of the padding.
+        **kwargs: Additional keyword arguments to be passed to the padding function.
+
+    Returns:
+        The difference between consecutive elements of the quantity array.
+    """
+    kwargs = kwargs.copy()
+    if 'mode' not in kwargs:
+        kwargs['mode'] = mode
+    if 'pad_width' not in kwargs:
+        kwargs['pad_width'] = pad_width
+    return cast(type(x), np.pad(np.diff(x), **kwargs))
+
+
+def unmask_quantity(*args: Quantity) -> tuple[Quantity, ...]:
+    """Safely unmasks masked quantity."""
+    return tuple(cast(Quantity, arg.unmasked) if hasattr(arg, 'mask') else arg for arg in args)
+
+
+def get_columns(data: table.QTable, columns: list[str], unmask: bool = True) -> tuple[Quantity, ...]:
+    """Returns selected columns of a QTable as a tuple of quantities."""
+    output = list(data[columns].values())
+    if unmask:
+        return unmask_quantity(*output)
+    return tuple(output)

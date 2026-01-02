@@ -80,6 +80,8 @@ def setup(
     title: str | None = None,
     xlabel: str | None = None,
     ylabel: str | None = None,
+    x_unit: UnitLike | None = None,
+    y_unit: UnitLike | None = None,
     xlim: tuple[float, float] | None = None,
     ylim: tuple[float, float] | None = None,
     hlines: list[dict[str, Any]] = [],
@@ -130,8 +132,10 @@ def setup(
     ax.set(**{'xscale': xscale, 'yscale': yscale, **(ax_set or {})})
     if title is not None:
         ax.set_title(title)
+    xlabel = utils.add_label_unit(xlabel, x_unit)
     if xlabel is not None:
         ax.set_xlabel(xlabel)
+    ylabel = utils.add_label_unit(ylabel, y_unit)
     if ylabel is not None:
         ax.set_ylabel(ylabel)
     for line in hlines:
@@ -360,7 +364,6 @@ def trace(
     Returns:
         fig, ax.
     """
-    xlabel = utils.add_label_unit(xlabel, time_unit)
     particle = data[data['particle_index'] == particle_index].copy()
     x = particle['time'].to(time_unit)
     y = particle[key]
@@ -376,7 +379,6 @@ def trace(
             ylabel = rf'$\%\Delta {key}$'
     elif ylabel is None:
         ylabel = f'${key}$'
-    ylabel = utils.add_label_unit(ylabel, y_unit)
     if title is not None:
         title = title.format(
             particle_index=particle_index,
@@ -387,7 +389,9 @@ def trace(
             particle_index=particle_index,
             r=particle['r'][0].to(length_unit).to_string(format='latex', formatter=length_format),
         )
-    fig, ax = setup(**kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel))
+    fig, ax = setup(
+        **kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel), x_unit=time_unit, y_unit=y_unit
+    )
     sns.lineplot(x=x, y=np.array(y), ax=ax, label=label)
     if save_kwargs is not None:
         save(fig=fig, **save_kwargs)
@@ -512,8 +516,10 @@ def heatmap(
         ax=ax,
         grid=False,
         title=title,
-        xlabel=utils.add_label_unit(xlabel, x_unit),
-        ylabel=utils.add_label_unit(ylabel, y_unit),
+        xlabel=xlabel,
+        ylabel=ylabel,
+        x_unit=x_unit,
+        y_unit=y_unit,
         **cast(Any, {**setup_kwargs, 'xscale': xscale, 'yscale': yscale}),
     )
 
@@ -932,7 +938,7 @@ def cumulative_scattering_amount_over_time(
     """
     if not isinstance(time, Quantity):
         time = Quantity(time, data_time_unit)
-    fig, ax = setup(xlabel=utils.add_label_unit(xlabel, time_unit), ylabel=ylabel, **kwargs)
+    fig, ax = setup(xlabel=xlabel, ylabel=ylabel, x_unit=time_unit, **kwargs)
     sns.lineplot(x=time.to(time_unit).value, y=cumulative_scatters, ax=ax, label=label, **lineplot_kwargs)
     if label is not None:
         ax.legend()
