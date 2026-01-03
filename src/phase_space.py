@@ -180,7 +180,7 @@ class PhaseSpace:
         if groups is not None:
             mass_grids = []
             grids_time = []
-            for group in tqdm(groups, desc=f'Creating snapshot grids of {ps.label}', disable=not verbose):
+            for group in tqdm(groups, desc=f'Creating snapshot grids for {ps.label}', disable=not verbose):
                 r, vx, vy, vr, m, t = utils.get_columns(group, ['r', 'vx', 'vy', 'vr', 'm', 'time'])
                 mass_grids += [ps.particles_to_mass_grid(r=r, vx=vx, vy=vy, vr=vr, m=m)]
                 grids_time += [t[0]]
@@ -733,6 +733,7 @@ class PhaseSpace:
         x = self.r_array
         y = self.rho if mass_grid is None else self.calculate_rho(mass_grid)
         y = utils.smooth_holes_1d(x=x, y=y, include_zero=True)
+        x, y = x[y >= 0], y[y >= 0]
         if smoothing_sigma is not None:
             y = Quantity(scipy.ndimage.gaussian_filter(y.value, smoothing_sigma), y.unit)
 
@@ -790,6 +791,7 @@ class PhaseSpace:
         x = self.r_array
         y = self.temperature if mass_grid is None else self.calculate_temperature(mass_grid)
         y = utils.smooth_holes_1d(x=x, y=y, include_zero=True)
+        x, y = x[y >= 0], y[y >= 0]
         if smoothing_sigma is not None:
             y = Quantity(scipy.ndimage.gaussian_filter(y.value, smoothing_sigma), y.unit)
 
