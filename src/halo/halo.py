@@ -1634,7 +1634,6 @@ class Halo:
         self,
         include_start: bool = True,
         include_now: bool = False,
-        filter_particle_type: ParticleType | None = None,
         frame_plot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
         **kwargs: Any,
@@ -1644,7 +1643,6 @@ class Halo:
         Parameters:
             include_start: Whether to include the initial state.
             include_now: Whether to include the current state.
-            filter_particle_type: Whether to filter to only plot the specified particle type.
             frame_plot_kwargs: Additional keyword arguments for the frame plot (`plot_phase_space()`).
             save_kwargs: Additional keyword arguments for saving the images (`plot.save_images()`).
             **kwargs: Additional keyword arguments for transforming the frames to images (`plot.to_images()`).
@@ -1653,22 +1651,23 @@ class Halo:
             The list of frames.
         """
         data = self.get_particle_states(now=include_now, initial=include_start)
-        if filter_particle_type is not None:
-            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
 
         images = plot.evolution_to_images(
             data=data,
             plot_fn=lambda x: self.plot_phase_space(
                 data=x,
-                setup_kwargs={
-                    'texts': [
-                        {
-                            's': f'{x["time"][0].to("Gyr"):.2f}',
-                            **plot.pretty_ax_text(x=0.05, y=0.95, transform='transAxes'),
-                        }
-                    ]
+                frame_plot_kwargs={
+                    **frame_plot_kwargs,
+                    'setup_kwargs': {
+                        'texts': [
+                            {
+                                's': f'{x["time"][0].to("Gyr"):.2f}',
+                                **plot.pretty_ax_text(x=0.05, y=0.95, transform='transAxes'),
+                            }
+                        ],
+                        **frame_plot_kwargs.get('setup_kwargs', {}),
+                    },
                 },
-                **frame_plot_kwargs,
             ),
             **kwargs,
         )

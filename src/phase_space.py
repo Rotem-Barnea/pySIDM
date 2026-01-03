@@ -152,7 +152,7 @@ class PhaseSpace:
             if isinstance(data, table.QTable):
                 r, vx, vy, vr, m = utils.get_columns(data, columns=['r', 'vx', 'vy', 'vr', 'm'])
                 if 'time' in data.columns:
-                    t = utils.get_columns(data, ['time'])[0]
+                    t = cast(Quantity, utils.get_columns(data, ['time'])[0][0])
             else:
                 r, vx, vy, vr, m = (
                     Quantity(data['r'], run_units.length),
@@ -162,7 +162,7 @@ class PhaseSpace:
                     Quantity(data['m'], run_units.mass),
                 )
                 if 'time' in data.columns:
-                    t = Quantity(data['time'], run_units.time)
+                    t = Quantity(data['time'].iloc[0], run_units.time)
         assert r is not None, 'Failed to parse `r`'
         assert vx is not None, 'Failed to parse `vx`'
         assert vy is not None, 'Failed to parse `vy`'
