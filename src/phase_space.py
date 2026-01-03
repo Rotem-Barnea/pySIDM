@@ -180,7 +180,7 @@ class PhaseSpace:
         if groups is not None:
             mass_grids = []
             grids_time = []
-            for group in tqdm(groups, desc='Creating snapshot grids', disable=not verbose):
+            for group in tqdm(groups, desc=f'Creating snapshot grids of {ps.label}', disable=not verbose):
                 r, vx, vy, vr, m, t = utils.get_columns(group, ['r', 'vx', 'vy', 'vr', 'm', 'time'])
                 mass_grids += [ps.particles_to_mass_grid(r=r, vx=vx, vy=vy, vr=vr, m=m)]
                 grids_time += [t[0]]
