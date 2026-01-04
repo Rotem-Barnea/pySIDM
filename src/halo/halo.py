@@ -1179,6 +1179,7 @@ class Halo:
         two_steps: bool = False,
         keep_last_backup: bool = False,
         split_snapshots: bool = True,
+        verbose: bool = False,
     ) -> None:
         """Save the simulation state to a directory.
 
@@ -1187,6 +1188,7 @@ class Halo:
             two_steps: If `True` saves the simulation state in two steps, to avoid rewriting the existing file with data that can be stopped midway (leaving just the 1 corrupted file). This means that for the duration of the saving the disk size used is doubled.
             keep_last_backup: If `True` keeps a full backup of the previous save, otherwise overwrite it based on `two_steps` rules. This option _always_ uses twice the disk space.
             split_snapshots: If `True` saves the snapshots QTable as separate files.
+            verbose: If `True` prints progress information.
 
         Returns:
             None
@@ -1201,6 +1203,7 @@ class Halo:
             two_steps=two_steps,
             keep_last_backup=keep_last_backup,
             split_tables=split_snapshots,
+            verbose=verbose,
         )
 
     @classmethod
