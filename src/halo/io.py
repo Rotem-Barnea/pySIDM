@@ -32,8 +32,10 @@ def load_table(path: str | Path) -> table.QTable:
     return cast(table.QTable, table.hstack([fits_table, csv_table]))
 
 
-def save_pickle(path: str | Path, stem: str, payload: dict[str, Any]) -> None:
+def save_pickle(path: str | Path, stem: str, payload: dict[str, Any], verbose: bool = False) -> None:
     """Save the simulation's metadata"""
+    if verbose:
+        print(f'Saving {stem}.pkl')
     with open(Path(path) / f'{stem}.pkl', 'wb') as f:
         pickle.dump(payload, f)
 
@@ -63,6 +65,7 @@ def save(
     two_steps: bool = False,
     keep_last_backup: bool = False,
     split_tables: bool = True,
+    verbose: bool = False,
 ) -> None:
     """Save the simulation state to a directory.
 
@@ -76,6 +79,7 @@ def save(
         two_steps: If `True` saves the simulation state in two steps, to avoid rewriting the existing file with data that can be stopped midway (leaving just the 1 corrupted file). This means that for the duration of the saving the disk size used is doubled.
         keep_last_backup: If `True` keeps a full backup of the previous save, otherwise overwrite it based on `two_steps` rules. This option _always_ uses twice the disk space.
         split_tables: If `True` saves the `splitable_table` QTables as separate files.
+        verbose: If `True` prints progress information.
 
     Returns:
         None
@@ -84,7 +88,7 @@ def save(
     path = Path(path)
     path.mkdir(exist_ok=True, parents=True)
     if keep_last_backup:
-        for file in path.glob('*'):
+        for file in tqdm(list(path.glob('*')), desc='backing up existing data', disable=not verbose):
             if '_backup.' in file.name:
                 continue
             if file.is_dir():
@@ -95,20 +99,24 @@ def save(
     if not split_tables:
         tables.update(**splitable_table)
     tag = '_' if two_steps else ''
-    save_pickle(path, f'metadata{tag}', metadata_payload)
-    save_pickle(path, f'heavy_payload{tag}', heavy_payload)
-    for distribution in distributions:
+    save_pickle(path, f'metadata{tag}', metadata_payload, verbose=verbose)
+    save_pickle(path, f'heavy_payload{tag}', heavy_payload, verbose=verbose)
+    for distribution in tqdm(distributions, desc='Saving distributions', disable=not verbose):
         (path / 'distributions').mkdir(exist_ok=True)
-        distribution.save(path / 'distributions', f'{distribution.name}_{distribution.title}{tag}')
-    for name, data in tables.items():
+        distribution.save(path / 'distributions', f'{distribution.name}_{distribution.title}{tag}', verbose=verbose)
+    for name, data in tqdm(tables.items(), desc='Saving tables', disable=not verbose):
         save_table(data, path / f'{name}{tag}.fits', overwrite=True)
-    for file in path.glob('*_.*'):
+    for file in tqdm(list(path.glob('*_.*')), desc='overwriting backup', disable=not verbose):
         file.rename(file.with_stem(file.stem[:-1]))
     if split_tables:
         for stem, table in splitable_table.items():
             (path / f'split_{stem}').mkdir(exist_ok=True)
             if len(table) > 0:
-                for i, group in enumerate(table.group_by('time').groups):
+                for i, group in tqdm(
+                    list(enumerate(table.group_by('time').groups)),
+                    desc=f'Saving split data for {stem}',
+                    disable=not verbose,
+                ):
                     save_table(group, path / f'split_{stem}/{stem}_{i}.fits', overwrite=True)
 
 
