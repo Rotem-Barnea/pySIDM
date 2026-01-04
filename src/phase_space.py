@@ -36,7 +36,7 @@ class PhaseSpace:
         mass_grid: Quantity['mass'] | None = None,
         f_grid: Quantity[run_units.f_unit] | None = None,
         r_range: Quantity['length'] = Quantity(np.geomspace(1e-5, 1e3, 500), 'kpc'),
-        v_range: Quantity['velocity'] = Quantity(np.linspace(0, 1e3, 200), 'km/second'),
+        v_range: Quantity['velocity'] = Quantity(np.linspace(1e-5, 1e2, 500), 'km/second'),
         t: Quantity['time'] = Quantity(0, run_units.time),
         dt: Quantity['time'] | float = 1,
         gravitation_subdivision: int = 5,
@@ -694,6 +694,7 @@ class PhaseSpace:
         xscale: plot.Scale = 'log',
         yscale: plot.Scale = 'log',
         lineplot_kwargs: dict[str, Any] = {},
+        distribution_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -708,27 +709,25 @@ class PhaseSpace:
             ylabel: The label of the y-axis.
             length_unit: Unit of length.
             density_unit: Unit of density.
-            lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
-            save_kwargs: Keyword arguments to pass to `save_plot()`. If `None` ignores saving.
+            lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
+            distribution_kwargs: Additional keyword arguments passed to `distribution.plot_rho()`.
+            save_kwargs: Additional keyword arguments to pass to `save_plot()`. If `None` ignores saving.
             **kwargs: Additional keyword arguments passed to `plot.setup()` if `plot_distribution` is `False` or to `distribution.plot_rho()` if `plot_distribution` is `True`.
         """
+        fig, ax = plot.setup(
+            xscale=xscale,
+            yscale=yscale,
+            title=title,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            x_unit=length_unit,
+            y_unit=density_unit,
+            **kwargs,
+        )
         if plot_distribution and self.distribution is not None:
-            fig, ax = self.distribution.plot_rho(
-                xscale=xscale, yscale=yscale, title=title, xlabel=xlabel, ylabel=ylabel, **kwargs
-            )
-        else:
-            fig, ax = plot.setup(
-                xscale=xscale,
-                yscale=yscale,
-                title=title,
-                xlabel=xlabel,
-                ylabel=ylabel,
-                x_unit=length_unit,
-                y_unit=density_unit,
-                **kwargs,
-            )
+            fig, ax = self.distribution.plot_rho(fig=fig, ax=ax, **distribution_kwargs)
 
         x = self.r_array
         y = self.rho if mass_grid is None else self.calculate_rho(mass_grid)
