@@ -19,6 +19,7 @@ class Params(TypedDict, total=False):
         max_radius_j: Maximum index radius for partners for scattering.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
         max_allowed_scatters: Maximum number of allowed scatter events per particle per time step.
+        max_allowed_probability: Maximum allowed probability for scattering per particle per subdivided time step. If `max_allowed_rounds` is defined, the probability for some particles might be too high even after subdivision, leading to a discontinuity in the scattering profile.
         kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
         sigma: Scattering cross-section.
         disable_tqdm: Whether to disable tqdm progress bar.
@@ -29,6 +30,7 @@ class Params(TypedDict, total=False):
     max_radius_j: int
     max_allowed_rounds: int | None
     max_allowed_scatters: int | None
+    max_allowed_probability: float | None
     kappa: float
     sigma: Quantity[run_units.cross_section]
     disable_tqdm: bool
@@ -40,6 +42,7 @@ default_params: Params = {
     'max_radius_j': 10,
     'max_allowed_rounds': 10000,
     'max_allowed_scatters': None,
+    'max_allowed_probability': None,
     'kappa': 0.002,
     'sigma': Quantity(0, run_units.cross_section),
     'disable_tqdm': False,
@@ -351,6 +354,7 @@ def scatter(
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
     max_allowed_scatters: int | None = default_params['max_allowed_scatters'],
+    max_allowed_probability: float | None = default_params['max_allowed_probability'],
     disable_tqdm: bool = default_params['disable_tqdm'],
     tqdm_cutoff: int | None = default_params['tqdm_cutoff'],
     tqdm_cutoff_ratio: float | None = default_params['tqdm_cutoff_ratio'],
@@ -380,6 +384,8 @@ def scatter(
         max_radius_j: Maximum index radius for partners for scattering.
         kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
+        max_allowed_scatters: Maximum number of allowed scatter events per particle per time step.
+        max_allowed_probability: Maximum allowed probability for scattering per particle per subdivided time step. If `max_allowed_rounds` is defined, the probability for some particles might be too high even after subdivision, leading to a discontinuity in the scattering profile.
         disable_tqdm: Whether to disable tqdm progress bar.
         tqdm_cutoff: Disable the tqdm progress bar if the number of scattering rounds is less than this value.
         tqdm_cutoff_ratio: Disable the tqdm progress bar if the number of scattering rounds is less than the maximum allowed times by this value.
@@ -468,7 +474,10 @@ def scatter(
         rolls = generator.random(relevant_particles.sum())
         # TODO - probably wasteful to recreate the False cells in `events` and the 0 cells in `pair_rolls` every-time.
         events = np.zeros(len(v_output), dtype=np.bool_)  # False by default for particles that don't participate
-        events[relevant_particles] = scatter_chance[relevant_particles] >= rolls
+        probability = scatter_chance[relevant_particles]
+        if max_allowed_probability is not None:
+            probability = probability.clip(max=max_allowed_probability)
+        events[relevant_particles] = probability >= rolls
         pair_rolls = np.zeros(len(v_output), dtype=np.float64)
         # Only roll for scattering events that actually took place this round
         pair_rolls[events] = generator.random(events.sum())
