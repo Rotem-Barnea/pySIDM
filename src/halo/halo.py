@@ -894,7 +894,7 @@ class Halo:
             diff += [end - start]
             del halo
         optimized_factor = factor[np.argmin(np.array(diff) * factor)]
-        self.dt = self.unoptimized_dt / optimized_factor
+        self.dt = self.unoptimized_dt.copy() / optimized_factor
         if verbose:
             print(f'Optimized factor: 1/{optimized_factor}, `dt` value used: {self.dt}')
 
