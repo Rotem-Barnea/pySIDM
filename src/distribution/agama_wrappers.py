@@ -1,4 +1,4 @@
-from typing import Any, TypeVar, Callable, cast
+from typing import Any, Self, TypeVar, Callable, cast
 from functools import wraps
 
 import agama
@@ -84,6 +84,9 @@ class Potential:
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         self.potential = agama.Potential(*[(x.potential if isinstance(x, Potential) else x) for x in args], **kwargs)
 
+    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+        return self
+
     def to_action(self, *args: Any, **kwargs: Any) -> NDArray[np.float64]:
         """Transforms the given coordinates to actions."""
         return agama.ActionFinder(self.potential)(*args, **kwargs)
@@ -110,6 +113,9 @@ class DistributionFunction:
         if isinstance(density, Potential):
             density = density.potential
         self.df = agama.DistributionFunction(potential=potential, density=density, *args, **kwargs)
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+        return self
 
     def __call__(
         self, r: Quantity['length'], v: Quantity['velocity'], potential: Any = None, zero_null: bool = True
@@ -151,6 +157,9 @@ class GalaxyModel:
         if isinstance(df, Potential):
             df = df.potential
         self.model = agama.GalaxyModel(potential=potential, df=df, *args, **kwargs)
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> Self:
+        return self
 
     def sample(self, n: int | float) -> tuple[Quantity['length'], Quantity['velocity'], Quantity['mass']]:
         """Sample particles from the model."""
