@@ -176,6 +176,15 @@ class NFW(Distribution):
                 **{**cls.calculate_from_half_light(**example_db.get_db_parameters(name=name), c=c or 18), **kwargs},
                 name=name,
             )
+        elif name == 'Daneng2024:DM11+baryon':
+            return cls(
+                Mtot=Quantity(1e11, 'Msun'),
+                Rs=Quantity(9.1, 'kpc'),
+                Rvir='From mass',
+                c='Dutton14',
+                name=name,
+                **kwargs,
+            )
         return cls(
             rho_s=Quantity(2.73e7, 'Msun/kpc**3'),
             Rs=Quantity(1.18, 'kpc'),

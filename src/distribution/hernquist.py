@@ -88,6 +88,13 @@ class Hernquist(Distribution):
         #         name=name,
         #         **kwargs,
         #     )
+        elif name == 'Daneng2024:DM11+baryon':
+            return cls(
+                Mtot=Quantity(1e11, 'Msun') * 0.01,
+                Rs=Quantity(9.1, 'kpc') * 0.0844,
+                name=name,
+                **kwargs,
+            )
         return cls(
             **example_db.get_db_parameters(
                 name=name,
