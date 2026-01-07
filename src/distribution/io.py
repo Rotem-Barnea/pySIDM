@@ -50,7 +50,7 @@ def save_distribution(path: str | Path, stem: str, distribution: Distribution, *
     distribution.agama_total_potential = agama_total_potential
 
 
-def load_distribution(path: str | Path, stem: str):
+def load_distribution(path: str | Path, stem: str) -> Distribution:
     """Save a distribution to a file."""
     with open(Path(path) / f'{stem}.pkl', 'rb') as f:
         distribution = pickle.load(f)

@@ -551,14 +551,14 @@ class Distribution:
 
     ## io
 
-    def save(self, path: str | Path, stem: str, verbose: bool = False):
+    def save(self, path: str | Path, stem: str, verbose: bool = False) -> None:
         """Save the distribution to a file, handling the agama objects if present."""
         if verbose:
-            print(f'Saving {stem}.ini')
+            print(f'Saving {stem}')
         io.save_distribution(path=path, stem=stem, distribution=self, **self.agama_save_params)
 
     @classmethod
-    def load(cls, path: str | Path, stem: str):
+    def load(cls, path: str | Path, stem: str) -> 'Distribution':
         """Load the distribution from a file, handling the agama objects if present."""
         return io.load_distribution(path=path, stem=stem)
 

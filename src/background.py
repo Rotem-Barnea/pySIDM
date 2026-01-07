@@ -1,4 +1,6 @@
+import pickle
 from typing import Any, Self, Unpack, cast
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -109,3 +111,21 @@ class BackgroundDistribution:
                 .astype(np.int64)
             ],
         )
+
+    def save(self, path: str | Path, stem: str, verbose: bool = False) -> None:
+        """Save the background to a file."""
+        if verbose:
+            print(f'Saving {stem}')
+        if self.distribution is None:
+            with open(Path(path) / f'{stem}.pkl', 'wb') as f:
+                pickle.dump(self, f)
+        else:
+            self.distribution.save(path=path, stem=f'{stem}_distribution', verbose=verbose)
+
+    @classmethod
+    def load(cls, path: str | Path, stem: str) -> Self:
+        """Load the background from a file."""
+        if (Path(path) / f'{stem}.pkl').exists():
+            with open(Path(path) / f'{stem}.pkl', 'rb') as f:
+                return pickle.load(f)
+        return cls(distribution=Distribution.load(path=path, stem=f'{stem}_distribution'))

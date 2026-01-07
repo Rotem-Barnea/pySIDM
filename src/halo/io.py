@@ -8,6 +8,7 @@ import regex
 from astropy import table
 
 from ..tqdm import tqdm
+from ..background import BackgroundDistribution
 from ..distribution.distribution import Distribution
 
 
@@ -62,6 +63,7 @@ def save(
     metadata_payload: dict[str, Any] = {},
     heavy_payload: dict[str, Any] = {},
     distributions: list[Distribution] = [],
+    background: BackgroundDistribution | None = None,
     two_steps: bool = False,
     keep_last_backup: bool = False,
     split_tables: bool = True,
@@ -76,6 +78,7 @@ def save(
         metadata_payload: Metadata payload to save.
         heavy_payload: Heavy payload to save.
         distributions: Distributions to save.
+        background: Background distribution to save.
         two_steps: If `True` saves the simulation state in two steps, to avoid rewriting the existing file with data that can be stopped midway (leaving just the 1 corrupted file). This means that for the duration of the saving the disk size used is doubled.
         keep_last_backup: If `True` keeps a full backup of the previous save, otherwise overwrite it based on `two_steps` rules. This option _always_ uses twice the disk space.
         split_tables: If `True` saves the `splitable_table` QTables as separate files.
@@ -104,6 +107,8 @@ def save(
     for distribution in tqdm(distributions, desc='Saving distributions', disable=not verbose):
         (path / 'distributions').mkdir(exist_ok=True)
         distribution.save(path / 'distributions', f'{distribution.name}_{distribution.title}{tag}', verbose=verbose)
+    if background is not None:
+        background.save(path, f'background{tag}', verbose=verbose)
     for name, data in tqdm(tables.items(), desc='Saving tables', disable=not verbose):
         save_table(data, path / f'{name}{tag}.fits', overwrite=True)
     for file in tqdm(list(path.glob('*_.*')), desc='overwriting backup', disable=not verbose):
@@ -157,3 +162,13 @@ def load_tables(
             tables[key] = None
 
     return tables
+
+
+def load_background(path: str | Path, stem: str = 'background', verbose: bool = True) -> BackgroundDistribution | None:
+    """Load the background from a file."""
+    if verbose:
+        print('Loading background')
+    path = Path(path)
+    if (Path(path) / f'{stem}.pkl').exists() or (Path(path) / f'{stem}_distribution.pkl').exists():
+        return BackgroundDistribution.load(path=path, stem=stem)
+    return None
