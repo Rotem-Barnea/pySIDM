@@ -28,7 +28,7 @@ from .. import plot, utils, report, physics, run_units
 from ..tqdm import tqdm
 from ..types import ParticleType
 from ..physics import sidm, leapfrog
-from ..background import Mass_Distribution
+from ..background import BackgroundDistribution
 from ..distribution.distribution import Distribution, backends
 
 
@@ -56,7 +56,7 @@ class Halo:
         scatter_track_radius: deque[NDArray[np.float64]] | None = None,
         time: Quantity['time'] = 0 * run_units.time,
         steps: int | float = 0,
-        background: Mass_Distribution | Distribution | None = None,
+        background: BackgroundDistribution | None = None,
         last_saved_time: Quantity['time'] = 0 * run_units.time,
         save_every_time: Quantity['time'] | float | None = None,
         save_every_n_steps: int | None = None,
@@ -156,7 +156,7 @@ class Halo:
             self.Tdyn = self.distributions[0].Tdyn
         elif len(self.distributions) == 0:
             self.Tdyn = Quantity(1, run_units.time)
-        self.background: Mass_Distribution | Distribution | None = background
+        self.background: BackgroundDistribution | None = background
         self.Phi0: Quantity['energy'] = Phi0 if Phi0 is not None else physics.utils.Phi(self.r, self.M, self.m)[-1]
         self.snapshots: table.QTable = utils.handle_default(snapshots, table.QTable())
         self.save_every_n_steps = save_every_n_steps
@@ -384,7 +384,7 @@ class Halo:
         data.set_index('particle_index', inplace=True)
         return data
 
-    def add_background(self, background: Mass_Distribution) -> None:
+    def add_background(self, background: BackgroundDistribution) -> None:
         """Adds a background mass distribution to the halo."""
         self.background = background
 
@@ -631,10 +631,7 @@ class Halo:
         """The enclosed mass below the particle."""
         halo_mass = physics.utils.M(r=self.r, m=self.m)
         if self.background is not None:
-            if isinstance(self.background, Mass_Distribution):
-                background_mass = self.background.M_at_time(self.r, self.time)
-            else:
-                background_mass = self.background.M_spline(self.r)
+            background_mass = self.background.M_at_time(self.r, self.time)
             return cast(Quantity, halo_mass + background_mass)
         return halo_mass
 

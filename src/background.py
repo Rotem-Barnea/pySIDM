@@ -8,13 +8,19 @@ from tqdm import tqdm
 
 from . import nsphere, run_units
 from .spatial_approximation import Lattice
+from .distribution.distribution import Distribution
 
 
-class Mass_Distribution:
+class BackgroundDistribution:
     """Background mass distribution"""
 
     def __init__(
-        self, lattice: Lattice, M: Quantity['mass'], time: Quantity['time'], load_kwargs: dict[str, Any] = {}
+        self,
+        lattice: Lattice | None = None,
+        M: Quantity['mass'] | None = None,
+        time: Quantity['time'] | None = None,
+        distribution: Distribution | None = None,
+        load_kwargs: dict[str, Any] = {},
     ) -> None:
         """Initialize a background mass distribution object, tracking a changing mass distribution external to the halo.
 
@@ -30,11 +36,16 @@ class Mass_Distribution:
         self.lattice = lattice
         self.M = M
         self.time = time
+        self.distribution = distribution
         self.load_kwargs = load_kwargs
+        if self.distribution is None:
+            assert (self.lattice is not None) and (self.M is not None) and (self.time is not None), (
+                '`lattice`, `M`, and `time` must be provided if distribution is None'
+            )
 
     @classmethod
     def from_files(
-        cls, Mtot: Quantity['mass'], files: pd.DataFrame | None = None, **kwargs: Unpack[nsphere.File_params]
+        cls, Mtot: Quantity['mass'], files: pd.DataFrame | None = None, **kwargs: Unpack[nsphere.FileParams]
     ) -> Self:
         """Initialize a background mass distribution object from input files, i.e. `NSphere` output.
 
@@ -64,6 +75,9 @@ class Mass_Distribution:
 
         Performs a linear interpolation between the two closest time points, and calculates the enclosed mass for every grid point (row in `self.M`).
         """
+        if self.distribution is not None:
+            return self.distribution.M_grid
+        assert (self.M is not None) and (self.time is not None), '`M`, or `time` are missing'
         mask = self.time == t
         if mask.any():
             return cast(Quantity, self.M[mask][0])
@@ -79,7 +93,14 @@ class Mass_Distribution:
         return cast(Quantity, self.M[before] * f + self.M[after] * (1 - f))
 
     def M_at_time(self, r: Quantity['length'], time: Quantity['time']) -> Quantity['mass']:
-        """Calculate the mass at a given radius and time. Achieved by finding the nearest grid point and using linear interpolation in the time dimension (see `self.at_time()`)."""
+        """Calculate the mass at a given radius and time.
+
+        If the background is a static distribution, use the spline enclosed mass.
+
+        Else, find the nearest grid point and use linear interpolation in the time dimension (see `self.at_time()`)."""
+        if self.distribution is not None:
+            return self.distribution.M_spline(r)
+        assert self.lattice is not None, '`lattice` is missing'
         return cast(
             Quantity,
             self.at_time(time)[

@@ -11,7 +11,7 @@ from astropy.units import Quantity
 from tqdm import tqdm
 
 
-class File_params(TypedDict):
+class FileParams(TypedDict):
     """Parameter dictionary for loading `NSphere-SIDM` data files."""
 
     base_filename: str
@@ -78,7 +78,7 @@ def load_file(path: str | Path, dtype: np.dtype[Any]) -> NDArray[Any]:
     return np.fromfile(path, dtype=dtype)
 
 
-def load_all_files(files: pd.DataFrame | None = None, **kwargs: Unpack[File_params]) -> pd.DataFrame:
+def load_all_files(files: pd.DataFrame | None = None, **kwargs: Unpack[FileParams]) -> pd.DataFrame:
     """Load all data from all files.
 
     Parameters:
