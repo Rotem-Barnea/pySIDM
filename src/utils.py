@@ -10,6 +10,8 @@ from numpy.typing import NDArray, ArrayLike
 from astropy.units import Unit, Quantity
 from astropy.units.typing import UnitLike
 
+from src import run_units
+
 from . import rng
 from .types import FloatOrArray, QuantityOrArray
 
@@ -619,3 +621,19 @@ def get_columns(data: table.QTable, columns: list[str], unmask: bool = True) -> 
     if unmask:
         return unmask_quantity(*output)
     return tuple(output)
+
+
+def strip_args_units(*args: Any) -> list[Any]:
+    """Strip units from positional arguments if they are quantities. Also decompose them to the `run_unit` system."""
+    out_args = []
+    for arg in args:
+        out_args += [arg.decompose(run_units.system).value if isinstance(arg, Quantity) else arg]
+    return out_args
+
+
+def strip_kwargs_units(**kwargs: Any) -> dict[str, Any]:
+    """Strip units from keyword arguments if they are quantities. Also decompose them to the `run_unit` system."""
+    out_kwargs = {}
+    for key, value in kwargs.items():
+        out_kwargs[key] = value.decompose(run_units.system).value if isinstance(value, Quantity) else value
+    return kwargs

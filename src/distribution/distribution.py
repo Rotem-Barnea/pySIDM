@@ -371,6 +371,17 @@ class Distribution:
             self.memoization['M_grid'] = self.M(self.geomspace_grid)
         return self.memoization['M_grid']
 
+    @property
+    def M_spline(self) -> QuantitySpline:
+        """Calculate a spline of the enclosed mass (`M(<=r)`)"""
+        if 'M_spline' not in self.memoization:
+            self.memoization['M_spline'] = QuantitySpline(
+                x=self.geomspace_grid,
+                y=self.M_grid,
+                ext='const',
+            )
+        return self.memoization['M_spline']
+
     def calculate_M_tot(self) -> Quantity['mass']:
         """Calculate the total mass, i.e. the integral over `[0, Rmax]`."""
         return cast(Quantity, self.spherical_rho_integrate(self.Rmax, True)[0])
