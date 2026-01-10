@@ -866,7 +866,11 @@ class Halo:
     def optimize_dt(
         self,
         max_factor: int = 10,
+        min_factor: int = 1,
         factor_steps: int = 30,
+        factor_steps_down: int | None = None,
+        min_dt: Quantity['time'] | None = None,
+        max_dt: Quantity['time'] | None = None,
         test_steps: int = 100,
         include_scatters: bool = False,
         verbose: bool = True,
@@ -878,25 +882,41 @@ class Halo:
 
         Parameters:
             max_factor: Maximum factor to divide the initial `dt` by.
+            min_factor: Minimum factor to divide the initial `dt` by.
             factor_steps: Number of factors tested between 1 and `max_factor`.
+            factor_steps_down: Number of factors tested between 1 and `min_factor`. If `None` use the same value as `factor_steps`.
+            min_dt: Minimum allowed `dt` value.
+            max_dt: Minimum allowed `dt` value.
             test_steps: Number of steps to take when testing `dt`.
             include_scatters: Include scatters in the optimization, otherwise optimize only over the leapfrog integrator.
         """
-        diff = []
-        factor = np.linspace(1, max_factor + 1, factor_steps)
-        for i in tqdm(factor, desc='Optimizing `dt` value', disable=not verbose, leave=tqdm_leave):
+        progress_speed = []
+        factor = np.hstack(
+            [
+                1 / np.linspace(1, min_factor, factor_steps_down or factor_steps),
+                np.linspace(1, max_factor + 1, factor_steps),
+            ]
+        )
+        dt_candidates = self.unoptimized_dt.copy() / factor
+        if min_dt is not None:
+            dt_candidates = dt_candidates.clip(min=min_dt)
+        if max_dt is not None:
+            dt_candidates = dt_candidates.clip(max=max_dt)
+        dt_candidates = np.unique(dt_candidates)
+        for dt in tqdm(dt_candidates, desc='Optimizing `dt` value', disable=not verbose, leave=tqdm_leave):
             halo = self.copy()
-            halo.dt = self.unoptimized_dt / i
+            halo.dt = dt
             start = time.perf_counter()
             for _ in range(test_steps):
                 halo.step(in_bootstrap=not include_scatters)
             end = time.perf_counter()
-            diff += [end - start]
+            progress_speed += [dt.value / (end - start)]
             del halo
-        optimized_factor = factor[np.argmin(np.array(diff) * factor)]
-        self.dt = self.unoptimized_dt.copy() / optimized_factor
+        self.dt = dt_candidates[np.argmax(progress_speed)].copy()
         if verbose:
-            print(f'Optimized factor: 1/{optimized_factor}, `dt` value used: {self.dt}')
+            print(
+                f'Optimized factor: {self.unoptimized_dt / self.dt:.2f} = 1/{self.dt / self.unoptimized_dt:.2f}, `dt` value used: {self.dt}'
+            )
 
     def step(
         self,
@@ -1036,6 +1056,7 @@ class Halo:
         save_kwargs: dict[str, Any] = {},
         optimize_dt: bool = False,
         reoptimize_dt_rate: Quantity['time'] | None = None,
+        optimize_dt_kwargs: dict[str, Any] = {},
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
 
@@ -1047,6 +1068,7 @@ class Halo:
             save_kwargs: Additional keyword arguments to pass to `save()`.
             optimize_dt: Whether to optimize the time step (`dt`).
             reoptimize_dt_rate: If provided split the evolution loop into chunks of this duration and reoptimize the time step (`dt`) at the start of each chunk.
+            optimize_dt_kwargs: Additional keyword arguments to pass to `optimize_dt()`.
 
         Returns:
             None
@@ -1060,48 +1082,28 @@ class Halo:
                 n_steps = self.to_step(cast(Quantity, until_t - self.time))
             else:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
-        # if optimize_dt_at_startup and self.time == 0:
-        #     self.optimize_dt()
 
+        required_time = self.to_time(n_steps)
         if reoptimize_dt_rate is not None:
-            n_chunks = int(
-                np.ceil(
-                    (self.to_time(n_steps).to(reoptimize_dt_rate.unit) / reoptimize_dt_rate)
-                    .decompose(run_units.system)
-                    .value
-                )
-            )
-            chunk_n_steps = int(np.ceil(n_steps / n_chunks))
+            start_times = np.arange(0, (required_time / reoptimize_dt_rate).decompose().value, 1)
         else:
-            chunk_n_steps = n_steps
-            n_chunks = 1
-
-        for _ in tqdm(range(n_chunks), disable=n_chunks == 1):
+            start_times = [0]
+            reoptimize_dt_rate = required_time
+        for _ in tqdm(start_times, disable=len(start_times) == 1):
+            if optimize_dt:
+                self.optimize_dt(**optimize_dt_kwargs)
+            chunk_n_steps = self.to_step(reoptimize_dt_rate)
             if self.bootstrap_steps > 0 and self.steps == 0:
                 start_time = self.time - self.bootstrap_steps * self.dt
-                n_steps += self.bootstrap_steps
+                chunk_n_steps += self.bootstrap_steps
             else:
                 start_time = self.time
             for step in tqdm(range(chunk_n_steps), start_time=cast(Quantity, start_time), dt=self.dt, **tqdm_kwargs):
-                if optimize_dt and step == 0:
-                    self.optimize_dt()
                 self.step(
                     in_bootstrap=(step < self.bootstrap_steps and self.steps == 0),
                     save_kwargs=save_kwargs,
                     subdivisions=None if self.max_allowed_subdivisions != 1 else 1,
                 )
-
-        # if self.bootstrap_steps > 0 and self.steps == 0:
-        #     start_time = self.time - self.bootstrap_steps * self.dt
-        #     n_steps += self.bootstrap_steps
-        # else:
-        #     start_time = self.time
-        # for step in tqdm(range(n_steps), start_time=cast(Quantity, start_time), dt=self.dt, **tqdm_kwargs):
-        #     self.step(
-        #         in_bootstrap=(step < self.bootstrap_steps and self.steps == 0),
-        #         save_kwargs=save_kwargs,
-        #         subdivisions=None if self.max_allowed_subdivisions != 1 else 1,
-        #     )
         if self.hard_save:
             self.save(**save_kwargs)
 
