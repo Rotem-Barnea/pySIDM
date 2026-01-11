@@ -1,3 +1,5 @@
+"""SIDM calculations"""
+
 from typing import TypedDict, cast
 
 import numpy as np

@@ -1,3 +1,5 @@
+"""Wrapper for the tqdm module with time-tracking capabilities"""
+
 from typing import Any, cast
 from collections.abc import Iterable, Generator
 

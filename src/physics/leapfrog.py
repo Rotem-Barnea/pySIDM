@@ -1,3 +1,5 @@
+"""Gravitational dynamics calculations"""
+
 import warnings
 from typing import Literal, TypedDict, cast
 

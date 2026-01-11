@@ -1,7 +1,9 @@
+"""Wrappers for the AGAMA C++ library bindings"""
+
+import importlib.util
 from typing import Any, Self, TypeVar, Callable, cast
 from functools import wraps
 
-import agama
 import numpy as np
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
@@ -11,6 +13,18 @@ from src.types import QuantityOrArray
 from .. import utils
 
 T = TypeVar('T')
+
+
+class _AgamaMissing:
+    def __getattr__(self, name: Any):
+        raise ImportError('agama is not installed.')
+
+
+if importlib.util.find_spec('agama') is not None:
+    import agama
+else:
+    agama = _AgamaMissing()
+__all__ = ['agama']
 
 
 def vectorize(func: Callable[..., T]) -> Callable[..., T]:

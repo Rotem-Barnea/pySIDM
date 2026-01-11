@@ -1,3 +1,5 @@
+"""Base distribution class"""
+
 from typing import TYPE_CHECKING, Any, Literal, Callable, cast
 from pathlib import Path
 
@@ -14,8 +16,7 @@ from astropy.units.typing import UnitLike
 
 from . import io, agama_wrappers
 from .. import rng, plot, utils, report, physics, run_units
-from ..types import FloatOrArray, ParticleType
-from ..physics.eddington import QuantitySpline
+from ..types import FloatOrArray, ParticleType, QuantitySpline
 
 if TYPE_CHECKING:
     from ..phase_space import PhaseSpace

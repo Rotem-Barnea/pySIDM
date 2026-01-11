@@ -1,3 +1,5 @@
+"""Halo class for SIDM simulations"""
+
 import time
 import itertools
 from copy import deepcopy

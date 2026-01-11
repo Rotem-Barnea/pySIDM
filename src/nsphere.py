@@ -1,3 +1,8 @@
+"""Integration functions with the NSphere simulation output
+
+See `https://github.com/NSphere-SIDM/NSphere-SIDM`.
+"""
+
 from typing import Any, Unpack, TypedDict, NotRequired
 from pathlib import Path
 

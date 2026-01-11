@@ -1,11 +1,12 @@
+"""IO operations on distribution classes"""
+
 import pickle
 from typing import Any
 from pathlib import Path
 
-import agama
-
 from . import agama_wrappers
 from .distribution import Distribution
+from .agama_wrappers import agama
 
 
 def save_agama_potential(

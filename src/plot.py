@@ -1,3 +1,5 @@
+"""Plotting tools"""
+
 import warnings
 from typing import Any, Literal, cast
 from pathlib import Path

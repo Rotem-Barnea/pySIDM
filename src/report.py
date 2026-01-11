@@ -1,3 +1,5 @@
+"""Report generation (pretty string representation) module"""
+
 from copy import deepcopy
 from typing import Any, Self
 

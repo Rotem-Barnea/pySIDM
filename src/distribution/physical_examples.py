@@ -1,3 +1,5 @@
+"""Managing setting up physical (real world) examples of galactic halos"""
+
 from typing import Any, Literal, cast, get_args
 
 import regex

@@ -1,3 +1,5 @@
+"""General purpose utility functions"""
+
 import datetime
 from typing import Any, Literal, Callable, cast
 

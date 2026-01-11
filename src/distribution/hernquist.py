@@ -1,3 +1,5 @@
+"""Hernquist profile distribution class"""
+
 from typing import TYPE_CHECKING, Any, Self, Literal
 
 import numpy as np

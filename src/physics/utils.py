@@ -1,3 +1,5 @@
+"""Physics-related calculations and utility functions"""
+
 from typing import Literal, cast
 
 import numpy as np

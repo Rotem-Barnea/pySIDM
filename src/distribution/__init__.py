@@ -1,3 +1,5 @@
-from . import io, nfw, cored, uniform, example_db, distribution, agama_wrappers, physical_examples
+"""Particle distribution modules"""
 
-__all__ = ['io', 'distribution', 'nfw', 'uniform', 'example_db', 'cored', 'agama_wrappers', 'physical_examples']
+from . import io, nfw, cored, example_db, distribution, agama_wrappers, physical_examples
+
+__all__ = ['io', 'distribution', 'nfw', 'example_db', 'cored', 'agama_wrappers', 'physical_examples']

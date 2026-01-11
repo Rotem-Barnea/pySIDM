@@ -1,3 +1,5 @@
+"""DEPRECATED"""
+
 from typing import Any, Self, cast
 
 import numpy as np

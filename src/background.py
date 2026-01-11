@@ -1,3 +1,5 @@
+"""Background mass distribution"""
+
 import pickle
 from typing import Any, Self, Unpack, cast
 from pathlib import Path

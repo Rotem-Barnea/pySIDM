@@ -1,4 +1,4 @@
-"""Type stubs for agama C extension module."""
+"""Type stubs for agama C extension module"""
 
 from typing import Any
 

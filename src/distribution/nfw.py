@@ -1,3 +1,5 @@
+"""NFW profile distribution class"""
+
 from typing import TYPE_CHECKING, Any, Self, Literal
 from functools import partial
 

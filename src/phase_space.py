@@ -1,3 +1,5 @@
+"""Discreet phase space calculations"""
+
 import pickle
 from typing import Any, Literal, TypedDict, cast
 from pathlib import Path

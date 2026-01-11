@@ -1,3 +1,5 @@
+"""IO operations on the Halo class"""
+
 import pickle
 import shutil
 from typing import Any, cast

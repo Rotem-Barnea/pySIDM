@@ -1,3 +1,5 @@
+"""Python modules for the spherical N-body SIDM simulation"""
+
 from . import (
     cli,
     rng,

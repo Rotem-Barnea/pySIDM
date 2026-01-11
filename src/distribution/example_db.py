@@ -1,3 +1,8 @@
+"""Managing the galaxy database.
+
+See `https://local-volume-database.readthedocs.io/en/latest/index.html` for reference.
+"""
+
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, TypedDict
 from pathlib import Path
