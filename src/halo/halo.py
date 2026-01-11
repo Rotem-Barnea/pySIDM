@@ -1662,17 +1662,15 @@ class Halo:
             data=data,
             plot_fn=lambda x: self.plot_phase_space(
                 data=x,
-                frame_plot_kwargs={
-                    **frame_plot_kwargs,
-                    'setup_kwargs': {
-                        'texts': [
-                            {
-                                's': f'{x["time"][0].to("Gyr"):.2f}',
-                                **plot.pretty_ax_text(x=0.05, y=0.95, transform='transAxes'),
-                            }
-                        ],
-                        **frame_plot_kwargs.get('setup_kwargs', {}),
-                    },
+                **{k: v for k, v in frame_plot_kwargs.items() if k != 'setup_kwargs'},
+                setup_kwargs={
+                    'texts': [
+                        {
+                            's': f'{x["time"][0].to("Gyr"):.2f}',
+                            **plot.pretty_ax_text(x=0.05, y=0.95, transform='transAxes'),
+                        }
+                    ],
+                    **frame_plot_kwargs.get('setup_kwargs', {}),
                 },
             ),
             **kwargs,
