@@ -275,6 +275,18 @@ class Distribution:
         """Generate an agama distribution function from the distribution."""
         return self.to_agama_df()
 
+    def tc0(
+        self, C: float = 0.9, sigma: Quantity[run_units.cross_section] = Quantity(50, 'cm^2/g')
+    ) -> Quantity['time']:
+        """Base estimation for the core collapse time"""
+        return (150 / C * 1 / (sigma * self.rho_s) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.Rs**2)).to(
+            run_units.time
+        )
+
+    def tc(self, J: float = 1, sigma: Quantity[run_units.cross_section] = Quantity(50, 'cm^2/g')) -> Quantity['time']:
+        """New estimation for the core collapse time"""
+        return 1 / (4 * np.pi * self.rho_s * sigma) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.Rs**2) * J
+
     @property
     def geomspace_grid(self) -> Quantity['length']:
         """Calculate the `internal logarithmic grid` (memoized)."""

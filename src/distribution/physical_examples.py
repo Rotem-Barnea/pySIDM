@@ -1,8 +1,11 @@
 """Managing setting up physical (real world) examples of galactic halos"""
 
 from typing import Any, Literal, cast, get_args
+from functools import partial
 
+import numpy as np
 import regex
+import scipy
 from astropy.units import Quantity
 
 from .nfw import NFW
@@ -62,3 +65,32 @@ def validate_input(name: str) -> tuple[physical_examples, distribution_options]:
             suffix = option
     assert name in get_args(physical_examples), f'Unknown physical example: {name}'
     return cast(physical_examples, name), suffix
+
+
+def calculate_J_integral(
+    a: float = 1e-3,
+    b: float = 1,
+    rho0: float | None = None,
+    r0: float | None = None,
+    nfw_dist: NFW | None = None,
+    hernquist_dist: Hernquist | None = None,
+) -> tuple[float, float]:
+    """Calculate the J integral for an NFW-Hernquist mixed system. `rho0=0` is equivilent to an NFW-only distribution.
+
+    If not provided, `rho0` defaults to 0 and `r0` defaults to 1. If `nfw_dist` and `hernquist_dist` are provided, calculate `rho0` and `r0` from them instead.
+    """
+
+    def integrand(x: float, rho0: float, r0: float) -> float:
+        part1 = (x / (rho0 * r0**3 * (x / r0) ** 2 / (2 * (1 + x / r0) ** 2) + np.log(1 + x) - x / (1 + x))) ** (5 / 2)
+        part2 = rho0 * r0**2 * x / (2 * (1 + x / r0)) + np.log(1 + x)
+        return part1 * part2
+
+    if rho0 is None and r0 is None and nfw_dist is not None and hernquist_dist is not None:
+        rho0 = (hernquist_dist.rho_s / nfw_dist.rho_s).to('').value
+        r0 = (hernquist_dist.Rs / nfw_dist.Rs).to('').value
+
+    return scipy.integrate.quad(
+        func=partial(integrand, rho0=rho0 or 0, r0=r0 or 1),
+        a=a,
+        b=b,
+    )
