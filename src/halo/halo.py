@@ -398,6 +398,7 @@ class Halo:
         self.scatter_rounds_underestimated = deque()
         self.scatter_track_index = deque()
         self.scatter_track_radius = deque()
+        self.scatter_track_time = deque()
         self.snapshots = table.QTable()
         self.runtime_track_sort = deque()
         self.runtime_track_cleanup = deque()
