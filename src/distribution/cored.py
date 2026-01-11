@@ -10,7 +10,8 @@ from typing import TYPE_CHECKING, Any, Self
 from numba import njit
 from astropy.units import Quantity
 
-from . import agama_wrappers
+from src import agama_wrappers
+
 from ..types import FloatOrArray
 from .distribution import Distribution
 

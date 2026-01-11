@@ -14,6 +14,7 @@ from . import (
     background,
     phase_space,
     distribution,
+    agama_wrappers,
     spatial_approximation,
 )
 
@@ -31,5 +32,6 @@ __all__ = [
     'background',
     'phase_space',
     'distribution',
+    'agama_wrappers',
     'spatial_approximation',
 ]

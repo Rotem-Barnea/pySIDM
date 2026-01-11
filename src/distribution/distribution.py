@@ -14,7 +14,9 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from . import io, agama_wrappers
+from src import agama_wrappers
+
+from . import io
 from .. import rng, plot, utils, report, physics, run_units
 from ..types import FloatOrArray, ParticleType, QuantitySpline
 

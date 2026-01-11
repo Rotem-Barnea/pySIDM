@@ -4,9 +4,10 @@ import pickle
 from typing import Any
 from pathlib import Path
 
-from . import agama_wrappers
+from src import agama_wrappers
+from src.agama_wrappers import agama
+
 from .distribution import Distribution
-from .agama_wrappers import agama
 
 
 def save_agama_potential(

@@ -8,9 +8,8 @@ import numpy as np
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 
+from src import utils
 from src.types import QuantityOrArray
-
-from .. import utils
 
 T = TypeVar('T')
 

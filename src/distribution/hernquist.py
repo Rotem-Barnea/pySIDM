@@ -6,7 +6,9 @@ import numpy as np
 from numba import njit
 from astropy.units import Quantity
 
-from . import example_db, agama_wrappers
+from src import agama_wrappers
+
+from . import example_db
 from ..types import FloatOrArray
 from .distribution import Distribution
 
