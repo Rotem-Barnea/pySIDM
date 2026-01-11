@@ -357,15 +357,39 @@ class Halo:
 
     @staticmethod
     def to_dataframe(
-        r: Quantity['length'],
-        v: Quantity['velocity'],
-        m: Quantity['mass'],
+        r: Quantity['length'] | None = None,
+        v: Quantity['velocity'] | None = None,
+        m: Quantity['mass'] | None = None,
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         distribution_id: list[int] | NDArray[np.int64] | None = None,
-        particle_index: NDArray[np.int_] | None = None,
+        particle_index: NDArray[np.int64] | None = None,
         leapfrog_convergence_rounds: NDArray[np.int64] | None = None,
+        qtable: table.QTable | None = None,
     ) -> pd.DataFrame:
         """Convert particle data to a `DataFrame`."""
+        assert qtable is not None or (r is not None and v is not None and m is not None), (
+            'Either `qtable` must be provided, or `r`, `v` and `m` must be'
+        )
+        if qtable is not None:
+            r, vx, vy, vr, m = utils.get_columns(qtable, columns=['r', 'vx', 'vy', 'vr', 'm'])
+            return Halo.to_dataframe(
+                r=r,
+                v=cast(Quantity, np.vstack([vx, vy, vr]).T),
+                m=m,
+                particle_type=cast(list[ParticleType], qtable['particle_type']),
+                distribution_id=(
+                    cast(NDArray[np.int64], qtable['distribution_id']) if 'distribution_id' in qtable.columns else None
+                ),
+                particle_index=(
+                    cast(NDArray[np.int64], qtable['particle_index']) if 'particle_index' in qtable.columns else None
+                ),
+                leapfrog_convergence_rounds=(
+                    cast(NDArray[np.int64], qtable['leapfrog_convergence_rounds'])
+                    if 'leapfrog_convergence_rounds' in qtable.columns
+                    else None
+                ),
+            )
+        assert r is not None and v is not None and m is not None
         vx, vy, vr = v.to(run_units.velocity).T
         data = pd.DataFrame(
             {
@@ -407,6 +431,7 @@ class Halo:
         self.runtime_track_sidm = deque()
         self.runtime_track_leapfrog = deque()
         self.runtime_track_full_step = deque()
+        self.runtime_realtime_track = deque()
         self.rng = np.random.default_rng(self.seed)
 
     def copy(self) -> Self:
@@ -430,6 +455,7 @@ class Halo:
             particle_type: Type of particle.
             particle_index: Index of particle.
             distribution_id: Identifier of the source distribution.
+            leapfrog_convergence_rounds: Number of leapfrog convergence rounds in the previous step.
         """
         self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
         data = table.QTable(
@@ -446,6 +472,7 @@ class Halo:
                 'particle_type': self._particles['particle_type'],
                 'particle_index': self._particles.index,
                 'distribution_id': self._particles['distribution_id'],
+                'leapfrog_convergence_rounds': self._particles['leapfrog_convergence_rounds'],
             }
         )
         return data
@@ -1236,16 +1263,7 @@ class Halo:
         tables = io.load_tables(path, undersample={'snapshots': undersample_snapshots}, verbose=verbose)
         assert tables['particles'] is not None, 'Particles table is missing'
         particles = tables['particles']
-        r, vx, vy, vr, m = [
-            cast(Quantity, t)
-            for t in (
-                particles['r'],
-                particles['vx'],
-                particles['vy'],
-                particles['vr'],
-                particles['m'],
-            )
-        ]
+        r, vx, vy, vr, m = utils.get_columns(particles, columns=['r', 'vx', 'vy', 'vr', 'm'])
         output = cls(
             r=r,
             v=cast(Quantity, np.vstack([vx, vy, vr]).T),
@@ -1259,7 +1277,9 @@ class Halo:
             **(io.load_pickle(path, 'halo_payload', verbose=verbose) if legacy_payload else {}),
             snapshots=tables['snapshots'],
         )
-        output.initial_particles = tables['initial_particles']
+        if 'initial_particles' in tables and tables['initial_particles'] is not None:
+            output._initial_particles = output.to_dataframe(qtable=tables['initial_particles'])
+            output.initial_particles = tables['initial_particles']
         if update_save_path:
             output.save_path = Path(path).resolve()
         if static:
