@@ -463,7 +463,7 @@ def smooth_holes_1d(
         include_zero: Only relevant if `mask` is not provided. Define "hole" as any `y<=0`, otherwise only fill `y<0`.
         assume_sorted: Whether the x values are sorted.
         bounds_error: Whether to raise an error if the x values are out of bounds.
-        fill_value: The value to use for extrapolation. Must be accepted by zscipy.interpolate.interp1d()`.
+        fill_value: The value to use for extrapolation. Must be accepted by `scipy.interpolate.interp1d()`.
         kwargs: Additional keyword arguments to pass to the interpolation function.
 
     Returns:
