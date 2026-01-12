@@ -9,6 +9,7 @@ import numpy as np
 import scipy
 import pandas as pd
 import seaborn as sns
+import matplotlib.patches as patches
 from PIL import Image
 from astropy import table
 from matplotlib import colors, ticker
@@ -25,7 +26,9 @@ from matplotlib.collections import QuadMesh
 from numba.misc.coverage_support import Callable
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-from . import utils, run_units
+from distribution.distribution import Distribution
+
+from . import utils, physics, run_units
 from .tqdm import tqdm
 
 Scale = Literal['linear', 'log', 'guess']
@@ -422,6 +425,7 @@ def heatmap(
     title: str | None = None,
     xlabel: str | None = None,
     ylabel: str | None = None,
+    cbar: bool = True,
     cbar_label: str | None = None,
     cbar_label_autosuffix: bool = True,
     cbar_format: str | None = None,
@@ -459,6 +463,7 @@ def heatmap(
         title: Title of the plot.
         xlabel: Label for the x-axis.
         ylabel: Label for the y-axis.
+        cbar: Whether to show the colorbar.
         cbar_label: Label for the colorbar.
         cbar_label_autosuffix: Add a prefix and suffix based on the `row_normalization` selected.
         cbar_format: Format string for the colorbar.
@@ -542,17 +547,18 @@ def heatmap(
             **kwargs,
         )
 
-    fig, ax, _ = format_cbar(
-        fig=fig,
-        ax=ax,
-        im=im,
-        cbar_label=cbar_label,
-        cbar_label_autosuffix=cbar_label_autosuffix,
-        cbar_format=cbar_format,
-        cbar_log_numticks=cbar_log_numticks,
-        cbar_unit=cbar_unit,
-        grid_row_normalization=grid_row_normalization,
-    )
+    if cbar:
+        fig, ax, _ = format_cbar(
+            fig=fig,
+            ax=ax,
+            im=im,
+            cbar_label=cbar_label,
+            cbar_label_autosuffix=cbar_label_autosuffix,
+            cbar_format=cbar_format,
+            cbar_log_numticks=cbar_log_numticks,
+            cbar_unit=cbar_unit,
+            grid_row_normalization=grid_row_normalization,
+        )
 
     ax = format_ax_ticks(ax=ax, axis='x', nbins=x_nbins, scale=xscale, tick_format=x_tick_format, axis_range=x_range)
     ax = format_ax_ticks(ax=ax, axis='y', nbins=y_nbins, scale=yscale, tick_format=y_tick_format, axis_range=y_range)
@@ -1088,3 +1094,173 @@ def phase_space_energy_lines(
     if save_kwargs is not None:
         save(fig=fig, **save_kwargs)
     return fig, ax
+
+
+def animate_rho_presentation(snapshots: table.QTable, distribution: Distribution, save_path: str | Path) -> None:
+    """Animation of rho over time, made for a presentation keynote."""
+
+    def f(x: Any) -> tuple[Figure, Axes]:
+        fig, ax = setup(
+            minorticks=True,
+            xscale='log',
+            yscale='log',
+            ylim=(1e3, 1e10),
+            xlim=(1e-1, 2e0),
+            title=f'Mass density at time = {x["time"][0].to("Gyr"):.1f}',
+            xlabel='Radius',
+            ylabel=r'$\rho$',
+            x_unit='kpc',
+            y_unit='Msun/kpc^3',
+        )
+        distribution.plot_rho(
+            add_markers=False,
+            label=r'initial $\rho$',
+            lineplot_kwargs={'color': 'black', 'linestyle': '--'},
+            fig=fig,
+            ax=ax,
+        )
+        sns.lineplot(
+            x=x['r'],
+            y=scipy.ndimage.gaussian_filter(
+                physics.utils.local_density(
+                    r=x['r'],
+                    m=x['m'],
+                    max_radius_j=100,
+                    volume_kind='density',
+                    mass_kind='sum',
+                ),
+                200,
+            ),
+            color='tab:orange',
+            label=r'$\rho$(t)',
+            ax=ax,
+        )
+        return fig, ax
+
+    save_images(
+        images=to_images(iterator=list(snapshots.group_by('time').groups)[:-1], plot_fn=f),
+        save_path=save_path,
+    )
+
+
+def animate_xy_presentation(snapshots: table.QTable, distribution: Distribution, save_path: str | Path) -> None:
+    """Animation of the simulation's "particles" in an x-y plane over time, made for a presentation keynote."""
+
+    def g_(
+        data: Any, x_bins: Quantity, y_bins: Quantity
+    ) -> tuple[Quantity, tuple[Quantity, Quantity, Quantity, Quantity], Quantity, Quantity]:
+        x, y = utils.split_2d(data['r'], acos=False)
+        grid, extent = aggregate_2d_data(
+            table.QTable({'x': x, 'y': y}),
+            x_key='x',
+            y_key='y',
+            x_bins=x_bins,
+            y_bins=y_bins,
+        )
+        x_grid, y_grid = np.meshgrid(np.diff(x_bins), np.diff(y_bins))
+        r_2d = np.sqrt(x_grid**2 + y_grid**2)
+        volume = x_grid * y_grid
+        volume[r_2d < distribution.Rvir] *= np.sqrt(distribution.Rvir**2 - r_2d[r_2d < distribution.Rvir] ** 2).value
+        grid /= volume
+        return cast(Quantity, grid), extent, x_bins, y_bins
+
+    def g(data: Any) -> tuple[Figure, Axes]:
+        grid, extent, x_bins, y_bins = g_(
+            data=data,
+            x_bins=Quantity(np.linspace(-30, 30, 100), 'kpc'),
+            y_bins=Quantity(np.linspace(-30, 30, 100), 'kpc'),
+        )
+        fig, ax = heatmap(
+            grid,
+            extent,
+            x_unit='kpc',
+            y_unit='kpc',
+            norm=colors.LogNorm(vmin=1, vmax=1e3),
+            cmap='jet',
+            transparent_value=0,
+            x_range=x_bins,
+            y_range=y_bins,
+            title=f'Particle distribution at time = {data["time"][0].to("Gyr"):.1f}',
+            cbar_label='Particles',
+        )
+
+        ax.add_patch(
+            patches.Rectangle(
+                (-1, -1),
+                2,
+                2,
+                linewidth=1,
+                linestyle='dotted',
+                alpha=0.7,
+                edgecolor='gray',
+                facecolor='none',
+            )
+        )
+
+        fig.tight_layout()
+
+        bbox = ax.get_window_extent().transformed(fig.transFigure.inverted())
+        size = 0.25
+        ax_zoom = fig.add_axes(rect=(bbox.x0 - 0.01, bbox.y0 + 0.01, size, size))
+        for spine in ax_zoom.spines.values():
+            spine.set_edgecolor('gray')
+            spine.set_linewidth(2)
+            spine.set_linestyle('dotted')
+            spine.set_visible(True)
+
+        con1 = patches.ConnectionPatch(
+            xyA=(-1, 1),
+            coordsA=ax.transData,
+            xyB=(0, 1),
+            coordsB=ax_zoom.transAxes,
+            color='gray',
+            linewidth=1,
+            linestyle='dotted',
+            alpha=0.7,
+        )
+        fig.add_artist(con1)
+
+        con2 = patches.ConnectionPatch(
+            xyA=(1, -1),
+            coordsA=ax.transData,
+            xyB=(1, 0),
+            coordsB=ax_zoom.transAxes,
+            color='gray',
+            linewidth=1,
+            linestyle='dotted',
+            alpha=0.7,
+        )
+        fig.add_artist(con2)
+
+        grid, extent, x_bins, y_bins = g_(
+            data=data, x_bins=Quantity(np.linspace(-1, 1, 100), 'kpc'), y_bins=Quantity(np.linspace(-1, 1, 100), 'kpc')
+        )
+        fig, ax_zoom = heatmap(
+            grid,
+            extent,
+            x_unit='kpc',
+            y_unit='kpc',
+            norm=colors.LogNorm(vmin=1, vmax=1e3),
+            cmap='jet',
+            x_range=x_bins,
+            y_range=y_bins,
+            fig=fig,
+            ax=ax_zoom,
+            cbar=False,
+        )
+        ax_zoom.set_xticks([])
+        ax_zoom.set_yticks([])
+        ax_zoom.set_aspect('equal')
+
+        ax_zoom.set_in_layout(False)
+
+        return fig, ax
+
+    save_images(
+        images=to_images(
+            iterator=list(snapshots.group_by('time').groups)[:-1],
+            plot_fn=g,
+            tight_layout=None,
+        ),
+        save_path=save_path,
+    )
