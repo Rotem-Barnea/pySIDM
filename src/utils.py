@@ -449,7 +449,11 @@ def smooth_holes_1d(
     include_zero: bool = False,
     assume_sorted: bool = False,
     bounds_error: bool = False,
-    fill_value: str = 'extrapolate',
+    fill_value: Literal['extrapolate']
+    | float
+    | tuple[float, float]
+    | NDArray[np.float64]
+    | tuple[NDArray[np.float64], NDArray[np.float64]] = 'extrapolate',
     **kwargs: Any,
 ) -> QuantityOrArray:
     """Smooths holes in a 1D array, defined by the provided mask.

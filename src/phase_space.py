@@ -697,6 +697,7 @@ class PhaseSpace:
         yscale: plot.Scale = 'log',
         lineplot_kwargs: dict[str, Any] = {},
         distribution_kwargs: dict[str, Any] = {},
+        smooth_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -715,6 +716,7 @@ class PhaseSpace:
             yscale: The scale of the y-axis.
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
             distribution_kwargs: Additional keyword arguments passed to `distribution.plot_rho()`.
+            smooth_kwargs: Additional keyword arguments passed to `utils.smooth_holes_1d()`.
             save_kwargs: Additional keyword arguments to pass to `save_plot()`. If `None` ignores saving.
             **kwargs: Additional keyword arguments passed to `plot.setup()` if `plot_distribution` is `False` or to `distribution.plot_rho()` if `plot_distribution` is `True`.
         """
@@ -733,8 +735,8 @@ class PhaseSpace:
 
         x = self.r_array
         y = self.rho if mass_grid is None else self.calculate_rho(mass_grid)
-        y = utils.smooth_holes_1d(x=x, y=y, include_zero=True)
-        x, y = x[y >= 0], y[y >= 0]
+        y = utils.smooth_holes_1d(x=x, y=y, include_zero=True, **smooth_kwargs)
+        x, y = x[(y >= 0) * (~np.isnan(y))], y[(y >= 0) * (~np.isnan(y))]
         if smoothing_sigma is not None:
             y = Quantity(scipy.ndimage.gaussian_filter(y.value, smoothing_sigma), y.unit)
 
@@ -759,6 +761,7 @@ class PhaseSpace:
         xscale: plot.Scale = 'log',
         yscale: plot.Scale = 'log',
         lineplot_kwargs: dict[str, Any] = {},
+        smooth_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -775,6 +778,7 @@ class PhaseSpace:
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
+            smooth_kwargs: Additional keyword arguments passed to `utils.smooth_holes_1d()`.
             save_kwargs: Keyword arguments to pass to `save_plot()`. If `None` ignores saving.
             **kwargs: Additional keyword arguments passed to `plot.setup()`.
         """
@@ -791,8 +795,8 @@ class PhaseSpace:
 
         x = self.r_array
         y = self.temperature if mass_grid is None else self.calculate_temperature(mass_grid)
-        y = utils.smooth_holes_1d(x=x, y=y, include_zero=True)
-        x, y = x[y >= 0], y[y >= 0]
+        y = utils.smooth_holes_1d(x=x, y=y, include_zero=True, **smooth_kwargs)
+        x, y = x[(y >= 0) * (~np.isnan(y))], y[(y >= 0) * (~np.isnan(y))]
         if smoothing_sigma is not None:
             y = Quantity(scipy.ndimage.gaussian_filter(y.value, smoothing_sigma), y.unit)
 

@@ -957,6 +957,7 @@ class Distribution:
         add_markers: bool = True,
         xscale: plot.Scale = 'log',
         yscale: plot.Scale = 'log',
+        lineplot_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot the density distribution (`rho`) of the density profile.
@@ -968,6 +969,7 @@ class Distribution:
             length_unit: The unit for the radius axis.
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
+            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
             kwargs: Additional keyword arguments to pass to `plot.setup()`.
 
         Returns:
@@ -991,7 +993,7 @@ class Distribution:
 
         r = cast(Quantity, np.geomspace(r_start, r_end, self.space_steps))
         rho = self.rho(r)
-        sns.lineplot(x=r.to(length_unit).value, y=rho.to(density_unit).value, ax=ax, label=label)
+        sns.lineplot(x=r.to(length_unit).value, y=rho.to(density_unit).value, ax=ax, label=label, **lineplot_kwargs)
 
         if add_markers:
             ax = self.add_plot_R_markers(ax, ymax=rho.max().to(density_unit).value, x_unit=length_unit)
