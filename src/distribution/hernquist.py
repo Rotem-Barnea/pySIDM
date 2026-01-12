@@ -7,9 +7,9 @@ from numba import njit
 from astropy.units import Quantity
 
 from src import agama_wrappers
+from src.types import FloatOrArray
 
 from . import example_db
-from ..types import FloatOrArray
 from .distribution import Distribution
 
 if TYPE_CHECKING:

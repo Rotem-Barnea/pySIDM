@@ -11,8 +11,8 @@ from numba import njit
 from astropy.units import Quantity
 
 from src import agama_wrappers
+from src.types import FloatOrArray
 
-from ..types import FloatOrArray
 from .distribution import Distribution
 
 if TYPE_CHECKING:

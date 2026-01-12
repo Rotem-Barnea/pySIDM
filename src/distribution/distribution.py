@@ -14,11 +14,10 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import agama_wrappers
+from src import rng, plot, utils, report, physics, run_units, agama_wrappers
+from src.types import FloatOrArray, ParticleType, QuantitySpline
 
 from . import io
-from .. import rng, plot, utils, report, physics, run_units
-from ..types import FloatOrArray, ParticleType, QuantitySpline
 
 if TYPE_CHECKING:
     from ..phase_space import PhaseSpace
@@ -955,8 +954,8 @@ class Distribution:
         ylabel: str | None = 'Density',
         label: str | None = None,
         add_markers: bool = True,
-        xscale: plot.Scale = 'log',
-        yscale: plot.Scale = 'log',
+        xscale: 'plot.Scale' = 'log',
+        yscale: 'plot.Scale' = 'log',
         lineplot_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:

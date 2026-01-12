@@ -9,11 +9,10 @@ from numba import njit
 from astropy import cosmology
 from astropy.units import Quantity
 
-from src import agama_wrappers
+from src import run_units, agama_wrappers
+from src.types import FloatOrArray
 
 from . import example_db
-from .. import run_units
-from ..types import FloatOrArray
 from .distribution import Distribution
 
 if TYPE_CHECKING:

@@ -68,7 +68,7 @@ def normalize_params(params: Params | None, add_defaults: bool = False) -> Param
     """
     params = cast(Params, utils.handle_default(params, Params({})))
     if add_defaults:
-        params = {**default_params, **params}
+        params = Params({**default_params, **params})
     return params
 
 
