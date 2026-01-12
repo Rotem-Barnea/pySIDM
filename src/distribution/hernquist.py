@@ -83,15 +83,6 @@ class Hernquist(Distribution):
                 name=name,
                 **kwargs,
             )
-        # elif name == 'Draco':
-        #     raise NotImplementedError('Draco example not implemented for Hernquist (try Plummer for baryons).')
-        # elif name == 'Fornax dSph':
-        #     return cls(
-        #         R_half_light=Quantity(668, 'pc'),  # doi:10.1111/j.1365-2966.2012.21885.x
-        #         Mtot=Quantity(3e7, 'Msun'),  # Why?
-        #         name=name,
-        #         **kwargs,
-        #     )
         elif name == 'Daneng2024:DM11+baryon':
             return cls(
                 Mtot=Quantity(1e11, 'Msun') * 0.01,

@@ -275,6 +275,13 @@ class Distribution:
         """Generate an agama distribution function from the distribution."""
         return self.to_agama_df()
 
+    def radius_enclosing_scaledup_mass(
+        self, core_radius: Quantity = Quantity(0.2, 'kpc'), sizeup_factor: float = 3
+    ) -> float:
+        """Return the radius enclosing a mass of M(core_radius) * `sizeup_factor`, used to estimate the radius of collapsing halo during core collapse."""
+        r_prime = self.geomspace_grid[np.argmin(np.abs(self.M_grid - self.M(core_radius) * sizeup_factor))]
+        return self.to_scale(cast(Quantity, r_prime)).value
+
     def tc0(
         self, C: float = 0.9, sigma: Quantity[run_units.cross_section] = Quantity(50, 'cm^2/g')
     ) -> Quantity['time']:
@@ -285,7 +292,9 @@ class Distribution:
 
     def tc(self, J: float = 1, sigma: Quantity[run_units.cross_section] = Quantity(50, 'cm^2/g')) -> Quantity['time']:
         """New estimation for the core collapse time"""
-        return 1 / (4 * np.pi * self.rho_s * sigma) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.Rs**2) * J
+        return (
+            1 / (4 * np.pi * self.rho_s * sigma) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.Rs**2) * J
+        ).to(run_units.time)
 
     @property
     def geomspace_grid(self) -> Quantity['length']:
