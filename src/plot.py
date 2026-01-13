@@ -1104,7 +1104,7 @@ def animate_rho_presentation(snapshots: table.QTable, distribution: Distribution
             minorticks=True,
             xscale='log',
             yscale='log',
-            ylim=(1e3, 1e10),
+            ylim=(1e6, 5e9),
             xlim=(1e-1, 2e0),
             title=f'Mass density at time = {x["time"][0].to("Gyr"):.1f}',
             xlabel='Radius',
