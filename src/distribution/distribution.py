@@ -47,10 +47,10 @@ class Distribution:
         particle_type: ParticleType = 'dm',
         name: str = '',
         id: int | None = None,
-        backend: backends = 'python',
+        backend: backends = 'agama',
         agama_potential: agama_wrappers.Potential | None = None,
         agama_total_potential: agama_wrappers.Potential | None = None,
-        agama_truncation_power: int = 1,
+        agama_truncation_power: int = 20,
         agama_save_params: dict[str, Any] = {},
         **kwargs: Any,
     ) -> None:
