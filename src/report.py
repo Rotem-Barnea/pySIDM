@@ -22,7 +22,7 @@ class Line:
         title_format: str = '',
     ) -> None:
         self.title = title
-        self.value = value.to(self.unit) if (isinstance(value, Quantity) and unit is not None) else value
+        self.value = value.to(unit) if (isinstance(value, Quantity) and unit is not None) else value
         self.format = format
         self.prefix_buffer = prefix_buffer
         self.global_prefix = global_prefix
@@ -93,6 +93,9 @@ class Report:
 
     def __str__(self) -> str:
         return (self.header + '\n' + self.body).strip()
+
+    def __repr__(self) -> str:
+        return str(self)
 
     def __len__(self) -> int:
         return len(self.header)

@@ -172,7 +172,7 @@ class Distribution:
                     report.Line(title='c', value=self.c, format='.1f'),
                     report.Line(title='Rvir', value=self.Rvir, format='.4f'),
                     report.Line(title='Mtot', value=self.Mtot, format='.3e'),
-                    report.Line(title='rho_s', value=self.rho_s, format='.4f'),
+                    report.Line(title='rho_s', value=self.rho_s, format='.3e'),
                     report.Line(title='Tdyn', value=(1 * self.Tdyn).to(run_units.time), format='.4f'),
                     report.Line(title='Rmin', value=self.Rmin, format='.4f'),
                     report.Line(title='Rmax', value=self.Rmax, format='.4f'),
