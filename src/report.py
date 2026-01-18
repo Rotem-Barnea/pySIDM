@@ -1,7 +1,7 @@
 """Report generation (pretty string representation) module"""
 
 from copy import deepcopy
-from typing import Any, Self
+from typing import Any, Self, Callable
 
 from astropy.units import Quantity
 from astropy.units.typing import UnitLike
@@ -20,10 +20,14 @@ class Line:
         global_prefix: str = '',
         add_thousands_separator: bool = True,
         title_format: str = '',
+        format_func: Callable[[Any], str] | None = None,
     ) -> None:
         self.title = title
         self.value = value.to(unit) if (isinstance(value, Quantity) and unit is not None) else value
-        self.format = format
+        if format_func is not None:
+            self.format = format_func(value)
+        else:
+            self.format = format
         self.prefix_buffer = prefix_buffer
         self.global_prefix = global_prefix
         self.add_thousands_separator = add_thousands_separator
@@ -39,6 +43,9 @@ class Line:
             backup_format=self.format,
         )
         return f'{line_prefix}{title:{self.title_format}} {value}'
+
+    def __repr__(self) -> str:
+        return str(self)
 
     @staticmethod
     def validate_format(value: Any, format: str, backup_format: str = ''):
@@ -114,17 +121,17 @@ class Report:
         **kwargs: Any,
     ) -> 'Report':
         """Create a Report object from a dictionary (handling nested dictionaries)."""
-        items = [(key, payload[key]) for key in keys] if keys else payload.items()
+        items = [(key, payload[key]) for key in keys if key in payload] if keys else payload.items()
         return cls(
             body_lines=[
-                Line(title=title, value=value, **line_kwargs.get(title, {}))
+                Line(title=title, value=value, **{**line_kwargs.get('_global', {}), **line_kwargs.get(title, {})})
                 if not isinstance(value, dict)
                 else cls.from_dict(
                     header=f'{title}:',
                     payload=value,
                     body_prefix=f'  {rec_prefix}',
                     rec_prefix=f'  {rec_prefix}',
-                    **line_kwargs.get(title, {}),
+                    line_kwargs={**line_kwargs.get('_global', {}), **line_kwargs.get(title, {})},
                 )
                 for title, value in items
             ],
