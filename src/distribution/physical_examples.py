@@ -7,6 +7,9 @@ import numpy as np
 import regex
 import scipy
 from astropy.units import Quantity
+from astropy.units.typing import UnitLike
+
+from src import report
 
 from .nfw import NFW
 from .hernquist import Hernquist
@@ -91,4 +94,40 @@ def calculate_J_integral(
         func=partial(integrand, rho0=rho0 or 0, r0=r0 or 1),
         a=a,
         b=b,
+    )
+
+
+def describe_distributions(
+    distributions: tuple['Distribution', 'Distribution'] | list['Distribution'],
+    length_unit: UnitLike = 'kpc',
+    mass_unit: UnitLike = 'Msun',
+    density_unit: UnitLike = 'Msun/kpc^3',
+) -> report.Report:
+    """Print a description of a pair distribution."""
+    assert len(distributions) == 2, 'Must be 2 distributions'
+    if distributions[0].particle_type != 'dm' and distributions[1].particle_type == 'dm':
+        distributions = (distributions[1], distributions[0])
+    dm, baryon = distributions
+    if dm.name != '' and baryon.name != '':
+        name = f'DM={dm.name} / Stellar={baryon.name}' if dm.name != baryon.name else dm.name
+    elif dm.name != '':
+        name = dm.name
+    elif baryon.name != '':
+        name = baryon.name
+    else:
+        name = ''
+
+    return report.Report(
+        body_lines=[
+            report.Line(title='DM Rs', value=dm.Rs, unit=length_unit, format='.3f'),
+            report.Line(title='DM Mtot', value=dm.Mtot, unit=mass_unit, format='.2e'),
+            report.Line(title='DM rho0', value=dm.rho_s, unit=density_unit, format='.2e'),
+            report.Line(title='Baryon Rs', value=baryon.Rs, unit=length_unit, format='.3f'),
+            report.Line(title='Baryon Mtot', value=baryon.Mtot, unit=mass_unit, format='.2e'),
+            report.Line(title='Baryon rho0', value=baryon.rho_s, unit=density_unit, format='.2e'),
+            report.Line(title='Tilde Rs', value=baryon.Rs / dm.Rs, format='.2f'),
+            report.Line(title='Tilde rho0', value=baryon.rho_s / dm.rho_s, format='.2f'),
+        ],
+        header=f'Description for {name}',
+        body_prefix='  - ',
     )
