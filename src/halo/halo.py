@@ -3,7 +3,7 @@
 import time
 import itertools
 from copy import deepcopy
-from typing import Any, Self, Literal, cast
+from typing import Any, Self, Unpack, Literal, cast
 from pathlib import Path
 from datetime import datetime
 from collections import deque
@@ -23,15 +23,15 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
+from src import plot, utils, report, physics, run_units
+from src.tqdm import tqdm
+from src.types import ParticleType
+from src.physics import sidm, leapfrog
+from src.background import BackgroundDistribution
 from src.phase_space import PhaseSpace
+from src.distribution.distribution import Distribution, backends
 
-from . import io
-from .. import plot, utils, report, physics, run_units
-from ..tqdm import tqdm
-from ..types import ParticleType
-from ..physics import sidm, leapfrog
-from ..background import BackgroundDistribution
-from ..distribution.distribution import Distribution, backends
+from . import io, types
 
 
 class Halo:
@@ -927,7 +927,7 @@ class Halo:
         """The current simulation step count (calculated based on the simulation time)."""
         return self.to_step(self.time)
 
-    def save_snapshot(self, **kwargs: Any) -> None:
+    def save_snapshot(self, **kwargs: Unpack[types.SaveParams]) -> None:
         """Save the current state of the simulation."""
         data = self.particles.copy()
         data['step'] = self.current_step
@@ -1001,11 +1001,27 @@ class Halo:
                 f'Optimized factor: {self.unoptimized_dt / self.dt:.2f} = 1/{self.dt / self.unoptimized_dt:.2f}, `dt` value used: {self.dt}'
             )
 
+    def early_quit(self, inner_core_radius: Quantity['length'] | None = None, critical_ratio: float = 2) -> bool:
+        """Check if the simulation should be terminated early.
+
+        Parameters:
+            inner_core_radius: The inner core radius. If None, use the current inner core radius.
+            critical_ratio: The critical ratio defining the core collapse.
+
+        Returns:
+            `True` if the simulation should be terminated early, `False` otherwise.
+        """
+        if inner_core_radius is None:
+            inner_core_radius = self.inner_core_radius
+        return (self.r < inner_core_radius).sum() / (
+            self.initial_particles['r'] < inner_core_radius
+        ).sum() >= critical_ratio
+
     def step(
         self,
         in_bootstrap: bool = False,
         subdivisions: int | None = None,
-        save_kwargs: dict[str, Any] = {},
+        save_kwargs: types.SaveParams = {},
     ) -> None:
         """Perform a single time step of the simulation.
 
@@ -1136,10 +1152,11 @@ class Halo:
         t: Quantity['time'] | None = None,
         until_t: Quantity['time'] | None = None,
         tqdm_kwargs: dict[str, Any] = {},
-        save_kwargs: dict[str, Any] = {},
+        save_kwargs: types.SaveParams = {},
         optimize_dt: bool = False,
         reoptimize_dt_rate: Quantity['time'] | None = None,
-        optimize_dt_kwargs: dict[str, Any] = {},
+        optimize_dt_kwargs: types.OptimizeDtParams = {},
+        early_quit_kwargs: types.EarlyQuitParams = {},
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
 
@@ -1152,6 +1169,7 @@ class Halo:
             optimize_dt: Whether to optimize the time step (`dt`).
             reoptimize_dt_rate: If provided split the evolution loop into chunks of this duration and reoptimize the time step (`dt`) at the start of each chunk.
             optimize_dt_kwargs: Additional keyword arguments to pass to `optimize_dt()`.
+            early_quit_kwargs: Additional keyword arguments to pass to `early_quit()`.
 
         Returns:
             None
@@ -1187,6 +1205,14 @@ class Halo:
                     save_kwargs=save_kwargs,
                     subdivisions=None if self.max_allowed_subdivisions != 1 else 1,
                 )
+                if self.early_quit(**self.early_quit_kwargs):
+                    if self.hard_save:
+                        self.save(**save_kwargs)
+                    return
+            if self.early_quit(**self.early_quit_kwargs):
+                if self.hard_save:
+                    self.save(**save_kwargs)
+                return
         if self.hard_save:
             self.save(**save_kwargs)
 
@@ -1222,7 +1248,7 @@ class Halo:
         """Save the simulation state to a directory.
 
         Parameters:
-            path: Save path. If `path` is None attempts to use the internal save path.
+            path: Save path. If `path` is `None` attempts to use the internal save path.
             two_steps: If `True` saves the simulation state in two steps, to avoid rewriting the existing file with data that can be stopped midway (leaving just the 1 corrupted file). This means that for the duration of the saving the disk size used is doubled.
             keep_last_backup: If `True` keeps a full backup of the previous save, otherwise overwrite it based on `two_steps` rules. This option _always_ uses twice the disk space.
             split_snapshots: If `True` saves the snapshots QTable as separate files.
