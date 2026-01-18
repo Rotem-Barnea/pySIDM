@@ -47,7 +47,7 @@ class Halo:
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         distribution_id: list[int] | NDArray[np.int64] | None = None,
         leapfrog_convergence_rounds: NDArray[np.int64] | None = None,
-        Tdyn: Quantity['time'] | None = None,
+        Tdyn: Quantity['time'] | Unit | None = None,
         Phi0: Quantity['energy'] | None = None,
         distributions: list[Distribution] | None = None,
         scatter_rounds: deque[int] | None = None,
@@ -72,6 +72,7 @@ class Halo:
         hard_save: bool = True,
         save_path: Path | str | None = None,
         Rmax: Quantity['length'] = Quantity(300, 'kpc'),
+        inner_core_radius: Quantity['length'] = Quantity(200, 'pc'),
         bootstrap_steps: int = 100,
         cleanup_nullish_particles: bool = True,
         cleanup_particles_by_radius: bool = True,
@@ -123,6 +124,7 @@ class Halo:
             hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
             save_path: Path to save the halo to memory.
             Rmax: Maximum radius of the halo, particles outside of this radius get killed off. If `None` ignores.
+            inner_core_radius: Inner core radius of the halo, used for estimating the collapse.
             bootstrap_steps: Number of bootstrap rounds to perform before scattering begins. Time only begins counting after the bootstrap steps.
             cleanup_nullish_particles: Whether to remove particles from the halo after each interaction if they are nullish.
             cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `Rmax`).
@@ -153,9 +155,9 @@ class Halo:
         self.unoptimized_dt: Quantity['time'] = utils.handle_default(unoptimized_dt, self.dt)
         self.Tdyn: Quantity['time']
         if Tdyn is not None:
-            self.Tdyn = Tdyn
+            self.Tdyn = Tdyn if isinstance(Tdyn, Quantity) else Quantity(1, Tdyn)
         elif len(self.distributions) > 0:
-            self.Tdyn = self.distributions[0].Tdyn
+            self.Tdyn = Quantity(1, self.distributions[0].Tdyn)
         elif len(self.distributions) == 0:
             self.Tdyn = Quantity(1, run_units.time)
         self.background: BackgroundDistribution | None = background
@@ -188,6 +190,7 @@ class Halo:
         self.hard_save: bool = hard_save
         self.save_path: Path | str | None = Path(save_path) if isinstance(save_path, str) else save_path
         self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
+        self.inner_core_radius: Quantity['length'] = inner_core_radius.to(run_units.length)
         self.bootstrap_steps = bootstrap_steps
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
@@ -282,8 +285,33 @@ class Halo:
                 description_strings += [f'{key}: {value}']
         return '\n'.join(description_strings)
 
-    def __repr__(self):
-        return self.to_report(**self.repr_payload)
+    @staticmethod
+    def to_report_concise(
+        metadata: io.Metadata,
+        keys: list[str] = ['time', 'steps', 'save_path', 'name'],
+        line_kwargs: dict[str, Any] | None = None,
+    ) -> report.Report:
+        """Concise descriptor from metadata"""
+        return report.Report.from_dict(
+            {**metadata},
+            keys=keys,
+            line_kwargs=line_kwargs
+            or {
+                '_global': {
+                    'format_func': lambda x: '.1f'
+                    if isinstance(x, Quantity) and cast(Unit, x.unit).physical_type == 'time'
+                    else ''
+                },
+                'time': {'unit': 'Gyr'},
+            },
+        )
+
+    def __str__(self) -> str:
+        return str(self.to_report_concise(self.metadata))
+        # return self.to_report(**self.repr_payload)
+
+    def __repr__(self) -> str:
+        return str(self)
 
     @classmethod
     def setup(
@@ -857,6 +885,31 @@ class Halo:
             self.dt.unit,
         )
 
+    def core_collapse_start_time2(
+        self, inner_core_radius: Quantity['length'] | None = None, critical_ratio: float = 2
+    ) -> Quantity['time']:
+        """Calculate the time at which the halo starts major core collapse.
+
+        Defined as the time at which the inner core density first exceeds `critical_ratio` times the initial density.
+
+        Parameters:
+            inner_core_radius: The radius of the inner core. If `None` use the internal value.
+            critical_ratio: The critical ratio defining the core collapse.
+
+        Returns:
+            The core collapse start time
+        """
+        if inner_core_radius is None:
+            inner_core_radius = self.inner_core_radius
+        groups = self.snapshots.group_by('time').groups
+        t = groups.keys['time']
+        n_c0 = (self.initial_particles['r'] < inner_core_radius).sum()
+        ratio = np.array([(group['r'] < inner_core_radius).sum() for group in groups]) / n_c0
+        if (ratio > critical_ratio).any():
+            i = np.argmax(ratio > critical_ratio)
+            return (t[i] - t[i - 1]) / (ratio[i] - ratio[i - 1]) * (critical_ratio - ratio[i - 1]) + t[i - 1]
+        return Quantity(np.inf, t.unit)
+
     #####################
     ##Dynamic evolution
     #####################
@@ -1148,61 +1201,15 @@ class Halo:
             raise ValueError('`save_path` is not set')
         return self.save_path.parents[1] / 'results' / self.save_path.stem
 
-    @staticmethod
-    def metadata_keys() -> list[str]:
-        """Return the keys of the metadata payload dictionary, used for saving and loading halos. A `@staticmethod` and not a `@property` to allow getting it from an uninitialized cls during `@classmethod`."""
-        return [
-            'time',
-            'steps',
-            'dt',
-            'unoptimized_dt',
-            'save_every_n_steps',
-            'save_every_time',
-            'dynamics_params',
-            'scatter_params',
-            'max_allowed_subdivisions',
-            'subdivide_on_scatter_chance',
-            'subdivide_on_gravitational_step',
-            'subdivide_on_startup',
-            'last_saved_time',
-            'hard_save',
-            'save_path',
-            'Rmax',
-            'cleanup_nullish_particles',
-            'cleanup_particles_by_radius',
-            'seed',
-            'generator_state',
-            'n_particles',
-            'Tdyn',
-        ]
-
-    @staticmethod
-    def heavy_payload_keys() -> list[str]:
-        """Return the keys of the heavy payload dictionary, used for saving and loading halos. A `@staticmethod` and not a `@property` to allow getting it from an uninitialized cls during `@classmethod`."""
-        return [
-            'ministep_size',
-            'scatter_track_time',
-            'scatter_track_index',
-            'scatter_track_radius',
-            'scatter_rounds',
-            'scatter_rounds_underestimated',
-            'runtime_realtime_track',
-            'runtime_track_sort',
-            'runtime_track_cleanup',
-            'runtime_track_sidm',
-            'runtime_track_leapfrog',
-            'runtime_track_full_step',
-        ]
-
     @property
-    def metadata(self) -> dict[str, Any]:
+    def metadata(self) -> io.Metadata:
         """Return the metadata for the simulation. Used for saving."""
-        return {key: getattr(self, key) for key in self.metadata_keys()}
+        return io.Metadata(**{key: getattr(self, key) for key in io.metadata_keys()})
 
     @property
-    def heavy_payload(self) -> dict[str, Any]:
+    def heavy_payload(self) -> io.HeavyPayload:
         """Return the heavy payload for the simulation. Used for saving."""
-        return {key: getattr(self, key) for key in self.heavy_payload_keys()}
+        return io.HeavyPayload(**{key: getattr(self, key) for key in io.heavy_payload_keys()})
 
     def save(
         self,
@@ -1244,7 +1251,6 @@ class Halo:
         path: str | Path,
         update_save_path: bool = True,
         static: bool = False,
-        legacy_payload: bool = False,
         undersample_snapshots: int | None = None,
         verbose: bool = True,
     ) -> Self:
@@ -1272,9 +1278,8 @@ class Halo:
             distribution_id=np.array(particles['distribution_id']),
             distributions=io.load_distributions(path, verbose=verbose),
             background=io.load_background(path, verbose=verbose),
-            **(io.load_pickle(path, 'metadata', verbose=verbose) if not legacy_payload else {}),
-            **(io.load_pickle(path, 'heavy_payload', verbose=verbose) if not legacy_payload else {}),
-            **(io.load_pickle(path, 'halo_payload', verbose=verbose) if legacy_payload else {}),
+            **io.load_pickle(path=path, stem='metadata', verbose=verbose),
+            **io.load_pickle(path, stem='heavy_payload', verbose=verbose),
             snapshots=tables['snapshots'],
         )
         if 'initial_particles' in tables and tables['initial_particles'] is not None:
@@ -1285,6 +1290,16 @@ class Halo:
         if static:
             output.hard_save = False
         return output
+
+    @staticmethod
+    def load_metadata(path: Path | str, verbose: bool = True) -> io.Metadata:
+        """Load metadata from a pickle file."""
+        return io.load_pickle(path=path, stem='metadata', verbose=verbose)
+
+    @staticmethod
+    def load_heavy_payload(path: Path | str, verbose: bool = True) -> io.HeavyPayload:
+        """Load metadata from a pickle file."""
+        return io.load_pickle(path=path, stem='heavy_payload', verbose=verbose)
 
     def rename(self, full_path: str | Path | None = None, stem: str | None = None) -> None:
         """Renames the halo save path (and existing output folder if it exists)."""
@@ -2052,7 +2067,7 @@ class Halo:
         self,
         include_start: bool = True,
         include_now: bool = False,
-        radius: Quantity['length'] = Quantity(0.2, 'kpc'),
+        radius: Quantity['length'] | None = None,
         filter_particle_type: ParticleType | None = None,
         time_unit: UnitLike = 'Tdyn',
         xlabel: str | None = 'Time',
@@ -2098,6 +2113,8 @@ class Halo:
         if filter_particle_type is not None:
             data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         time_unit = self.fill_time_unit(time_unit)
+        if radius is None:
+            radius = self.inner_core_radius
         data['in_radius'] = data['r'] <= radius.to(data_length_unit)
 
         if aggregation_type == 'amount':

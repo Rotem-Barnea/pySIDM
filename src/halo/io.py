@@ -2,16 +2,118 @@
 
 import pickle
 import shutil
-from typing import Any, cast
+from typing import Any, Literal, TypedDict, cast, overload
 from pathlib import Path
+from collections import deque
 
 import numpy as np
 import regex
 from astropy import table
+from numpy.typing import NDArray
+from astropy.units import Unit, Quantity
 
-from ..tqdm import tqdm
-from ..background import BackgroundDistribution
-from ..distribution.distribution import Distribution
+from src import physics
+from src.tqdm import tqdm
+from src.background import BackgroundDistribution
+from src.distribution.distribution import Distribution
+
+
+class Metadata(TypedDict, total=False):
+    """Metadata for a simulation.
+
+    Attributes:
+        time: The current time of the simulation.
+        steps: The current step of the simulation.
+        dt: The current time step of the simulation.
+        unoptimized_dt: The unoptimized time step of the simulation.
+        save_every_n_steps: The number of steps between saves.
+        save_every_time: The time between saves.
+        dynamics_params: The parameters for the dynamics.
+        scatter_params: The parameters for the scattering.
+        max_allowed_subdivisions: The maximum number of subdivisions allowed.
+        subdivide_on_scatter_chance: Whether to subdivide on scatter chance.
+        subdivide_on_gravitational_step: Whether to subdivide on gravitational step.
+        subdivide_on_startup: Whether to subdivide on startup.
+        last_saved_time: The last time the simulation was saved.
+        hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
+        save_path: The path to save the simulation to.
+        Rmax: Maximum radius of the halo, particles outside of this radius get killed off.
+        inner_core_radius: Inner core radius of the halo, used for estimating the collapse.
+        cleanup_nullish_particles: Whether to cleanup nullish particles.
+        cleanup_particles_by_radius: Whether to cleanup particles by radius.
+        seed: The seed for the random number generator.
+        generator_state: The state of the random number generator.
+        n_particles: The number of particles in the simulation.
+        Tdyn: The dynamical time of the simulation.
+        name: The name of the simulation.
+    """
+
+    time: Quantity['time']
+    steps: int
+    dt: Quantity['time']
+    unoptimized_dt: Quantity['time']
+    save_every_n_steps: int | None
+    save_every_time: Quantity['time'] | None
+    dynamics_params: physics.leapfrog.Params
+    scatter_params: physics.sidm.Params
+    max_allowed_subdivisions: int
+    subdivide_on_scatter_chance: bool
+    subdivide_on_gravitational_step: bool
+    subdivide_on_startup: bool
+    last_saved_time: Quantity['time']
+    hard_save: bool
+    save_path: Path
+    Rmax: Quantity['length']
+    inner_core_radius: Quantity['length']
+    cleanup_nullish_particles: bool
+    cleanup_particles_by_radius: bool
+    seed: Any
+    generator_state: Any
+    n_particles: int
+    Tdyn: Quantity['time'] | Unit
+    name: str | list[str]
+
+
+class HeavyPayload(TypedDict, total=False):
+    """Heavy payload metadata for a simulation.
+
+    Attributes:
+        ministep_size: The size of the ministep used for each ministep (to track changes in them).
+        scatter_track_time: The time for each scatter track round, must match `scatter_track_index` and `scatter_track_radius` in shape.
+        scatter_track_index: The interacting particles (particle index) at every time step.
+        scatter_track_radius: The location of the interacting particles at every time step.
+        scatter_rounds: Number of scatter rounds the halo had every time step.
+        scatter_rounds_underestimated: Number of underestimated scatter rounds the halo had every time step (due to `max_allowed_rounds` in `physics.sidm.scatter()`).
+        runtime_realtime_track: The time at the start of each step.
+        runtime_track_sort: The time taken to sort the particles.
+        runtime_track_cleanup: The time taken to cleanup the particles.
+        runtime_track_sidm: The time taken to perform SIDM calculations.
+        runtime_track_leapfrog: The time taken to perform leapfrog calculations.
+        runtime_track_full_step: The time taken to perform a full step.
+    """
+
+    ministep_size: deque[float] | None
+    scatter_track_time: deque[float] | None
+    scatter_track_index: deque[NDArray[np.int64]] | None
+    scatter_track_radius: deque[NDArray[np.float64]] | None
+    scatter_rounds: deque[int] | None
+    scatter_rounds_underestimated: deque[int] | None
+    runtime_realtime_track: deque[float] | None
+    runtime_track_sort: deque[float] | None
+    runtime_track_cleanup: deque[float] | None
+    runtime_track_sidm: deque[float] | None
+    runtime_track_leapfrog: deque[float] | None
+    runtime_track_full_step: deque[float] | None
+
+
+def metadata_keys() -> list[str]:
+    """Return the keys of the metadata payload dictionary, used for saving and loading halos."""
+    return list(Metadata.__annotations__.keys())
+
+
+def heavy_payload_keys() -> list[str]:
+    """Return the keys of the metadata payload dictionary, used for saving and loading halos."""
+    return list(HeavyPayload.__annotations__.keys())
 
 
 def save_table(data: table.QTable, path: str | Path, **kwargs: Any) -> None:
@@ -35,7 +137,9 @@ def load_table(path: str | Path) -> table.QTable:
     return cast(table.QTable, table.hstack([fits_table, csv_table]))
 
 
-def save_pickle(path: str | Path, stem: str, payload: dict[str, Any], verbose: bool = False) -> None:
+def save_pickle(
+    path: str | Path, stem: str, payload: dict[str, Any] | Metadata | HeavyPayload, verbose: bool = False
+) -> None:
     """Save the simulation's metadata"""
     if verbose:
         print(f'Saving {stem}.pkl')
@@ -43,12 +147,27 @@ def save_pickle(path: str | Path, stem: str, payload: dict[str, Any], verbose: b
         pickle.dump(payload, f)
 
 
-def load_pickle(path: str | Path, stem: str, verbose: bool = False) -> dict[str, Any]:
+@overload
+def load_pickle(path: str | Path, stem: Literal['metadata'], verbose: bool = False) -> Metadata: ...
+
+
+@overload
+def load_pickle(path: str | Path, stem: Literal['heavy_payload'], verbose: bool = False) -> HeavyPayload: ...
+
+
+def load_pickle(
+    path: str | Path, stem: str | Literal['metadata', 'heavy_payload'] = 'metadata', verbose: bool = False
+) -> dict[str, Any] | Metadata | HeavyPayload:
     """Load a pickled simulation file"""
     if verbose:
         print(f'Loading {stem}.pkl')
     with open(Path(path) / f'{stem}.pkl', 'rb') as f:
-        return pickle.load(f)
+        data = pickle.load(f)
+    if stem == 'metadata':
+        return Metadata(**data)
+    elif stem == 'heavy_payload':
+        return HeavyPayload(**data)
+    return data
 
 
 def load_distributions(path: str | Path, verbose: bool = False) -> list[Distribution]:
@@ -62,8 +181,8 @@ def save(
     path: str | Path | None,
     static_tables: dict[str, table.QTable] = {},
     splitable_table: dict[str, table.QTable] = {},
-    metadata_payload: dict[str, Any] = {},
-    heavy_payload: dict[str, Any] = {},
+    metadata_payload: Metadata = {},
+    heavy_payload: HeavyPayload = {},
     distributions: list[Distribution] = [],
     background: BackgroundDistribution | None = None,
     two_steps: bool = False,
