@@ -162,26 +162,7 @@ class Distribution:
             getattr(self, grid)
 
     def __repr__(self):
-        warn = '' if self.physical else 'WARNING: This distribution is not physical.\n\n'
-        return str(
-            report.Report(
-                body_lines=[
-                    report.Line(title='name', value=self.name),
-                    report.Line(title='particle type', value=self.particle_type),
-                    report.Line(title='Rs', value=self.Rs, format='.4f'),
-                    report.Line(title='c', value=self.c, format='.1f'),
-                    report.Line(title='Rvir', value=self.Rvir, format='.4f'),
-                    report.Line(title='Mtot', value=self.Mtot, format='.3e'),
-                    report.Line(title='rho_s', value=self.rho_s, format='.3e'),
-                    report.Line(title='Tdyn', value=(1 * self.Tdyn).to(run_units.time), format='.4f'),
-                    report.Line(title='Rmin', value=self.Rmin, format='.4f'),
-                    report.Line(title='Rmax', value=self.Rmax, format='.4f'),
-                    report.Line(title='space steps', value=self.space_steps, format='.0e'),
-                ],
-                header=f'{warn}{self.title} density function (ID={self.id})',
-                body_prefix='  - ',
-            )
-        )
+        return str(self.report)
 
     def __call__(self, r: Quantity['length']) -> Quantity['mass density']:
         """Calculate `rho(r)`"""
@@ -190,6 +171,28 @@ class Distribution:
     def to_scale(self, x: Quantity['length']) -> Quantity['dimensionless']:
         """Scale the distance, i.e. `x/Rs`"""
         return x.to(self.Rs.unit) / self.Rs
+
+    @property
+    def report(self) -> report.Report:
+        """Generate a report of the distribution's properties"""
+        warn = '' if self.physical else 'WARNING: This distribution is not physical.\n\n'
+        return report.Report(
+            body_lines=[
+                report.Line(title='name', value=self.name),
+                report.Line(title='particle type', value=self.particle_type),
+                report.Line(title='Rs', value=self.Rs, format='.4f'),
+                report.Line(title='c', value=self.c, format='.1f'),
+                report.Line(title='Rvir', value=self.Rvir, format='.4f'),
+                report.Line(title='Mtot', value=self.Mtot, format='.3e'),
+                report.Line(title='rho_s', value=self.rho_s, format='.3e'),
+                report.Line(title='Tdyn', value=(1 * self.Tdyn).to(run_units.time), format='.4f'),
+                report.Line(title='Rmin', value=self.Rmin, format='.4f'),
+                report.Line(title='Rmax', value=self.Rmax, format='.4f'),
+                report.Line(title='space steps', value=self.space_steps, format='.0e'),
+            ],
+            header=f'{warn}{self.title} density function (ID={self.id})',
+            body_prefix='  - ',
+        )
 
     @staticmethod
     def c_from_M_Dutton14(M: Quantity['mass']) -> float:
