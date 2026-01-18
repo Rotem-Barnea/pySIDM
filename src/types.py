@@ -30,18 +30,20 @@ class QuantitySpline(UnivariateSpline):
         self.input_kwargs = kwargs
 
     @staticmethod
-    def guess_unit(unit: UnitLike | None = None, array: Quantity | None = None) -> UnitLike:
+    def guess_unit(unit: UnitLike | None = None, array: NDArray[np.float64] | Quantity | None = None) -> UnitLike:
         """Pull the desired unit from the array if not provided."""
         if unit is None:
-            if array is None:
-                unit = ''
-            else:
+            if isinstance(array, Quantity):
                 unit = cast(Unit, array.unit)
+            else:
+                unit = ''
         return unit
 
-    def __call__(self, x: Quantity, nu: int = 0, ext: int | None = None) -> Quantity:
+    def __call__(self, x: Quantity | NDArray[np.float64] | float, nu: int = 0, ext: int | None = None) -> Quantity:
         """Evaluate the spline"""
-        return Quantity(super().__call__(x.to(self.in_unit).value, nu=nu, ext=ext), self.out_unit)
+        if isinstance(x, Quantity):
+            x = x.to(self.in_unit).value
+        return Quantity(super().__call__(x, nu=nu, ext=ext), self.out_unit)
 
     def derivative_at(self, x: Quantity) -> Quantity:
         """Evaluate the derivative of the spline at a given point"""
