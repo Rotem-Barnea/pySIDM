@@ -93,7 +93,9 @@ def save(
     path = Path(path)
     path.mkdir(exist_ok=True, parents=True)
     if keep_last_backup:
-        for file in tqdm(list(path.glob('*')), desc='backing up existing data', disable=not verbose):
+        for file in tqdm(
+            (files := list(path.glob('*'))), desc='backing up existing data', disable=not verbose or len(files) == 0
+        ):
             if '_backup.' in file.name:
                 continue
             if file.is_dir():
@@ -106,23 +108,27 @@ def save(
     tag = '_' if two_steps else ''
     save_pickle(path, f'metadata{tag}', metadata_payload, verbose=verbose)
     save_pickle(path, f'heavy_payload{tag}', heavy_payload, verbose=verbose)
-    for distribution in tqdm(distributions, desc='Saving distributions', disable=not verbose):
+    for distribution in tqdm(
+        distributions, desc='Saving distributions', disable=not verbose or len(distributions) == 0
+    ):
         (path / 'distributions').mkdir(exist_ok=True)
         distribution.save(path / 'distributions', f'{distribution.name}_{distribution.title}{tag}', verbose=verbose)
     if background is not None:
         background.save(path, f'background{tag}', verbose=verbose)
-    for name, data in tqdm(tables.items(), desc='Saving tables', disable=not verbose):
+    for name, data in tqdm(tables.items(), desc='Saving tables', disable=not verbose or len(tables) == 0):
         save_table(data, path / f'{name}{tag}.fits', overwrite=True)
-    for file in tqdm(list(path.glob('*_.*')), desc='overwriting backup', disable=not verbose):
+    for file in tqdm(
+        (files := list(path.glob('*_.*'))), desc='overwriting backup', disable=not verbose or len(files) == 0
+    ):
         file.rename(file.with_stem(file.stem[:-1]))
     if split_tables:
         for stem, table in splitable_table.items():
             (path / f'split_{stem}').mkdir(exist_ok=True)
             if len(table) > 0:
                 for i, group in tqdm(
-                    list(enumerate(table.group_by('time').groups)),
+                    (tables := list(enumerate(table.group_by('time').groups))),
                     desc=f'Saving split data for {stem}',
-                    disable=not verbose,
+                    disable=not verbose or len(tables) == 0,
                 ):
                     save_table(group, path / f'split_{stem}/{stem}_{i}.fits', overwrite=True)
 
