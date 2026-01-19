@@ -240,6 +240,12 @@ class Distribution:
     def Tdyn(self, Tdyn: Unit) -> None:
         self.memoization['Tdyn'] = Tdyn
 
+    def scatter_time_scale(self, sigma: Quantity[run_units.cross_section]) -> Quantity['time']:
+        """Time scale between scatter events"""
+        return 1 / np.sqrt((4 * np.pi * constants.G * self.Rs**2 * self.rho_s**3 * sigma**2)).decompose(
+            run_units.system
+        )
+
     def to_agama_potential(
         self, type: str | None = None, gamma: int | None = None, beta: int | None = None, **kwargs: Any
     ) -> agama_wrappers.Potential:
