@@ -1,11 +1,20 @@
 """Wrapper for the tqdm module with time-tracking capabilities"""
 
-from typing import Any, cast
+import os
+from typing import TYPE_CHECKING, Any, cast
 from collections.abc import Iterable, Generator
 
-from tqdm.auto import tqdm as tqdm_base
+# from tqdm.auto import tqdm as tqdm_base
 from astropy.units import Quantity
 from astropy.units.typing import UnitLike
+
+if TYPE_CHECKING:
+    from tqdm.auto import tqdm as tqdm_base
+else:
+    if 'zed' in os.environ.get('__CFBundleIdentifier', '').lower():
+        from tqdm import tqdm as tqdm_base
+    else:
+        from tqdm.auto import tqdm as tqdm_base
 
 
 class tqdm(tqdm_base):
