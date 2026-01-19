@@ -10,8 +10,10 @@ exclude = [
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "D101", "D102", "D103"]
-ignore = ["E501","F821","F722","D104"]
+ignore = ["E501", "F821", "F722", "D104"]
 
+[tool.ruff.lint.per-file-ignores]
+"analysis/*" = ["E", "F", "W", "D101", "D102", "D103"]
 
 [tool.ruff.lint.isort]
 lines-after-imports = 1

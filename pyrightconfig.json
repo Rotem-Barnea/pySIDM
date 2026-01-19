@@ -18,6 +18,7 @@
   "reportImplicitRelativeImport": false,
   "reportInvalidTypeForm": false,
   "exclude": ["**/*.ipynb", "**/__pycache__"],
+  "ignore": ["analysis/*.py"],
   "include": ["src"],
   "venv": "venv",
 }
