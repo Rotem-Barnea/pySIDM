@@ -43,7 +43,7 @@ class Params(TypedDict, total=False):
 
 
 default_params: Params = {
-    'max_minirounds': 20,
+    'max_minirounds': 10,
     'r_convergence_threshold': 1e-7,
     'vr_convergence_threshold': 1e-7,
     'richardson_extrapolation': True,

@@ -44,7 +44,7 @@ default_params: Params = {
     'max_radius_j': 10,
     'max_allowed_rounds': 10000,
     'max_allowed_scatters': None,
-    'max_allowed_probability': None,
+    'max_allowed_probability': 1e-1,
     'kappa': 0.002,
     'sigma': Quantity(0, run_units.cross_section),
     'disable_tqdm': False,
