@@ -30,10 +30,6 @@ class Metadata(TypedDict, total=False):
         save_every_time: The time between saves.
         dynamics_params: The parameters for the dynamics.
         scatter_params: The parameters for the scattering.
-        max_allowed_subdivisions: The maximum number of subdivisions allowed.
-        subdivide_on_scatter_chance: Whether to subdivide on scatter chance.
-        subdivide_on_gravitational_step: Whether to subdivide on gravitational step.
-        subdivide_on_startup: Whether to subdivide on startup.
         last_saved_time: The last time the simulation was saved.
         hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
         save_path: The path to save the simulation to.
@@ -56,10 +52,6 @@ class Metadata(TypedDict, total=False):
     save_every_time: Quantity['time'] | None
     dynamics_params: physics.leapfrog.Params
     scatter_params: physics.sidm.Params
-    max_allowed_subdivisions: int
-    subdivide_on_scatter_chance: bool
-    subdivide_on_gravitational_step: bool
-    subdivide_on_startup: bool
     last_saved_time: Quantity['time']
     hard_save: bool
     save_path: Path

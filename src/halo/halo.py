@@ -31,7 +31,7 @@ from src.background import BackgroundDistribution
 from src.phase_space import PhaseSpace
 from src.distribution.distribution import Distribution, backends
 
-from . import io, types
+from . import io, types, run_optimization
 
 
 class Halo:
@@ -39,10 +39,10 @@ class Halo:
 
     def __init__(
         self,
-        dt: Quantity['time'] | float,
         r: Quantity['length'],
         v: Quantity['velocity'],
         m: Quantity['mass'],
+        dt: Quantity['time'] | float = 1 / 1000,
         unoptimized_dt: Quantity['time'] | None = None,
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         distribution_id: list[int] | NDArray[np.int64] | None = None,
@@ -58,21 +58,17 @@ class Halo:
         scatter_track_radius: deque[NDArray[np.float64]] | None = None,
         time: Quantity['time'] = 0 * run_units.time,
         steps: int | float = 0,
-        background: BackgroundDistribution | None = None,
+        background: BackgroundDistribution | Distribution | None = None,
         last_saved_time: Quantity['time'] = 0 * run_units.time,
-        save_every_time: Quantity['time'] | float | None = None,
+        save_every_time: Quantity['time'] | float | None = 10,
         save_every_n_steps: int | None = None,
         dynamics_params: leapfrog.Params | None = None,
         scatter_params: sidm.Params | None = None,
-        max_allowed_subdivisions: int = 1,
-        subdivide_on_scatter_chance: bool = False,
-        subdivide_on_gravitational_step: bool = True,
-        subdivide_on_startup: bool = False,
         snapshots: table.QTable | None = None,
         hard_save: bool = True,
         save_path: Path | str | None = None,
         Rmax: Quantity['length'] = Quantity(300, 'kpc'),
-        inner_core_radius: Quantity['length'] = Quantity(200, 'pc'),
+        inner_core_radius: Quantity['length'] | float = 0.2,
         bootstrap_steps: int = 100,
         cleanup_nullish_particles: bool = True,
         cleanup_particles_by_radius: bool = True,
@@ -116,15 +112,11 @@ class Halo:
             save_every_n_steps: How often should a snapshot be saved, in time-step units (integer).
             dynamics_params: Dynamics parameters of the halo, sent to the leapfrog integrator.
             scatter_params: Scatter parameters of the halo, used in the SIDM calculation.
-            max_allowed_subdivisions: Maximum number of subdivisions allowed in each step.
-            subdivide_on_scatter_chance: Whether to subdivide based on the scatter chance. Only relevant if `max_allowed_subdivision` is not `1`. If multiple subdivisions logic are provided, take the greater constraint.
-            subdivide_on_gravitational_step: Whether to subdivide based on the ratio of vr*dt to the spacing to the nearest neighbor. Only relevant if `max_allowed_subdivision` is not `1`. If multiple subdivisions logic are provided, take the greater constraint.
-            subdivide_on_startup: Whether to subdivide to the maximum allowed subdivisions until the 1 Gyr mark. Only relevant if `max_allowed_subdivision` is not `1`. If multiple subdivisions logic are provided, take the greater constraint.
             snapshots: Snapshots of the halo.
             hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
             save_path: Path to save the halo to memory.
             Rmax: Maximum radius of the halo, particles outside of this radius get killed off. If `None` ignores.
-            inner_core_radius: Inner core radius of the halo, used for estimating the collapse.
+            inner_core_radius: Inner core radius of the halo, used for estimating the collapse. If a float is provided, assumed to be a factor multiplying the scale radius of the first distribution in `distributions`.
             bootstrap_steps: Number of bootstrap rounds to perform before scattering begins. Time only begins counting after the bootstrap steps.
             cleanup_nullish_particles: Whether to remove particles from the halo after each interaction if they are nullish.
             cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `Rmax`).
@@ -160,7 +152,10 @@ class Halo:
             self.Tdyn = Quantity(1, self.distributions[0].Tdyn)
         elif len(self.distributions) == 0:
             self.Tdyn = Quantity(1, run_units.time)
-        self.background: BackgroundDistribution | None = background
+        if isinstance(background, Distribution):
+            self.background: BackgroundDistribution | None = BackgroundDistribution(distribution=background)
+        else:
+            self.background = background
         self.Phi0: Quantity['energy'] = Phi0 if Phi0 is not None else physics.utils.Phi(self.r, self.M, self.m)[-1]
         self.snapshots: table.QTable = utils.handle_default(snapshots, table.QTable())
         self.save_every_n_steps = save_every_n_steps
@@ -171,13 +166,8 @@ class Halo:
             self.save_every_time = save_every_time.to(run_units.time)
         else:
             self.save_every_time = (self.distributions[0].Tdyn * save_every_time).to(run_units.time)
-
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
         self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
-        self.max_allowed_subdivisions: int = max_allowed_subdivisions
-        self.subdivide_on_scatter_chance: bool = subdivide_on_scatter_chance
-        self.subdivide_on_gravitational_step: bool = subdivide_on_gravitational_step
-        self.subdivide_on_startup: bool = subdivide_on_startup
         self.ministep_size: deque[float] = utils.handle_default(ministep_size, deque())
         self.scatter_track_time: deque[float] = utils.handle_default(scatter_track_time, deque())
         self.scatter_track_index: deque[NDArray[np.int64]] = utils.handle_default(scatter_track_index, deque())
@@ -190,7 +180,10 @@ class Halo:
         self.hard_save: bool = hard_save
         self.save_path: Path | str | None = Path(save_path) if isinstance(save_path, str) else save_path
         self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
-        self.inner_core_radius: Quantity['length'] = inner_core_radius.to(run_units.length)
+        if isinstance(inner_core_radius, Quantity):
+            self.inner_core_radius: Quantity['length'] = inner_core_radius.to(run_units.length)
+        else:
+            self.inner_core_radius = self.distributions[0].Rs * inner_core_radius
         self.bootstrap_steps = bootstrap_steps
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
@@ -209,81 +202,59 @@ class Halo:
             if generator_state is not None:
                 self.rng.bit_generator.state = generator_state
 
-    @property
-    def repr_payload(self):
-        """TODO"""
-        return {
-            k: getattr(self, k)
-            for k in [
-                'scatter_params',
-                'time',
-                'dt',
-                'n_particles',
-                'save_path',
-                'hard_save',
-                'save_every_time',
-                'save_every_n_steps',
-                'cleanup_nullish_particles',
-                'cleanup_particles_by_radius',
-                'dynamics_params',
-                'distributions',
-                'Tdyn',
-            ]
-        }
+    # @staticmethod
+    # def to_report(
+    #     scatter_params: sidm.Params,
+    #     dynamics_params: sidm.Params,
+    #     distributions: list[Distribution],
+    #     time: Quantity['time'],
+    #     dt: Quantity['time'],
+    #     cleanup_nullish_particles: bool,
+    #     cleanup_particles_by_radius: bool,
+    #     save_path: str,
+    #     hard_save: bool,
+    #     save_every_n_steps: int,
+    #     save_every_time: Quantity['time'],
+    #     Tdyn: Unit | None = None,
+    #     n_particles: list[int] | None = None,
+    #     **kwargs: Any,
+    # ) -> str:
+    #     """TODO"""
+    #     scatter_params = deepcopy(scatter_params)
+    #     scatter_params['sigma'] = scatter_params.get('sigma', sidm.no_sigma).to('cm^2/g')
+    #     if Tdyn is None:
+    #         Tdyn = distributions[0].Tdyn
+    #     description = {
+    #         'Current time': f'{time:.1f}',
+    #         'Time step size': f'{dt:.4f} = {dt.to(Tdyn):.1e} = 1/{1 / dt.to(Tdyn).value:.1f} Tdyn',
+    #         '#particles': n_particles,
+    #         'Save parameters': utils.drop_None(
+    #             **{
+    #                 'path': save_path,
+    #                 'hard save': hard_save,
+    #                 'Save every': f'{save_every_time:.1f}',
+    #                 'Save every [n] steps': save_every_n_steps,
+    #             }
+    #         ),
+    #         'Cleanup': {
+    #             'NaN': cleanup_nullish_particles,
+    #             'high radius': cleanup_particles_by_radius,
+    #         },
+    #         'Leapfrog parameters': dynamics_params,
+    #         'Scatter parameters': scatter_params,
+    #         'Distributions': {f'#{i}': d for i, d in enumerate(distributions)},
+    #     }
 
-    @staticmethod
-    def to_report(
-        scatter_params: sidm.Params,
-        dynamics_params: sidm.Params,
-        distributions: list[Distribution],
-        time: Quantity['time'],
-        dt: Quantity['time'],
-        cleanup_nullish_particles: bool,
-        cleanup_particles_by_radius: bool,
-        save_path: str,
-        hard_save: bool,
-        save_every_n_steps: int,
-        save_every_time: Quantity['time'],
-        Tdyn: Unit | None = None,
-        n_particles: list[int] | None = None,
-        **kwargs: Any,
-    ) -> str:
-        """TODO"""
-        scatter_params = deepcopy(scatter_params)
-        scatter_params['sigma'] = scatter_params.get('sigma', sidm.no_sigma).to('cm^2/g')
-        if Tdyn is None:
-            Tdyn = distributions[0].Tdyn
-        description = {
-            'Current time': f'{time:.1f}',
-            'Time step size': f'{dt:.4f} = {dt.to(Tdyn):.1e} = 1/{1 / dt.to(Tdyn).value:.1f} Tdyn',
-            '#particles': n_particles,
-            'Save parameters': utils.drop_None(
-                **{
-                    'path': save_path,
-                    'hard save': hard_save,
-                    'Save every': f'{save_every_time:.1f}',
-                    'Save every [n] steps': save_every_n_steps,
-                }
-            ),
-            'Cleanup': {
-                'NaN': cleanup_nullish_particles,
-                'high radius': cleanup_particles_by_radius,
-            },
-            'Leapfrog parameters': dynamics_params,
-            'Scatter parameters': scatter_params,
-            'Distributions': {f'#{i}': d for i, d in enumerate(distributions)},
-        }
-
-        description_strings = []
-        for key, value in description.items():
-            if isinstance(value, dict):
-                description_strings += [f'{key}:']
-                description_strings += [
-                    '\n'.join([f'    {sub_key}: {sub_value}' for sub_key, sub_value in value.items()])
-                ]
-            else:
-                description_strings += [f'{key}: {value}']
-        return '\n'.join(description_strings)
+    #     description_strings = []
+    #     for key, value in description.items():
+    #         if isinstance(value, dict):
+    #             description_strings += [f'{key}:']
+    #             description_strings += [
+    #                 '\n'.join([f'    {sub_key}: {sub_value}' for sub_key, sub_value in value.items()])
+    #             ]
+    #         else:
+    #             description_strings += [f'{key}: {value}']
+    #     return '\n'.join(description_strings)
 
     @staticmethod
     def to_report_concise(
@@ -308,7 +279,26 @@ class Halo:
 
     def __str__(self) -> str:
         return str(self.to_report_concise(self.metadata))
-        # return self.to_report(**self.repr_payload)
+        # return self.to_report(
+        #     **{
+        #         k: getattr(self, k)
+        #         for k in [
+        #             'scatter_params',
+        #             'time',
+        #             'dt',
+        #             'n_particles',
+        #             'save_path',
+        #             'hard_save',
+        #             'save_every_time',
+        #             'save_every_n_steps',
+        #             'cleanup_nullish_particles',
+        #             'cleanup_particles_by_radius',
+        #             'dynamics_params',
+        #             'distributions',
+        #             'Tdyn',
+        #         ]
+        #     }
+        # )
 
     def __repr__(self) -> str:
         return str(self)
@@ -322,6 +312,7 @@ class Halo:
         generator: np.random.Generator | None = None,
         sample_kwargs: dict[str, Any] = {},
         join_distributions: bool = False,
+        distribution_as_background: int | None = None,
         **kwargs: Any,
     ) -> Self:
         """Initialize a Halo object from a given set of distributions.
@@ -333,6 +324,7 @@ class Halo:
             generator: If `None` use the default generator from `rng.generator`.
             sample_kwargs: Additional keyword argumants to pass ot the sampling function.
             join_distributions: If `True`, joining the distributions (`Distribution.merge_distributions`). Use `False` if the distributions already had Eddington inversion calculated elsewhere.
+            distribution_as_background: If provided, treat as an index in the `distributions` list, pop it's value and treat it as a static background instead of sampling from it. If `background` is provided as a keyword argument, ignore this feature.
             kwargs: Additional keyword arguments, passed to the constructor.
 
         Returns:
@@ -342,8 +334,17 @@ class Halo:
         r, v, particle_type, m, distribution_id = [], [], [], [], []
         if generator is None:
             generator = np.random.default_rng(seed)
+        distributions = deepcopy(distributions)
         if join_distributions:
             Distribution.merge_distributions(distributions)
+        if 'background' in kwargs:
+            kwargs = deepcopy(kwargs)
+            background: BackgroundDistribution | Distribution | None = kwargs.pop('background')
+        else:
+            if distribution_as_background is not None:
+                background = distributions.pop(distribution_as_background)
+            else:
+                background = None
         if isinstance(n_particles, int) or isinstance(n_particles, float):
             n_particles = [n_particles] * len(distributions)
         for distribution, n in zip(distributions, n_particles):
@@ -364,6 +365,7 @@ class Halo:
             distribution_id=np.hstack(distribution_id),
             distributions=distributions,
             generator=generator,
+            background=background,
             **kwargs,
         )
 
@@ -453,6 +455,7 @@ class Halo:
         self.scatter_track_index = deque()
         self.scatter_track_radius = deque()
         self.scatter_track_time = deque()
+        self.ministep_size = deque()
         self.snapshots = table.QTable()
         self.runtime_track_sort = deque()
         self.runtime_track_cleanup = deque()
@@ -851,42 +854,17 @@ class Halo:
             ],
         )
 
-    def core_collapse_start_time(
-        self,
-        time_binning: Quantity['time'] = Quantity(100, 'Myr'),
-        cutoff: int | float = 1e5,
-        kind: str = 'linear',
-    ) -> Quantity['time']:
+    def core_collapse_scatter_estimate(self, **kwargs: Any) -> Quantity['time']:
         """Calculate the time at which the halo starts major core collapse.
 
         Defined as the time at which the halo first reaches `cutoff` scatters per `time_binning` time.
-
-        Parameters:
-            time_binning: The binning resolution to aggregate the number of scattering events.
-            cutoff: The number of scatters per `time_binning` time at which the core collapse is considered to have started.
-            kind: The kind of interpolation to use.
-
-        Returns:
-            The core collapse start time
         """
-        n = int(time_binning / self.dt)
-        return Quantity(
-            scipy.interpolate.interp1d(
-                *utils.joint_clean(
-                    arrays=[
-                        np.add.reduceat(self.n_scatters, np.arange(0, len(self.n_scatters), n)),
-                        self.scatter_times.value[::n],
-                    ]
-                ),
-                kind=kind,
-                bounds_error=False,
-                fill_value=np.inf,
-            )(cutoff),
-            self.dt.unit,
+        return run_optimization.core_collapse_scatter_estimate(
+            t=self.time, scatter_times=self.scatter_times, n_scatters=self.n_scatters, **kwargs
         )
 
-    def core_collapse_start_time2(
-        self, inner_core_radius: Quantity['length'] | None = None, critical_ratio: float = 2
+    def core_collapse_core_density_estimate(
+        self, inner_core_radius: Quantity['length'] | None = None, **kwargs: Any
     ) -> Quantity['time']:
         """Calculate the time at which the halo starts major core collapse.
 
@@ -894,21 +872,26 @@ class Halo:
 
         Parameters:
             inner_core_radius: The radius of the inner core. If `None` use the internal value.
-            critical_ratio: The critical ratio defining the core collapse.
+            **kwargs: Additional keyword arguments passed to the `run_optimizaiton.core_collapse_core_density_estimate()`.
 
         Returns:
             The core collapse start time
         """
-        if inner_core_radius is None:
-            inner_core_radius = self.inner_core_radius
-        groups = self.snapshots.group_by('time').groups
-        t = groups.keys['time']
-        n_c0 = (self.initial_particles['r'] < inner_core_radius).sum()
-        ratio = np.array([(group['r'] < inner_core_radius).sum() for group in groups]) / n_c0
-        if (ratio > critical_ratio).any():
-            i = np.argmax(ratio > critical_ratio)
-            return (t[i] - t[i - 1]) / (ratio[i] - ratio[i - 1]) * (critical_ratio - ratio[i - 1]) + t[i - 1]
-        return Quantity(np.inf, t.unit)
+        return run_optimization.core_collapse_core_density_estimate(
+            snapshots=self.snapshots,
+            initial_r=utils.get_columns(self.initial_particles, ['r'])[0],
+            inner_core_radius=inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
+            **kwargs,
+        )
+
+    def core_collapse_estimate(
+        self, method: Literal['core density', 'scatters'] = 'core density', **kwargs: Any
+    ) -> Quantity['time']:
+        """Calculate the time at which the halo starts major core collapse."""
+        if method == 'core density':
+            return self.core_collapse_core_density_estimate(**kwargs)
+        else:
+            return self.core_collapse_scatter_estimate(**kwargs)
 
     #####################
     ##Dynamic evolution
@@ -946,83 +929,34 @@ class Halo:
             return True
         return False
 
-    def optimize_dt(
-        self,
-        max_factor: int = 10,
-        min_factor: int = 1,
-        factor_steps: int = 30,
-        factor_steps_down: int | None = None,
-        min_dt: Quantity['time'] | None = None,
-        max_dt: Quantity['time'] | None = None,
-        test_steps: int = 100,
-        include_scatters: bool = False,
-        verbose: bool = True,
-        tqdm_leave: bool = False,
-    ) -> None:
-        """Optimize dt to minimize the time taken for a given number of steps.
-
-        The optimization is performed by running consecutive steps with decreasing `dt` value. A larger `dt` might require more adaptive rounds to converge leading to a slower runtime, while a smaller `dt` would require more steps all-together to reach a predefined `T`.
-
-        Parameters:
-            max_factor: Maximum factor to divide the initial `dt` by.
-            min_factor: Minimum factor to divide the initial `dt` by.
-            factor_steps: Number of factors tested between 1 and `max_factor`.
-            factor_steps_down: Number of factors tested between 1 and `min_factor`. If `None` use the same value as `factor_steps`.
-            min_dt: Minimum allowed `dt` value.
-            max_dt: Minimum allowed `dt` value.
-            test_steps: Number of steps to take when testing `dt`.
-            include_scatters: Include scatters in the optimization, otherwise optimize only over the leapfrog integrator.
-        """
-        progress_speed = []
-        factor = np.hstack(
-            [
-                1 / np.linspace(1, min_factor, factor_steps_down or factor_steps),
-                np.linspace(1, max_factor + 1, factor_steps),
-            ]
-        )
-        dt_candidates = self.unoptimized_dt.copy() / factor
-        if min_dt is not None:
-            dt_candidates = dt_candidates.clip(min=min_dt)
-        if max_dt is not None:
-            dt_candidates = dt_candidates.clip(max=max_dt)
-        dt_candidates = np.unique(dt_candidates)
-        for dt in tqdm(dt_candidates, desc='Optimizing `dt` value', disable=not verbose, leave=tqdm_leave):
-            halo = self.copy()
-            halo.dt = dt
-            start = time.perf_counter()
-            for _ in range(test_steps):
-                halo.step(in_bootstrap=not include_scatters)
-            end = time.perf_counter()
-            progress_speed += [dt.value / (end - start)]
-            del halo
-        self.dt = dt_candidates[np.argmax(progress_speed)].copy()
-        if verbose:
-            print(
-                f'Optimized factor: {self.unoptimized_dt / self.dt:.2f} = 1/{self.dt / self.unoptimized_dt:.2f}, `dt` value used: {self.dt}'
-            )
-
-    def early_quit(self, inner_core_radius: Quantity['length'] | None = None, critical_ratio: float = 2) -> bool:
+    def check_early_quit(self, inner_core_radius: Quantity['length'] | None = None, **kwargs: Any) -> bool:
         """Check if the simulation should be terminated early.
 
         Parameters:
             inner_core_radius: The inner core radius. If None, use the current inner core radius.
-            critical_ratio: The critical ratio defining the core collapse.
+            **kwargs: Additional keyword arguments to pass to the optimization function.
 
         Returns:
             `True` if the simulation should be terminated early, `False` otherwise.
         """
-        if inner_core_radius is None:
-            inner_core_radius = self.inner_core_radius
-        return (self.r < inner_core_radius).sum() / (
-            self.initial_particles['r'] < inner_core_radius
-        ).sum() >= critical_ratio
+        return run_optimization.check_early_quit(
+            r=self.r,
+            initial_r=utils.get_columns(self.initial_particles, ['r'])[0],
+            inner_core_radius=inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
+            **kwargs,
+        )
 
-    def step(
-        self,
-        in_bootstrap: bool = False,
-        subdivisions: int | None = None,
-        save_kwargs: types.SaveParams = {},
-    ) -> None:
+    def early_quit(
+        self, early_quit_kwargs: types.EarlyQuitParams | None = None, save_kwargs: types.SaveParams = {}
+    ) -> bool:
+        """Checks early quitting and handling the saving if needed to allow quit escape."""
+        if early_quit_kwargs is not None and self.check_early_quit(**early_quit_kwargs):
+            if self.hard_save:
+                self.save(**save_kwargs)
+            return True
+        return False
+
+    def step(self, in_bootstrap: bool = False, save_kwargs: types.SaveParams = {}) -> None:
         """Perform a single time step of the simulation.
 
         Every step:
@@ -1035,116 +969,72 @@ class Halo:
 
         Parameters:
             in_bootstrap: Whether the simulation is in bootstrap mode.
-            subdivisions: Number of time subdivisions within the step.
             save_kwargs: Keyword arguments for saving the snapshot.
         """
 
-        if in_bootstrap or self.scatter_params.get('sigma', sidm.no_sigma) == sidm.no_sigma:
-            subdivisions = 1
-        elif subdivisions is None:
-            subdivision_values: list[int] = []
-            assert self.subdivide_on_scatter_chance or self.subdivide_on_gravitational_step, (
-                'If subdivisioning is used, at least one of `subdivide_on_scatter_chance` or `subdivide_on_gravitational_step` must be True.'
+        self.runtime_realtime_track += [datetime.now().timestamp()]
+        t_start = time.perf_counter()
+        t0 = time.perf_counter()
+        self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
+        self.runtime_track_sort += [time.perf_counter() - t0]
+        t0 = time.perf_counter()
+        self.cleanup_particles()
+        self.runtime_track_cleanup += [time.perf_counter() - t0]
+        if self.is_save_round():
+            self.save_snapshot(**save_kwargs)
+        r, vx, vy, vr, m, leapfrog_convergence_rounds = self._particles[
+            ['r', 'vx', 'vy', 'vr', 'm', 'leapfrog_convergence_rounds']
+        ].values.T
+        if not in_bootstrap and self.scatter_params.get('sigma', sidm.no_sigma) > sidm.no_sigma:
+            t0 = time.perf_counter()
+            mask = cast(NDArray[np.bool_], self._particles['interacting'].values)
+            (
+                vx[mask],
+                vy[mask],
+                vr[mask],
+                indices,
+                scatter_rounds,
+                scatter_rounds_underestimated,
+            ) = sidm.scatter(
+                r=r[mask],
+                vx=vx[mask],
+                vy=vy[mask],
+                vr=vr[mask],
+                dt=self.dt,
+                m=m[mask],
+                generator=self.rng,
+                **self.scatter_params,
             )
-            if self.subdivide_on_scatter_chance:
-                subdivision_values += [
-                    sidm.fast_scatter_rounds(
-                        scatter_chance=sidm.scatter_chance_shortcut(
-                            r=self._particles.r,
-                            vx=self._particles.vx,
-                            vy=self._particles.vy,
-                            vr=self._particles.vr,
-                            dt=self.dt,
-                            m=self._particles.m,
-                            sigma=self.scatter_params.get('sigma', sidm.no_sigma),
-                            max_radius_j=self.scatter_params.get('max_radius_j', 10),
-                        ),
-                        kappa=self.scatter_params.get('kappa', 1),
-                        max_allowed_rounds=self.max_allowed_subdivisions,
-                    ).max()
-                ]
-            if self.subdivide_on_gravitational_step:
-                neighborhood_size = self.scatter_params.get('neighborhood_size', 10) // 3
-                subdivision_values += [
-                    np.ceil(
-                        ((self._particles.vr * self.dt * np.sqrt(2)) / self._particles.r.diff(-neighborhood_size))
-                        .abs()
-                        .quantile(0.99)
-                    ).astype(int)
-                ]
-            if self.subdivide_on_startup and self.time <= Quantity(1, 'Gyr'):
-                subdivision_values += [self.max_allowed_subdivisions]
-            if len(subdivision_values) == 0:
-                subdivisions = 1
-            else:
-                subdivisions = int(min(self.max_allowed_subdivisions, max(1, *subdivision_values)))
-            assert subdivisions is not None and subdivisions > 0, 'Error in subdivision calculation'
+            self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
+            self.scatter_track_time += [self.time.value]
+            self.scatter_track_radius += [self.r[mask][indices]]
+            self.scatter_rounds += [scatter_rounds]
+            self.scatter_rounds_underestimated += [scatter_rounds_underestimated]
+            self.runtime_track_sidm += [time.perf_counter() - t0]
+        t0 = time.perf_counter()
+        r, vx, vy, vr, leapfrog_convergence_rounds = leapfrog.step(
+            r=r,
+            vx=vx,
+            vy=vy,
+            vr=vr,
+            m=m,
+            first_mini_round=(leapfrog_convergence_rounds - 1).clip(min=0),
+            M=self.M,
+            dt=self.dt,
+            **self.dynamics_params,
+        )
+        self._particles['r'] = r
+        self._particles['vx'] = vx
+        self._particles['vy'] = vy
+        self._particles['vr'] = vr
+        self._particles['leapfrog_convergence_rounds'] = leapfrog_convergence_rounds
 
-        for _ in range(subdivisions):
-            self.runtime_realtime_track += [datetime.now().timestamp()]
-            t_start = time.perf_counter()
-            t0 = time.perf_counter()
-            self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
-            self.runtime_track_sort += [time.perf_counter() - t0]
-            t0 = time.perf_counter()
-            self.cleanup_particles()
-            self.runtime_track_cleanup += [time.perf_counter() - t0]
-            if self.is_save_round():
-                self.save_snapshot(**save_kwargs)
-            r, vx, vy, vr, m, leapfrog_convergence_rounds = self._particles[
-                ['r', 'vx', 'vy', 'vr', 'm', 'leapfrog_convergence_rounds']
-            ].values.T
-            dt = self.dt / subdivisions
-            if not in_bootstrap and self.scatter_params.get('sigma', sidm.no_sigma) > sidm.no_sigma:
-                t0 = time.perf_counter()
-                mask = cast(NDArray[np.bool_], self._particles['interacting'].values)
-                (
-                    vx[mask],
-                    vy[mask],
-                    vr[mask],
-                    indices,
-                    scatter_rounds,
-                    scatter_rounds_underestimated,
-                ) = sidm.scatter(
-                    r=r[mask],
-                    vx=vx[mask],
-                    vy=vy[mask],
-                    vr=vr[mask],
-                    dt=dt,
-                    m=m[mask],
-                    generator=self.rng,
-                    **self.scatter_params,
-                )
-                self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
-                self.scatter_track_time += [self.time.value]
-                self.scatter_track_radius += [self.r[mask][indices]]
-                self.scatter_rounds += [scatter_rounds]
-                self.scatter_rounds_underestimated += [scatter_rounds_underestimated]
-                self.runtime_track_sidm += [time.perf_counter() - t0]
-            t0 = time.perf_counter()
-            r, vx, vy, vr, leapfrog_convergence_rounds = leapfrog.step(
-                r=r,
-                vx=vx,
-                vy=vy,
-                vr=vr,
-                m=m,
-                first_mini_round=(leapfrog_convergence_rounds - 1).clip(min=0),
-                M=self.M,
-                dt=dt,
-                **self.dynamics_params,
-            )
-            self._particles['r'] = r
-            self._particles['vx'] = vx
-            self._particles['vy'] = vy
-            self._particles['vr'] = vr
-            self._particles['leapfrog_convergence_rounds'] = leapfrog_convergence_rounds
-
-            self.runtime_track_leapfrog += [time.perf_counter() - t0]
-            if not in_bootstrap:
-                self.time += dt
-                self.ministep_size += [dt.value]
-                self.steps += 1
-            self.runtime_track_full_step += [time.perf_counter() - t_start]
+        self.runtime_track_leapfrog += [time.perf_counter() - t0]
+        if not in_bootstrap:
+            self.time += self.dt
+            self.ministep_size += [self.dt.value]
+            self.steps += 1
+        self.runtime_track_full_step += [time.perf_counter() - t_start]
 
     def evolve(
         self,
@@ -1154,9 +1044,8 @@ class Halo:
         tqdm_kwargs: dict[str, Any] = {},
         save_kwargs: types.SaveParams = {},
         optimize_dt: bool = False,
-        reoptimize_dt_rate: Quantity['time'] | None = None,
-        optimize_dt_kwargs: types.OptimizeDtParams = {},
-        early_quit_kwargs: types.EarlyQuitParams = {},
+        optimize_dt_kwargs: types.OptimizeDtParams | None = None,
+        early_quit_kwargs: types.EarlyQuitParams | None = None,
     ) -> None:
         """Evolve the simulation for a given number of steps or time.
 
@@ -1166,10 +1055,8 @@ class Halo:
             until_t: Evolve the simulation until this time. Ignored if `n_steps` or `t` are specified, otherwise transformed into steps using `to_steps()`.
             tqdm_kwargs: Additional keyword arguments to pass to `tqdm` (NOTE this is the custom submodule defined in this project at `tqdm.py`).
             save_kwargs: Additional keyword arguments to pass to `save()`.
-            optimize_dt: Whether to optimize the time step (`dt`).
-            reoptimize_dt_rate: If provided split the evolution loop into chunks of this duration and reoptimize the time step (`dt`) at the start of each chunk.
-            optimize_dt_kwargs: Additional keyword arguments to pass to `optimize_dt()`.
-            early_quit_kwargs: Additional keyword arguments to pass to `early_quit()`.
+            optimize_dt_kwargs: Additional keyword arguments to pass to `optimize_dt()`. If `None`, avoid `dt` optimization.
+            early_quit_kwargs: Additional keyword arguments to pass to `early_quit()`. If `None`, avoid early quit consideration.
 
         Returns:
             None
@@ -1184,34 +1071,23 @@ class Halo:
             else:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
 
-        required_time = self.to_time(n_steps)
-        if reoptimize_dt_rate is not None:
-            start_times = np.arange(0, (required_time / reoptimize_dt_rate).decompose().value, 1)
-        else:
-            start_times = [0]
-            reoptimize_dt_rate = required_time
-        for _ in tqdm(start_times, disable=len(start_times) == 1):
-            if optimize_dt:
-                self.optimize_dt(**optimize_dt_kwargs)
-            chunk_n_steps = self.to_step(reoptimize_dt_rate)
+        start_points, reoptimize_rate = run_optimization.split_to_chunks(
+            required_time=self.to_time(n_steps), optimize_dt_kwargs=optimize_dt_kwargs
+        )
+        for _ in tqdm(start_points, disable=len(start_points) == 1):
+            if optimize_dt_kwargs is not None:
+                self.dt = run_optimization.optimize_dt(self, **optimize_dt_kwargs)
+            chunk_n_steps = self.to_step(reoptimize_rate)
             if self.bootstrap_steps > 0 and self.steps == 0:
                 start_time = self.time - self.bootstrap_steps * self.dt
                 chunk_n_steps += self.bootstrap_steps
             else:
                 start_time = self.time
             for step in tqdm(range(chunk_n_steps), start_time=cast(Quantity, start_time), dt=self.dt, **tqdm_kwargs):
-                self.step(
-                    in_bootstrap=(step < self.bootstrap_steps and self.steps == 0),
-                    save_kwargs=save_kwargs,
-                    subdivisions=None if self.max_allowed_subdivisions != 1 else 1,
-                )
-                if self.early_quit(**self.early_quit_kwargs):
-                    if self.hard_save:
-                        self.save(**save_kwargs)
+                self.step(in_bootstrap=(step < self.bootstrap_steps and self.steps == 0), save_kwargs=save_kwargs)
+                if self.early_quit(early_quit_kwargs=early_quit_kwargs, save_kwargs=save_kwargs):
                     return
-            if self.early_quit(**self.early_quit_kwargs):
-                if self.hard_save:
-                    self.save(**save_kwargs)
+            if self.early_quit(early_quit_kwargs=early_quit_kwargs, save_kwargs=save_kwargs):
                 return
         if self.hard_save:
             self.save(**save_kwargs)
@@ -1430,7 +1306,7 @@ class Halo:
 
     def scatter_report(self, **kwargs: Any) -> report.Report:
         """Generate a summary of the scattering during the simulation."""
-        core_collapse_start_time = self.core_collapse_start_time()
+        core_collapse_start_time = self.core_collapse_scatter_estimate()
         max_core_time = self.max_core_time()
         n_scatter_cumsum = self.n_scatters.cumsum()
         scatters_to_collapse_start = n_scatter_cumsum[(self.scatter_times <= core_collapse_start_time).argmin()]
@@ -2934,7 +2810,6 @@ class Halo:
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Cumulative number of scattering events',
         title: str | None = 'Cumulative number of scattering events',
-        label: str | None = None,
         yscale: plot.Scale = 'log',
         lineplot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
@@ -2944,10 +2819,10 @@ class Halo:
 
         Parameters:
             time_unit: Units for the x-axis.
+            undersample: Downsample the data by this factor.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: The title of the plot.
-            label: Label for the plot (legend).
             yscale: The scale of the y-axis.
             lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
             save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
@@ -2969,26 +2844,18 @@ class Halo:
         if undersample is not None:
             x = x[::undersample]
             y = y[::undersample]
-        sns.lineplot(
-            x=x,
-            y=y,
-            ax=ax,
-            label=label,
-            **lineplot_kwargs,
-        )
-        if label is not None:
-            ax.legend()
+        sns.lineplot(x=x, y=y, ax=ax, **lineplot_kwargs)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_cumulative_scattering_amount_per_particle_over_time(
         self,
         time_unit: UnitLike = 'Gyr',
+        undersample: int | None = None,
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Cumulative number of scattering events',
         title: str | None = 'Mean cumulative number of scattering events per particle',
-        label: str | None = None,
-        per_dm_particle: bool = False,
+        lineplot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -2996,11 +2863,12 @@ class Halo:
 
         Parameters:
             time_unit: Units for the x-axis.
+            undersample: Downsample the data by this factor.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: The title of the plot.
             label: Label for the plot (legend).
-            per_dm_particle: If `True` plot the mean cumulative number of scattering events, i.e. devide by the number of dm particles.
+            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
@@ -3008,14 +2876,13 @@ class Halo:
             fig, ax.
         """
         fig, ax = plot.setup(xlabel=xlabel, ylabel=ylabel, x_unit=time_unit, title=title, **kwargs)
-        sns.lineplot(
-            x=(np.arange(len(self.n_scatters)) * self.dt).to(time_unit),
-            y=self.n_scatters.cumsum() / self.n_particles['dm'],
-            ax=ax,
-            label=label,
-        )
-        if label is not None:
-            ax.legend()
+        x = self.scatter_times.to(time_unit)
+        y = self.n_scatters.cumsum() / self.n_particles['dm']
+        if undersample is not None:
+            x = x[::undersample]
+            y = y[::undersample]
+
+        sns.lineplot(x=x, y=y, ax=ax, **lineplot_kwargs)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
@@ -3026,10 +2893,10 @@ class Halo:
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Number of scattering events',
         title: str | None = 'Number of scattering events over time per {time}',
-        label: str | None = None,
         time_format: str | None = None,
         title_time_unit: str | None = 'Myr',
         yscale: plot.Scale = 'log',
+        lineplot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -3041,19 +2908,28 @@ class Halo:
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: Title for the plot.
-            label: Label for the plot (legend).
             time_format: Format for the time in the title.
             title_time_unit: Units for the time displayed in the title.
             yscale: The scale of the y-axis.
+            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
         Returns:
             fig, ax.
         """
-        n = int(time_binning / self.dt)
-        x = (np.arange(len(self.n_scatters)) * self.dt).to(time_unit)[::n]
-        scatters = np.add.reduceat(self.n_scatters, np.arange(0, len(self.n_scatters), n))
+        scatters, t = (
+            np.bincount(
+                np.digitize(
+                    self.scatter_times,
+                    bin := Quantity(np.arange(0, self.time.value, 10), self.time.unit),
+                )
+                - 1,
+                weights=self.n_scatters,
+                minlength=len(bin) - 1,
+            ),
+            bin.to(time_unit),
+        )
 
         if title is not None:
             title = title.format(time=time_binning.to(title_time_unit).to_string(format='latex', formatter=time_format))
@@ -3066,9 +2942,7 @@ class Halo:
             yscale=yscale,
             **kwargs,
         )
-        sns.lineplot(x=x[:-1], y=scatters[:-1], ax=ax, label=label)
-        if label is not None:
-            ax.legend()
+        sns.lineplot(x=t[:-1], y=scatters[:-1], ax=ax, **lineplot_kwargs)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 

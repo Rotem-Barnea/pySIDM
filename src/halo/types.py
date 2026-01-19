@@ -40,18 +40,21 @@ class OptimizeDtParams(TypedDict, total=False):
     """Parameter dictionary for optimizing the time step `dt`.
 
     Attributes:
-        max_factor: Maximum factor to divide the initial `dt` by.
-        min_factor: Minimum factor to divide the initial `dt` by.
-        factor_steps: Number of factors tested between 1 and `max_factor`.
-        factor_steps_down: Number of factors tested between 1 and `min_factor`. If `None` use the same value as `factor_steps`.
-        min_dt: Minimum allowed `dt` value.
-        max_dt: Minimum allowed `dt` value.
-        test_steps: Number of steps to take when testing `dt`.
-        include_scatters: Include scatters in the optimization, otherwise optimize only over the leapfrog integrator.
+        max_factor (10): Maximum factor to divide the initial `dt` by.
+        min_factor (1): Minimum factor to divide the initial `dt` by.
+        factor_steps (30): Number of factors tested between 1 and `max_factor`.
+        factor_steps_down (None): Number of factors tested between 1 and `min_factor`. If `None` use the same value as `factor_steps`.
+        min_dt (None): Minimum allowed `dt` value.
+        max_dt (None): Maximum allowed `dt` value.
+        test_steps (100): Number of steps to take when testing `dt`.
+        include_scatters (False): Include scatters in the optimization, otherwise optimize only over the leapfrog integrator.
+        verbose (True): Use a tqdm-style progress bar for the optimization process.
+        tqdm_leave (False): Leave the progress bar after the optimization is complete.
+        reoptimize_rate: How often should the iteration loop be paused to reoptimize the time step. Split the evolution loop into chunks of this duration and reoptimize the time step (`dt`) at the start of each chunk.
     """
 
-    max_factor: int
     min_factor: int
+    max_factor: int
     factor_steps: int
     factor_steps_down: int | None
     min_dt: Quantity['time'] | None
@@ -60,3 +63,4 @@ class OptimizeDtParams(TypedDict, total=False):
     include_scatters: bool
     verbose: bool
     tqdm_leave: bool
+    reoptimize_rate: Quantity['time']
