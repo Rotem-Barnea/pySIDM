@@ -1041,7 +1041,7 @@ def save(fig: Figure, save_path: str | Path | None = None, bbox_inches: str = 't
 
 
 def phase_space_energy_lines(
-    Psi_fn: Callable[[Quantity['length']], Quantity['specific energy']],
+    potential_fn: Callable[[Quantity['length']], Quantity['specific energy']],
     E: Quantity['specific energy'],
     r_range: Quantity['length'] = Quantity([1e-3, 35], 'kpc'),
     v_range: Quantity['velocity'] | None = None,
@@ -1060,7 +1060,7 @@ def phase_space_energy_lines(
     """Plot constant-energy lines on an r-v phase space.
 
     Parameters:
-        Psi_fn: Function that computes the potential energy.
+        potential_fn: Function that computes the potential energy.
         E: Array of energy values to plot.
         r_range: Range of radius values to plot on. Only the minimum and maximum values are used.
         v_range: Range of velocities to limit the plot to. Only the minimum and maximum values are used. If `None` ignores.
@@ -1080,12 +1080,12 @@ def phase_space_energy_lines(
         fig, ax.
     """
     r = cast(Quantity, np.linspace(r_range.min(), r_range.max(), steps))
-    Psi = Psi_fn(r)
+    potential = potential_fn(r)
     fig, ax = setup(fig=fig, ax=ax, **kwargs)
     for e in E:
-        mask = np.ones(len(Psi), dtype=np.bool_)
-        v = Quantity(np.zeros(len(Psi)), velocity_unit)
-        v = 2 * np.sqrt(Psi - e, where=Psi > e, out=v).to(velocity_unit)
+        mask = np.ones(len(potential), dtype=np.bool_)
+        v = Quantity(np.zeros(len(potential)), velocity_unit)
+        v = 2 * np.sqrt(potential - e, where=potential > e, out=v).to(velocity_unit)
         if v_range is not None:
             mask = (v >= v_range.min()) * (v <= v_range.max())
         if autolabel:

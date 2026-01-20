@@ -34,7 +34,7 @@ record_dtype = {
             ('mass', np.float32),
             ('R', np.float32),
             ('Vrad', np.float32),
-            ('PsiA', np.float32),
+            ('potentialA', np.float32),
             ('E', np.float32),
             ('L', np.float32),
         ]
@@ -117,7 +117,7 @@ def to_snapshot_like(data: pd.DataFrame) -> table.QTable:
     data['vy'] = 0
     data['v_norm'] = np.sqrt(data['vp'] ** 2 + data['vr'] ** 2)
     data['particle_type'] = 'dm'
-    data = data.drop(columns=['rank', 'mass', 'PsiA', 'L'])
+    data = data.drop(columns=['rank', 'mass', 'potentialA', 'L'])
     return table.QTable.from_pandas(
         data,
         units={

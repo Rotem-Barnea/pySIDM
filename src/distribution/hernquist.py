@@ -78,7 +78,7 @@ class Hernquist(Distribution):
         """Create a Hernquist distribution from a predefined list of examples matching real galaxies."""
         if name == 'Sague-1':
             return cls(
-                R_half_light=Quantity(30, 'pc'),  # doi:10.1111/j.1365-2966.2009.15287.x
+                r_half_light=Quantity(30, 'pc'),  # doi:10.1111/j.1365-2966.2009.15287.x
                 total_mass=Quantity(1e3, 'Msun'),  # arXiv:0809.2781
                 name=name,
                 **kwargs,
@@ -97,7 +97,7 @@ class Hernquist(Distribution):
                 default=example_db.ExampleParameters(
                     mass_stellar=Quantity(1.11e5, 'Msun'),
                     mass_half_light=Quantity(np.nan, 'Msun'),
-                    R_half_light=Quantity(1.18, 'kpc'),
+                    r_half_light=Quantity(1.18, 'kpc'),
                 ),
             ),
             name=name,

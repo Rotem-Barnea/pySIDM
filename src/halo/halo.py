@@ -48,7 +48,7 @@ class Halo:
         distribution_id: list[int] | NDArray[np.int64] | None = None,
         leapfrog_convergence_rounds: NDArray[np.int64] | None = None,
         dynamical_time: Quantity['time'] | Unit | None = None,
-        Phi0: Quantity['energy'] | None = None,
+        potential_reference: Quantity['energy'] | None = None,
         distributions: list[Distribution] | None = None,
         scatter_rounds: deque[int] | None = None,
         scatter_rounds_underestimated: deque[int] | None = None,
@@ -95,7 +95,7 @@ class Halo:
             distribution_id: ID of the relevant distribution that sourced the particles.
             leapfrog_convergence_rounds: Number of rounds each particle needs to converge the leapfrog integrator. Used to jumpstart the next step for difficult particles.
             dynamical_time: Dynamical time of the halo. If `None` calculates from the first density.
-            Phi0: Potential at infinity of the halo. If `None` calculates from the first density.
+            potential_reference: Potential at infinity of the halo. If `None` calculates from the first density.
             distributions: List of distributions of the halo.
             n_interactions: Number of interactions the halo had.
             scatter_rounds: Number of scatter rounds the halo had every time step.
@@ -158,7 +158,11 @@ class Halo:
             self.background: BackgroundDistribution | None = BackgroundDistribution(distribution=background)
         else:
             self.background = background
-        self.Phi0: Quantity['energy'] = Phi0 if Phi0 is not None else physics.utils.Phi(self.r, self.M, self.m)[-1]
+        self.potential_reference: Quantity['energy'] = (
+            potential_reference
+            if potential_reference is not None
+            else physics.utils.poisson_potential(self.r, self.M, self.m)[-1]
+        )
         self.snapshots: table.QTable = utils.handle_default(snapshots, table.QTable())
         self.save_every_n_steps = save_every_n_steps
         self.save_every_time: Quantity['time'] | None
@@ -484,7 +488,7 @@ class Halo:
             m: Mass.
             v_norm: Velocity norm (`np.sqrt(vx**2 + vy**2 + vr**2)`).
             time: Current simulation time.
-            E: Relative energy (`Psi-1/2*m*v_norm**2`).
+            E: Relative energy (`potential-1/2*m*v_norm**2`).
             particle_type: Type of particle.
             particle_index: Index of particle.
             distribution_id: Identifier of the source distribution.
@@ -719,20 +723,20 @@ class Halo:
         return 0.5 * self.m * self.v_norm**2
 
     @property
-    def Phi(self) -> Quantity['energy']:
+    def poisson_potential(self) -> Quantity['energy']:
         """The gravitational potential energy of the particle."""
-        return cast(Quantity, physics.utils.Phi(self.r, self.M, self.m))
+        return cast(Quantity, physics.utils.poisson_potential(self.r, self.M, self.m))
 
     @property
-    def Psi(self) -> Quantity['specific energy']:
+    def potential(self) -> Quantity['specific energy']:
         """The relative gravitational potential energy of the particle."""
-        return cast(Quantity, physics.utils.Psi(self.r, self.M, self.m)).to(run_units.energy)
-        # return (self.Phi0 - self.Phi).to(run_units.energy)
+        return cast(Quantity, physics.utils.potential(self.r, self.M, self.m)).to(run_units.energy)
+        # return (self.potential_reference - self.poisson_potential).to(run_units.energy)
 
     @property
     def E(self) -> Quantity['specific energy']:
         """The energy of the particle."""
-        return (self.Psi - self.kinetic_energy).to(run_units.energy)
+        return (self.potential - self.kinetic_energy).to(run_units.energy)
 
     @property
     def local_density(self) -> Quantity['mass density']:

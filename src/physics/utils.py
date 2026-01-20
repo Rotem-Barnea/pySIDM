@@ -93,7 +93,7 @@ def local_density(
     return density
 
 
-def Phi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityOrArray:
+def poisson_potential(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityOrArray:
     """Calculate the gravitational potential at a given radius.
 
     Performed using integration of the gravitational force `G*M(<=r)*m/r^2`.
@@ -114,12 +114,12 @@ def Phi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityO
     return integral
 
 
-def Psi(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityOrArray:
+def potential(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> QuantityOrArray:
     """Calculate the relative gravitational potential at a given radius.
 
-    Recalculates `Phi0` (the value at infinity) based on the maximal value for the given particle array.
+    Recalculates `potential_reference` (the value at infinity) based on the maximal value for the given particle array.
 
-    See `Phi()` for details.
+    See `poisson_potential()` for details.
     """
     integral = scipy.integrate.cumulative_trapezoid(
         y=constants.G.decompose(run_units.system).value * M * m / r**2, x=r, initial=0

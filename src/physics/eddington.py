@@ -14,7 +14,7 @@ from src.types import QuantitySpline
 from ..tqdm import tqdm
 
 
-def F(
+def integral_f(
     E: float,
     spline: UnivariateSpline,
     limit: int = 200,
@@ -25,7 +25,7 @@ def F(
 
     Parameters:
         E: The energy value to calculate the antiderivative at.
-        spline: A `scipy` spline object for `rho` as a function of `Psi`.
+        spline: A `scipy` spline object for `rho` as a function of `potential`.
         limit: Passed on to `scipy.integrate.quad()`.
         epsrel: Passed on to `scipy.integrate.quad()`.
         kwargs: Additional keyword arguments to pass to `scipy.integrate.quad()`.
@@ -46,17 +46,17 @@ def F(
     )[0] / (np.sqrt(8) * np.pi**2)
 
 
-def make_rho_Psi_spline(
-    Psi_grid: Quantity['specific energy'],
+def make_rho_potential_spline(
+    potential_grid: Quantity['specific energy'],
     rho_grid: Quantity['mass density'],
     s: float | None = 1e-2,
     **kwargs: Any,
 ) -> QuantitySpline:
-    """Create a spline for the mass density as a function of Psi.
+    """Create a spline for the mass density as a function of potential.
 
     Parameters:
-        Psi_grid: A grid of Psi values to calculate the spline on.
-        rho_grid: A grid of mass density values corresponding to the Psi grid.
+        potential_grid: A grid of potential values to calculate the spline on.
+        rho_grid: A grid of mass density values corresponding to the potential grid.
         s: The smoothing factor for the spline.
         **kwargs: Additional keyword arguments to pass to the spline constructor.
 
@@ -64,7 +64,7 @@ def make_rho_Psi_spline(
         The spline of mass density as a function of specific energy.
     """
     return QuantitySpline(
-        x=Psi_grid[indices := np.argsort(Psi_grid)].value,
+        x=potential_grid[indices := np.argsort(potential_grid)].value,
         y=rho_grid[indices].value,
         s=s,
         in_unit=str(rho_grid.unit),
@@ -73,51 +73,53 @@ def make_rho_Psi_spline(
     )
 
 
-def make_F_spline(
-    Psi_grid: Quantity['specific energy'],
-    rho_Psi_spline: QuantitySpline,
+def make_integral_f_spline(
+    potential_grid: Quantity['specific energy'],
+    rho_potential_spline: QuantitySpline,
     ext: int = 1,
-    F_kwargs: dict[str, Any] = {},
+    integral_f_kwargs: dict[str, Any] = {},
     tqdm_kwargs: dict[str, Any] = {'desc': 'Calculating `F`'},
     **kwargs: Any,
 ) -> QuantitySpline:
     """Calculate a spline for the antiderivative `F` of the distribution function `df`.
 
     Parameters:
-        Psi_grid: A grid of Psi values to calculate the spline on.
-        rho_Psi_spline: A `scipy` spline object for `rho` as a function of `Psi`.
+        potential_grid: A grid of potential values to calculate the spline on.
+        rho_potential_spline: A `scipy` spline object for `rho` as a function of `potential`.
         ext: Extrapolation mode for the spline.
-        F_kwargs: Additional keyword arguments to pass to the integrator `F()`.
+        integral_f_kwargs: Additional keyword arguments to pass to the integrator `integral_f()`.
         tqdm_kwargs: Additional keyword arguments to pass to the tqdm progress bar.
         kwargs: Additional keyword arguments to pass to the spline object.
 
     Returns:
         The spline of `F`.
     """
-    spline = rho_Psi_spline.to_scipy()
-    F_grid = np.array([F(E=e, spline=spline, **F_kwargs) for e in tqdm(Psi_grid.value, **tqdm_kwargs)])
+    spline = rho_potential_spline.to_scipy()
+    integral_f_grid = np.array(
+        [integral_f(E=e, spline=spline, **integral_f_kwargs) for e in tqdm(potential_grid.value, **tqdm_kwargs)]
+    )
     return QuantitySpline(
-        x=Psi_grid[indices := np.argsort(Psi_grid)].value,
-        y=F_grid[indices],
+        x=potential_grid[indices := np.argsort(potential_grid)].value,
+        y=integral_f_grid[indices],
         ext=ext,
-        in_unit=str(Psi_grid.unit),
-        out_unit=run_units.F_unit,
+        in_unit=str(potential_grid.unit),
+        out_unit=run_units.integral_f_unit,
         **kwargs,
     )
 
 
 def make_f_spline(
-    Psi_grid: Quantity['specific energy'],
-    F_spline: QuantitySpline,
+    potential_grid: Quantity['specific energy'],
+    integral_f_spline: QuantitySpline,
     out_unit: UnitLike = run_units.f_unit,
     **kwargs: Any,
 ) -> QuantitySpline:
     """Calculate a spline for the distribution function `f`."""
-    f_grid = F_spline.derivative_at(Psi_grid)
+    f_grid = integral_f_spline.derivative_at(potential_grid)
     return QuantitySpline(
-        x=Psi_grid[indices := np.argsort(Psi_grid)].value,
+        x=potential_grid[indices := np.argsort(potential_grid)].value,
         y=f_grid[indices],
-        in_unit=str(Psi_grid.unit),
+        in_unit=str(potential_grid.unit),
         out_unit=str(f_grid.unit),
         **kwargs,
     )
@@ -125,11 +127,11 @@ def make_f_spline(
 
 def f(
     E: Quantity['specific energy'],
-    F_spline: QuantitySpline,
+    integral_f_spline: QuantitySpline,
     reject_negative: bool = True,
 ) -> Quantity:
     """Calculate the distribution function `f` from the antiderivative `F`."""
-    value = F_spline.derivative_at(E) * run_units.mass
+    value = integral_f_spline.derivative_at(E) * run_units.mass
     if reject_negative:
         return cast(Quantity, value.clip(min=0))
     return value

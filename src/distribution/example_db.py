@@ -20,7 +20,7 @@ class ExampleParameters(TypedDict):
 
     mass_stellar: Quantity['mass']
     mass_half_light: Quantity['mass']
-    R_half_light: Quantity['length']
+    r_half_light: Quantity['length']
 
 
 def load_db(path: str | Path | None = None):
@@ -55,11 +55,11 @@ def get_db_parameters(
         return default or ExampleParameters(
             mass_stellar=Quantity(np.nan, 'Msun'),
             mass_half_light=Quantity(np.nan, 'Msun'),
-            R_half_light=Quantity(np.nan, 'pc'),
+            r_half_light=Quantity(np.nan, 'pc'),
         )
     entry = db.loc[key]
     return ExampleParameters(
         mass_stellar=Quantity(10 ** entry['mass_stellar'], 'Msun'),
         mass_half_light=Quantity(10 ** entry['mass_dynamical_wolf'], 'Msun'),
-        R_half_light=Quantity(entry['rhalf_physical'], 'pc'),
+        r_half_light=Quantity(entry['rhalf_physical'], 'pc'),
     )

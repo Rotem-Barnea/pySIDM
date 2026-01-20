@@ -33,7 +33,7 @@ class Distribution:
         r_min: Quantity['length'] = Quantity(1e-4, 'kpc'),
         r_max: Quantity['length'] | None = None,
         r_s: Quantity['length'] | None = None,
-        R_half_light: Quantity['length'] | None = None,
+        r_half_light: Quantity['length'] | None = None,
         c: int | float | None | Literal['Dutton14'] = None,
         r_vir: Quantity['length'] | None = None,
         total_mass: Quantity['mass'] | None = None,
@@ -60,13 +60,13 @@ class Distribution:
             r_min: Minimum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
             r_max: Maximum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
             r_s: Scale radius of the distribution profile.
-            R_half_light: Half-light radius of the distribution profile.
+            r_half_light: Half-light radius of the distribution profile.
             c: Concentration parameter of the distribution profile (such that r_vir = c * r_s). If 'Dutton14', calculate it based on the total mass (must be provided via `total_mass`).
             r_vir: Virial radius of the distribution profile.
             rho_s: Scale density of the distribution profile. Either `total_mass` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
             total_mass: Total mass of the distribution profile. Either `total_mass` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
             space_steps: Number of space steps for the `internal logarithmic grid`.
-            spline_s: Spline smoothing parameter for calculating the drho/dPsi derivative.
+            spline_s: Spline smoothing parameter for calculating the drho/dpotential derivative.
             truncate: Whether to truncate the density at the virial radius.
             truncate_power: The power law used for truncation.
             initialize_grid: Grids to initialize at startup, otherwise they will only be calculated at runtime as needed.
@@ -106,8 +106,8 @@ class Distribution:
             assert total_mass is not None, 'total_mass must be provided when using Dutton14'
             c = self.c_from_M_Dutton14(total_mass)
 
-        if r_s is None and R_half_light is not None:
-            r_s = self.R_half_light_to_r_s(R_half_light)
+        if r_s is None and r_half_light is not None:
+            r_s = self.r_half_light_to_r_s(r_half_light)
 
         if r_s is not None and r_vir is not None:
             c = (r_vir / r_s).decompose(run_units.system).value
@@ -200,7 +200,7 @@ class Distribution:
         return 10 ** (1.025 - 0.097 * np.log10((M.to('Msun') * cosmology.Planck18.h / Quantity(1e12, 'Msun')).value))
 
     @staticmethod
-    def R_half_light_to_r_s(r: Quantity['length'], projection_factor: float = 1.8) -> Quantity['length']:
+    def r_half_light_to_r_s(r: Quantity['length'], projection_factor: float = 1.8) -> Quantity['length']:
         """Calculates the scale radius (`r_s`) from the half-light radius."""
         return projection_factor * r / (1 + np.sqrt(2))
 
@@ -463,45 +463,45 @@ class Distribution:
             )
         return Quantity(self.memoization['quantile_function'](p), run_units.length)
 
-    def Phi(self, r: Quantity['length']) -> Quantity['specific energy']:
-        """Calculate the gravitational potential energy (`Phi`), at a given radius `r`."""
+    def poisson_potential(self, r: Quantity['length']) -> Quantity['specific energy']:
+        """Calculate the gravitational potential energy (`poisson_potential`), at a given radius `r`."""
         if self.backend == 'agama':
             assert self.agama_total_potential is not None, 'Agama potential not initialized'
-            return self.agama_total_potential.Phi(r).to(run_units.specific_energy)
+            return self.agama_total_potential.poisson_potential(r).to(run_units.specific_energy)
         xs = Quantity(np.geomspace(self.r_min, r, 1000), 'kpc').T
         return np.trapezoid(y=constants.G * self.M(xs) / xs**2, x=xs).to(run_units.specific_energy)
 
     @property
-    def Phi0(self) -> Quantity['specific energy']:
-        """Calculate the relative value for the gravitational potential energy (`Phi0`), i.e. at `infinity` (memoized)."""
-        if 'Phi0' not in self.memoization:
-            self.memoization['Phi0'] = self.Phi(self.r_max * 100)
-        return self.memoization['Phi0']
+    def potential_reference(self) -> Quantity['specific energy']:
+        """Calculate the relative value for the gravitational potential energy (`potential_reference`), i.e. at `infinity` (memoized)."""
+        if 'potential_reference' not in self.memoization:
+            self.memoization['potential_reference'] = self.poisson_potential(self.r_max * 100)
+        return self.memoization['potential_reference']
 
-    def calculate_Psi(self, r: Quantity['length']) -> Quantity['specific energy']:
-        """Calculate the relative gravitational potential energy (`Psi`) at a given radius `r`."""
-        return cast(Quantity, self.Phi0 - self.Phi(r))
-
-    @property
-    def Psi_grid(self) -> Quantity['specific energy']:
-        """Calculate the relative gravitational potential (`Psi`) at the  `internal logarithmic grid` (memoized)."""
-        if 'Psi_grid' not in self.memoization:
-            self.memoization['Psi_grid'] = self.calculate_Psi(self.geomspace_grid)
-        return self.memoization['Psi_grid']
+    def calculate_potential(self, r: Quantity['length']) -> Quantity['specific energy']:
+        """Calculate the relative gravitational potential energy (`potential`) at a given radius `r`."""
+        return cast(Quantity, self.potential_reference - self.poisson_potential(r))
 
     @property
-    def F(self) -> QuantitySpline:
+    def potential_grid(self) -> Quantity['specific energy']:
+        """Calculate the relative gravitational potential (`potential`) at the  `internal logarithmic grid` (memoized)."""
+        if 'potential_grid' not in self.memoization:
+            self.memoization['potential_grid'] = self.calculate_potential(self.geomspace_grid)
+        return self.memoization['potential_grid']
+
+    @property
+    def integral_f(self) -> QuantitySpline:
         """Calculate the spline function for the antiderivative (`F`) of the distribution function (`f`)"""
-        if 'F' not in self.memoization:
-            self.memoization['F'] = physics.eddington.make_F_spline(
-                Psi_grid=self.Psi_grid,
-                rho_Psi_spline=physics.eddington.make_rho_Psi_spline(
-                    Psi_grid=self.Psi_grid,
+        if 'integral_f' not in self.memoization:
+            self.memoization['integral_f'] = physics.eddington.make_integral_f_spline(
+                potential_grid=self.potential_grid,
+                rho_potential_spline=physics.eddington.make_rho_potential_spline(
+                    potential_grid=self.potential_grid,
                     rho_grid=self.rho_grid,
                     s=self.spline_s,
                 ),
             )
-        return self.memoization['F']
+        return self.memoization['integral_f']
 
     def f(
         self,
@@ -518,38 +518,38 @@ class Distribution:
         if E is None:
             assert r is not None and v is not None, 'Either energy or radius and velocity must be provided'
             E = self.E(r=r, v=v)
-        return physics.eddington.f(E=E, F_spline=self.F, reject_negative=reject_negative)
+        return physics.eddington.f(E=E, integral_f_spline=self.integral_f, reject_negative=reject_negative)
 
     @property
-    def Psi(self) -> QuantitySpline | Callable[[Quantity], Quantity]:
-        """Interpolate the relative gravitational potential (`Psi`) based on the  `internal logarithmic grid` (memoized)."""
+    def potential(self) -> QuantitySpline | Callable[[Quantity], Quantity]:
+        """Interpolate the relative gravitational potential (`potential`) based on the  `internal logarithmic grid` (memoized)."""
         if self.backend == 'agama':
-            return self.calculate_Psi
-        if 'Psi' not in self.memoization:
-            # self.memoization['Psi'] = scipy.interpolate.interp1d(
-            #     self.geomspace_grid, self.Psi_grid, bounds_error=False, fill_value=0
+            return self.calculate_potential
+        if 'potential' not in self.memoization:
+            # self.memoization['potential'] = scipy.interpolate.interp1d(
+            #     self.geomspace_grid, self.potential_grid, bounds_error=False, fill_value=0
             # )
-            self.memoization['Psi'] = QuantitySpline(
+            self.memoization['potential'] = QuantitySpline(
                 x=self.geomspace_grid.value,
-                y=self.Psi_grid.value,
+                y=self.potential_grid.value,
                 in_unit=str(self.geomspace_grid.unit),
-                out_unit=str(self.Psi_grid.unit),
+                out_unit=str(self.potential_grid.unit),
                 s=0,
             )
-        return self.memoization['Psi']
+        return self.memoization['potential']
 
     def E(
         self,
         v: Quantity['velocity'],
         r: Quantity['length'] | None = None,
-        Psi: Quantity['specific energy'] | None = None,
+        potential: Quantity['specific energy'] | None = None,
     ) -> Quantity['specific energy']:
-        """Interpolate the internal energy (`E`) At the given radius `r` using `Psi()`."""
+        """Interpolate the internal energy (`E`) At the given radius `r` using `potential()`."""
         if r is not None:
-            return cast(Quantity, self.Psi(r) - 1 / 2 * v**2)
-        elif Psi is not None:
-            return cast(Quantity, Psi - 1 / 2 * v**2)
-        raise ValueError('Either `r` or `Psi` must be provided')
+            return cast(Quantity, self.potential(r) - 1 / 2 * v**2)
+        elif potential is not None:
+            return cast(Quantity, potential - 1 / 2 * v**2)
+        raise ValueError('Either `r` or `potential` must be provided')
 
     def recalculate(self, key: str, inplace: bool = False) -> Any:
         """Recalculate the memoized value of the given key."""
@@ -561,7 +561,7 @@ class Distribution:
 
     @staticmethod
     def merge_distributions(distributions: list['Distribution'], inplace: bool = False) -> None:
-        """Merges the `Psi` grid values of the given distributions. Used to combine the potentials of multiple distributions to sample via Eddington's inversion."""
+        """Merges the `potential` grid values of the given distributions. Used to combine the potentials of multiple distributions to sample via Eddington's inversion."""
         physical_distributions = [density for density in distributions if density.physical]
         if any([distribution.backend == 'agama' for distribution in physical_distributions]):
             assert all([distribution.backend == 'agama' for distribution in physical_distributions]), (
@@ -575,9 +575,9 @@ class Distribution:
         else:
             for distribution in physical_distributions:
                 distribution.memoization = {}
-            Psi_grid = sum([getattr(density, 'Psi_grid') for density in physical_distributions])
+            potential_grid = sum([getattr(density, 'potential_grid') for density in physical_distributions])
             for distribution in physical_distributions:
-                distribution.memoization['Psi_grid'] = Psi_grid
+                distribution.memoization['potential_grid'] = potential_grid
 
     ## io
 
@@ -621,21 +621,21 @@ class Distribution:
     @staticmethod
     @njit(parallel=True)
     def sample_v_norm_fast(
-        Psi: NDArray[np.float64],
+        potential: NDArray[np.float64],
         E_grid: NDArray[np.float64],
         f_grid: NDArray[np.float64],
         rolls: NDArray[np.float64],
         num: int = 100000,
     ) -> NDArray[np.float64]:
         """Sample particle velocity from the distribution function. Internal njit accelerated function. Prioritize using `roll_v()`."""
-        output = np.empty_like(Psi)
-        for particle in prange(len(Psi)):
-            vs_grid = np.linspace(0, np.sqrt(2 * Psi[particle]), num=num)
+        output = np.empty_like(potential)
+        for particle in prange(len(potential)):
+            vs_grid = np.linspace(0, np.sqrt(2 * potential[particle]), num=num)
             vs = np.empty_like(vs_grid, dtype=np.float64)
             vs[:] = vs_grid
             pdf = np.zeros_like(vs)
             for i, v in enumerate(vs):
-                pdf[i] = v**2 * utils.linear_interpolation(E_grid, f_grid, Psi[particle] - v**2 / 2)
+                pdf[i] = v**2 * utils.linear_interpolation(E_grid, f_grid, potential[particle] - v**2 / 2)
             pdf /= pdf.sum()
             cdf = np.cumsum(pdf)
             i = np.searchsorted(cdf, rolls[particle]) - 1
@@ -667,8 +667,8 @@ class Distribution:
             generator = rng.generator
         return Quantity(
             self.sample_v_norm_fast(
-                Psi=self.Psi(r).to(run_units.specific_energy),
-                E_grid=(E := cast(Quantity, np.sort(self.Psi_grid))),
+                potential=self.potential(r).to(run_units.specific_energy),
+                E_grid=(E := cast(Quantity, np.sort(self.potential_grid))),
                 f_grid=self.f(E=E),
                 rolls=generator.random(len(r)),
                 num=num,
@@ -780,7 +780,7 @@ class Distribution:
         if velocity_range is None:
             if velocity_max_value is None:
                 # velocity_max_value = 1.5 * Quantity(np.sqrt(self.E_grid.max()))
-                velocity_max_value = 1.5 * Quantity(np.sqrt(self.Psi_grid.max())).to(velocity_min_value.unit)
+                velocity_max_value = 1.5 * Quantity(np.sqrt(self.potential_grid.max())).to(velocity_min_value.unit)
             velocity_range = Quantity(np.linspace(velocity_min_value, velocity_max_value, int(velocity_resolution)))
 
         r_grid, v_grid = cast(
@@ -937,7 +937,7 @@ class Distribution:
             **kwargs,
         )
 
-    def add_plot_R_markers(self, ax: Axes, ymax: float, x_unit: UnitLike = 'kpc') -> Axes:
+    def add_plot_radius_markers(self, ax: Axes, ymax: float, x_unit: UnitLike = 'kpc') -> Axes:
         """Add markers for the scale radius and virial radius to the plot."""
         ax.vlines(
             x=[self.r_s.to(x_unit).value, self.r_vir.to(x_unit).value],
@@ -1002,7 +1002,7 @@ class Distribution:
         sns.lineplot(x=r.to(length_unit).value, y=rho.to(density_unit).value, ax=ax, label=label, **lineplot_kwargs)
 
         if add_markers:
-            ax = self.add_plot_R_markers(ax, ymax=rho.max().to(density_unit).value, x_unit=length_unit)
+            ax = self.add_plot_radius_markers(ax, ymax=rho.max().to(density_unit).value, x_unit=length_unit)
 
         if label is not None:
             ax.legend()
@@ -1057,20 +1057,20 @@ class Distribution:
         y = self.mass_cdf(r) if cumulative else self.mass_pdf(r)
         sns.lineplot(x=r.to(length_unit).value, y=y, color=color, ax=ax, label=label, **kwargs)
         if add_markers:
-            ax = self.add_plot_R_markers(ax, ymax=y.max(), x_unit=length_unit)
+            ax = self.add_plot_radius_markers(ax, ymax=y.max(), x_unit=length_unit)
         return fig, ax
 
-    def plot_drho_dPsi(
+    def plot_drho_dpotential(
         self,
-        xlabel: str | None = r'$\Psi$',
-        ylabel: str | None = r'$\frac{\mathrm{d}\rho}{\mathrm{d}\Psi}$',
+        xlabel: str | None = r'$\potential$',
+        ylabel: str | None = r'$\frac{\mathrm{d}\rho}{\mathrm{d}\potential}$',
         title: str | None = 'Density derivative (log-log)',
         energy_unit: UnitLike = 'km^2/second^2',
         y_unit: UnitLike = 'Msun*second^2/(kpc^3*km^2)',
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
-        """Plot the density derivative with respect to the relative potential energy `drho/dPsi`.
+        """Plot the density derivative with respect to the relative potential energy `drho/dpotential`.
 
         Parameters:
             xlabel: Label for the x-axis.
@@ -1096,7 +1096,9 @@ class Distribution:
             y_unit=y_unit,
             title=title,
         )
-        sns.lineplot(x=np.array(self.Psi_grid.to(energy_unit)), y=np.array(self.drho_dPsi_grid.to(y_unit)), ax=ax)
+        sns.lineplot(
+            x=np.array(self.potential_grid.to(energy_unit)), y=np.array(self.drho_dpotential_grid.to(y_unit)), ax=ax
+        )
         return fig, ax
 
     def plot_f(

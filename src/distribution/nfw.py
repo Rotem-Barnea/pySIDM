@@ -77,7 +77,7 @@ class NFW(Distribution):
 
     @staticmethod
     def calculate_from_half_light(
-        R_half_light: Quantity['length'],
+        r_half_light: Quantity['length'],
         mass_half_light: Quantity['mass'],
         c: float = 10,
         rho_crit: Quantity['mass density'] = cosmology.Planck18.critical_density0,
@@ -87,7 +87,7 @@ class NFW(Distribution):
         """Calculate the distribution's parameters from the half-light radius and mass.
 
         Parameters:
-            R_half_light: The half-light radius of the distribution.
+            r_half_light: The half-light radius of the distribution.
             M_half_light: The half-light mass (dynamic) of the distribution.
             c: The concentration parameter `c`.
             rho_crit: The critical density of the universe.
@@ -103,13 +103,13 @@ class NFW(Distribution):
             return (4 * np.pi / 3) * 200 * rho_crit * R200**3
 
         def equations(
-            params: tuple[float, float], M_half_light: float, R_half_light: float, c: float, rho_crit: float, H0: float
+            params: tuple[float, float], M_half_light: float, r_half_light: float, c: float, rho_crit: float, H0: float
         ) -> tuple[float, float]:
             """Helper function for the optimizer"""
             log_M200, log_rs = params
             M200, rs = np.exp(log_M200), np.exp(log_rs)
 
-            x_half = 1.4 * R_half_light / rs
+            x_half = 1.4 * r_half_light / rs
             m_half_calc = M200 * (np.log(1 + x_half) - x_half / (1 + x_half)) / (np.log(1 + c) - c / (1 + c))
 
             return (
@@ -121,7 +121,7 @@ class NFW(Distribution):
             partial(
                 equations,
                 M_half_light=(m0 := mass_half_light.decompose(run_units.system).value),
-                R_half_light=(r0 := R_half_light.decompose(run_units.system).value),
+                r_half_light=(r0 := r_half_light.decompose(run_units.system).value),
                 c=c,
                 rho_crit=rho_crit.decompose(run_units.system).value,
                 H0=H0.decompose(run_units.system).value,
