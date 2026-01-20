@@ -20,10 +20,10 @@ if TYPE_CHECKING:
 
 def optimize_dt(
     halo: 'Halo',
-    max_factor: int = 10,
+    max_factor: int = 20,
     min_factor: int = 1,
     factor_steps: int = 30,
-    factor_steps_down: int | None = None,
+    factor_steps_down: int | None = 4,
     min_dt: Quantity['time'] | None = None,
     max_dt: Quantity['time'] | None = None,
     test_steps: int = 100,

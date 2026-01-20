@@ -47,7 +47,7 @@ class Halo:
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         distribution_id: list[int] | NDArray[np.int64] | None = None,
         leapfrog_convergence_rounds: NDArray[np.int64] | None = None,
-        Tdyn: Quantity['time'] | Unit | None = None,
+        dynamical_time: Quantity['time'] | Unit | None = None,
         Phi0: Quantity['energy'] | None = None,
         distributions: list[Distribution] | None = None,
         scatter_rounds: deque[int] | None = None,
@@ -67,7 +67,7 @@ class Halo:
         snapshots: table.QTable | None = None,
         hard_save: bool = True,
         save_path: Path | str | None = None,
-        Rmax: Quantity['length'] = Quantity(300, 'kpc'),
+        r_max: Quantity['length'] = Quantity(300, 'kpc'),
         inner_core_radius: Quantity['length'] | float = 0.2,
         bootstrap_steps: int = 100,
         cleanup_nullish_particles: bool = True,
@@ -94,7 +94,7 @@ class Halo:
             particle_type: Type of the halo particles. Should comply with ParticleType (i.e. `dm` or `baryon`).
             distribution_id: ID of the relevant distribution that sourced the particles.
             leapfrog_convergence_rounds: Number of rounds each particle needs to converge the leapfrog integrator. Used to jumpstart the next step for difficult particles.
-            Tdyn: Dynamical time of the halo. If `None` calculates from the first density.
+            dynamical_time: Dynamical time of the halo. If `None` calculates from the first density.
             Phi0: Potential at infinity of the halo. If `None` calculates from the first density.
             distributions: List of distributions of the halo.
             n_interactions: Number of interactions the halo had.
@@ -115,11 +115,11 @@ class Halo:
             snapshots: Snapshots of the halo.
             hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
             save_path: Path to save the halo to memory.
-            Rmax: Maximum radius of the halo, particles outside of this radius get killed off. If `None` ignores.
+            r_max: Maximum radius of the halo, particles outside of this radius get killed off. If `None` ignores.
             inner_core_radius: Inner core radius of the halo, used for estimating the collapse. If a float is provided, assumed to be a factor multiplying the scale radius of the first distribution in `distributions`.
             bootstrap_steps: Number of bootstrap rounds to perform before scattering begins. Time only begins counting after the bootstrap steps.
             cleanup_nullish_particles: Whether to remove particles from the halo after each interaction if they are nullish.
-            cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `Rmax`).
+            cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `r_max`).
             generator: Random number generator. If provided ignore `seed` and `generator_state`.
             seed: Seed for the random number generator.
             generator_state: State of the random number generator. If not provided, will be set by the `seed`.
@@ -141,17 +141,19 @@ class Halo:
         self.time: Quantity['time'] = time.to(run_units.time)
         self.steps: int = int(steps)
         self.distributions: list[Distribution] = utils.handle_default(distributions, [])
-        self.dt: Quantity['time'] = (dt if isinstance(dt, Quantity) else self.distributions[0].Tdyn * dt).to(
+        self.dt: Quantity['time'] = (dt if isinstance(dt, Quantity) else self.distributions[0].dynamical_time * dt).to(
             run_units.time
         )
         self.unoptimized_dt: Quantity['time'] = utils.handle_default(unoptimized_dt, self.dt)
-        self.Tdyn: Quantity['time']
-        if Tdyn is not None:
-            self.Tdyn = Tdyn if isinstance(Tdyn, Quantity) else Quantity(1, Tdyn)
+        self.dynamical_time: Quantity['time']
+        if dynamical_time is not None:
+            self.dynamical_time = (
+                dynamical_time if isinstance(dynamical_time, Quantity) else Quantity(1, dynamical_time)
+            )
         elif len(self.distributions) > 0:
-            self.Tdyn = Quantity(1, self.distributions[0].Tdyn)
+            self.dynamical_time = Quantity(1, self.distributions[0].dynamical_time)
         elif len(self.distributions) == 0:
-            self.Tdyn = Quantity(1, run_units.time)
+            self.dynamical_time = Quantity(1, run_units.time)
         if isinstance(background, Distribution):
             self.background: BackgroundDistribution | None = BackgroundDistribution(distribution=background)
         else:
@@ -165,7 +167,7 @@ class Halo:
         elif isinstance(save_every_time, Quantity):
             self.save_every_time = save_every_time.to(run_units.time)
         else:
-            self.save_every_time = (self.distributions[0].Tdyn * save_every_time).to(run_units.time)
+            self.save_every_time = (self.distributions[0].dynamical_time * save_every_time).to(run_units.time)
         self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
         self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
         self.ministep_size: deque[float] = utils.handle_default(ministep_size, deque())
@@ -179,11 +181,11 @@ class Halo:
         self.scatter_rounds_underestimated: deque[int] = utils.handle_default(scatter_rounds_underestimated, deque())
         self.hard_save: bool = hard_save
         self.save_path: Path | str | None = Path(save_path) if isinstance(save_path, str) else save_path
-        self.Rmax: Quantity['length'] = Rmax.to(run_units.length)
+        self.r_max: Quantity['length'] = r_max.to(run_units.length)
         if isinstance(inner_core_radius, Quantity):
             self.inner_core_radius: Quantity['length'] = inner_core_radius.to(run_units.length)
         else:
-            self.inner_core_radius = self.distributions[0].Rs * inner_core_radius
+            self.inner_core_radius = self.distributions[0].r_s * inner_core_radius
         self.bootstrap_steps = bootstrap_steps
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
@@ -215,18 +217,18 @@ class Halo:
     #     hard_save: bool,
     #     save_every_n_steps: int,
     #     save_every_time: Quantity['time'],
-    #     Tdyn: Unit | None = None,
+    #     dynamical_time: Unit | None = None,
     #     n_particles: list[int] | None = None,
     #     **kwargs: Any,
     # ) -> str:
     #     """TODO"""
     #     scatter_params = deepcopy(scatter_params)
     #     scatter_params['sigma'] = scatter_params.get('sigma', sidm.no_sigma).to('cm^2/g')
-    #     if Tdyn is None:
-    #         Tdyn = distributions[0].Tdyn
+    #     if dynamical_time is None:
+    #         dynamical_time = distributions[0].dynamical_time
     #     description = {
     #         'Current time': f'{time:.1f}',
-    #         'Time step size': f'{dt:.4f} = {dt.to(Tdyn):.1e} = 1/{1 / dt.to(Tdyn).value:.1f} Tdyn',
+    #         'Time step size': f'{dt:.4f} = {dt.to(dynamical_time):.1e} = 1/{1 / dt.to(dynamical_time).value:.1f} dynamical_time',
     #         '#particles': n_particles,
     #         'Save parameters': utils.drop_None(
     #             **{
@@ -295,7 +297,7 @@ class Halo:
         #             'cleanup_particles_by_radius',
         #             'dynamics_params',
         #             'distributions',
-        #             'Tdyn',
+        #             'dynamical_time',
         #         ]
         #     }
         # )
@@ -645,7 +647,7 @@ class Halo:
             if self.cleanup_nullish_particles:
                 drop_indices += self._particles['r'].isna()
             if self.cleanup_particles_by_radius:
-                drop_indices += self._particles['r'] > self.Rmax.value
+                drop_indices += self._particles['r'] > self.r_max.value
             if drop_indices.any():
                 if presorted:
                     end = drop_indices.argmax()
@@ -787,7 +789,7 @@ class Halo:
 
     def unit_mass(self, distribution: Distribution) -> Quantity['mass']:
         """Return the unit mass of the given distribution."""
-        return distribution.Mtot / self.n_particles[distribution.particle_type]
+        return distribution.total_mass / self.n_particles[distribution.particle_type]
 
     @property
     def generator_state(self) -> Mapping[str, Any]:
@@ -1230,9 +1232,9 @@ class Halo:
         plot.save(fig=fig, **save_kwargs)
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
-        """If the `unit` is `Tdyn` return `self.Tdyn`. If it's `time step` return `self.time_step`, otherwise return `unit`."""
-        if unit == 'Tdyn':
-            return self.Tdyn
+        """If the `unit` is `dynamical_time` return `self.dynamical_time`. If it's `time step` return `self.time_step`, otherwise return `unit`."""
+        if unit == 'dynamical_time' or unit == 'dynamical time':
+            return self.dynamical_time
         elif unit == 'time step':
             return self.time_step
         return unit
@@ -1386,7 +1388,7 @@ class Halo:
         x_range: Quantity['length'] | None = None,
         x_clip: Quantity['length'] | None = None,
         x_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'Tdyn',
+        time_unit: UnitLike = 'dynamical time',
         time_format: str = '.1f',
         title: str | None = 'Density progression over time',
         xlabel: str | None = 'Radius',
@@ -1971,7 +1973,7 @@ class Halo:
         include_now: bool = False,
         radius: Quantity['length'] | None = None,
         filter_particle_type: ParticleType | None = None,
-        time_unit: UnitLike = 'Tdyn',
+        time_unit: UnitLike = 'dynamical time',
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Particles',
         title: str | None = 'Particles in inner core ({radius})',
@@ -2061,7 +2063,7 @@ class Halo:
         radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
         time_range: Quantity | None = None,
         length_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'Tdyn',
+        time_unit: UnitLike = 'dynamical time',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = 'Particles',
@@ -2128,7 +2130,7 @@ class Halo:
         time_range: Quantity | None = None,
         specific_energy_unit: UnitLike = 'km^2/second^2',
         length_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'Tdyn',
+        time_unit: UnitLike = 'dynamical time',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = r'$\propto$Temperature (velocity variance)',
@@ -2198,7 +2200,7 @@ class Halo:
         v_axis: Literal['vx', 'vy', 'vr'] = 'vr',
         heat_unit: UnitLike = '1/Myr^3',
         length_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'Tdyn',
+        time_unit: UnitLike = 'dynamical time',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = 'Specific Heat flux',
@@ -2270,7 +2272,7 @@ class Halo:
         time_bin_size: Quantity | None | Literal['save cadence'] = 'save cadence',
         normalize_by_n_particles: bool = False,
         length_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'Tdyn',
+        time_unit: UnitLike = 'dynamical time',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = 'Number of scattering events per {time}',
@@ -2376,7 +2378,7 @@ class Halo:
     def plot_start_end_distribution(
         self,
         key: str = 'r',
-        time_unit: UnitLike = 'Tdyn',
+        time_unit: UnitLike = 'dynamical time',
         time_format: str = '.1f',
         label_start: str = 'start',
         label_end: str = 'after {t}',
@@ -2757,7 +2759,7 @@ class Halo:
         ylabel: str | None = None,
         title: str | None = 'Trace of particle id={particle_index}, initial position={r}',
         label: str | None = 'particle id={particle_index}, initial position={r}',
-        time_unit: UnitLike = 'Tdyn',
+        time_unit: UnitLike = 'dynamical time',
         y_unit: UnitLike | None = None,
         length_unit: UnitLike = 'kpc',
         length_format: str = '.1f',
@@ -3029,7 +3031,7 @@ class Halo:
         """Plot the density profile (`rho`) of each of the provided distributions in the halo.
 
         Parameters:
-            markers_on_first_only: If `True` only plot markers (`Rs` and `Rvir`) for the first density.
+            markers_on_first_only: If `True` only plot markers (`r_s` and `r_vir`) for the first density.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments are passed to every call to the plotting function.
 
@@ -3058,7 +3060,7 @@ class Halo:
         times: Quantity['time'] = Quantity([], 'Gyr'),
         labels: list[str] = [],
         radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
-        limit_radius_by_Rvir: bool = True,
+        limit_radius_by_r_vir: bool = True,
         distributions: list[Distribution] | list[int] | None = None,
         xscale: plot.Scale = 'log',
         yscale: plot.Scale = 'log',
@@ -3078,7 +3080,7 @@ class Halo:
             times: The times at which to plot the density profiles.
             labels: The labels for the density profiles.
             radius_bins: The radius bins for the density profile calculations.
-            limit_radius_by_Rvir: Whether to limit the radius bins by the virial radius.
+            limit_radius_by_r_vir: Whether to limit the radius bins by the virial radius.
             distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions. If a list of distribution objects, filter the particles by the distribution ID.
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
@@ -3120,8 +3122,8 @@ class Halo:
                     cast(Quantity, sub['r']),
                     unit_mass=self.unit_mass(distribution),
                     bins=radius_bins
-                    if not limit_radius_by_Rvir
-                    else cast(Quantity, radius_bins[radius_bins <= distribution.Rvir]),
+                    if not limit_radius_by_r_vir
+                    else cast(Quantity, radius_bins[radius_bins <= distribution.r_vir]),
                     label=f'{distribution.label} {label}' if add_distribution_label else label,
                     fig=fig,
                     ax=ax,
@@ -3134,7 +3136,7 @@ class Halo:
     def plot_distributions_over_time_animation(
         self,
         radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
-        limit_radius_by_Rvir: bool = True,
+        limit_radius_by_r_vir: bool = True,
         distributions: list[int] | None = None,
         xlim: list[Quantity['length'] | None | Literal['bins']] = ['bins', 'bins'],
         ylim: list[Quantity['mass density'] | None] = [
@@ -3153,7 +3155,7 @@ class Halo:
 
         Parameters:
             radius_bins: The radius bins for the density profile calculations.
-            limit_radius_by_Rvir: Whether to limit the radius bins by the virial radius.
+            limit_radius_by_r_vir: Whether to limit the radius bins by the virial radius.
             distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions.
             xlim: List matching `distributions`. Consistent limits of the x-axis throughout the animation. If `None` ignores. If 'bins', uses the radius bins as the x-axis limits.
             ylim: List matching `distributions`. Consistent limits of the y-axis throughout the animation. If `None` ignores.
@@ -3178,7 +3180,7 @@ class Halo:
         for i, (distribution, xlim_, ylim_) in enumerate(zip(self.distributions, xlim, ylim)):
             bins = cast(
                 Quantity,
-                radius_bins if not limit_radius_by_Rvir else radius_bins[radius_bins <= distribution.Rvir],
+                radius_bins if not limit_radius_by_r_vir else radius_bins[radius_bins <= distribution.r_vir],
             )
             if isinstance(xlim_, str) and xlim_ == 'bins':
                 xlim_ = bins
@@ -3202,7 +3204,7 @@ class Halo:
                         fig=(
                             guidelines := self.plot_distributions_over_time(
                                 radius_bins=radius_bins,
-                                limit_radius_by_Rvir=limit_radius_by_Rvir,
+                                limit_radius_by_r_vir=limit_radius_by_r_vir,
                                 distributions=[i],
                                 **density_guidelines_kwargs,
                                 xlim=xlim_,

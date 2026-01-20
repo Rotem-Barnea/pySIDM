@@ -33,14 +33,14 @@ class Metadata(TypedDict, total=False):
         last_saved_time: The last time the simulation was saved.
         hard_save: Whether to save the halo to memory at every snapshot save, or just keep in RAM.
         save_path: The path to save the simulation to.
-        Rmax: Maximum radius of the halo, particles outside of this radius get killed off.
+        r_max: Maximum radius of the halo, particles outside of this radius get killed off.
         inner_core_radius: Inner core radius of the halo, used for estimating the collapse.
         cleanup_nullish_particles: Whether to cleanup nullish particles.
         cleanup_particles_by_radius: Whether to cleanup particles by radius.
         seed: The seed for the random number generator.
         generator_state: The state of the random number generator.
         n_particles: The number of particles in the simulation.
-        Tdyn: The dynamical time of the simulation.
+        dynamical_time: The dynamical time of the simulation.
         name: The name of the simulation.
     """
 
@@ -55,14 +55,14 @@ class Metadata(TypedDict, total=False):
     last_saved_time: Quantity['time']
     hard_save: bool
     save_path: Path
-    Rmax: Quantity['length']
+    r_max: Quantity['length']
     inner_core_radius: Quantity['length']
     cleanup_nullish_particles: bool
     cleanup_particles_by_radius: bool
     seed: Any
     generator_state: Any
     n_particles: int
-    Tdyn: Quantity['time'] | Unit
+    dynamical_time: Quantity['time'] | Unit
     name: str | list[str]
 
 

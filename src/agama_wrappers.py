@@ -148,7 +148,7 @@ class DistributionFunction:
         return Quantity(f, mass() / (length() ** 3 * velocity() ** 3))
 
     @property
-    def Mtot(self) -> Quantity['mass']:
+    def total_mass(self) -> Quantity['mass']:
         """Calculate the total mass."""
         return Quantity(self.df.totalMass(), mass())
 

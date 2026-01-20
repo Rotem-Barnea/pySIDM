@@ -30,13 +30,13 @@ class Distribution:
 
     def __init__(
         self,
-        Rmin: Quantity['length'] = Quantity(1e-4, 'kpc'),
-        Rmax: Quantity['length'] | None = None,
-        Rs: Quantity['length'] | None = None,
+        r_min: Quantity['length'] = Quantity(1e-4, 'kpc'),
+        r_max: Quantity['length'] | None = None,
+        r_s: Quantity['length'] | None = None,
         R_half_light: Quantity['length'] | None = None,
         c: int | float | None | Literal['Dutton14'] = None,
-        Rvir: Quantity['length'] | None = None,
-        Mtot: Quantity['mass'] | None = None,
+        r_vir: Quantity['length'] | None = None,
+        total_mass: Quantity['mass'] | None = None,
         rho_s: Quantity['mass density'] | None = None,
         space_steps: float | int = 1e3,
         spline_s: float | None = None,
@@ -57,14 +57,14 @@ class Distribution:
         """General mass distribution profile.
 
         Parameters:
-            Rmin: Minimum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
-            Rmax: Maximum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
-            Rs: Scale radius of the distribution profile.
+            r_min: Minimum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
+            r_max: Maximum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
+            r_s: Scale radius of the distribution profile.
             R_half_light: Half-light radius of the distribution profile.
-            c: Concentration parameter of the distribution profile (such that Rvir = c * Rs). If 'Dutton14', calculate it based on the total mass (must be provided via `Mtot`).
-            Rvir: Virial radius of the distribution profile.
-            rho_s: Scale density of the distribution profile. Either `Mtot` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
-            Mtot: Total mass of the distribution profile. Either `Mtot` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
+            c: Concentration parameter of the distribution profile (such that r_vir = c * r_s). If 'Dutton14', calculate it based on the total mass (must be provided via `total_mass`).
+            r_vir: Virial radius of the distribution profile.
+            rho_s: Scale density of the distribution profile. Either `total_mass` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
+            total_mass: Total mass of the distribution profile. Either `total_mass` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
             space_steps: Number of space steps for the `internal logarithmic grid`.
             spline_s: Spline smoothing parameter for calculating the drho/dPsi derivative.
             truncate: Whether to truncate the density at the virial radius.
@@ -90,9 +90,9 @@ class Distribution:
         self.particle_type: ParticleType = particle_type
         self._label: str = label
         self.name: str = name
-        self.Rmin: Quantity['length'] = Rmin.to(run_units.length)
-        self.Rmax: Quantity['length'] = (
-            Rmax if Rmax is not None else 85 * (Rs if Rs is not None else Quantity(2, 'kpc'))
+        self.r_min: Quantity['length'] = r_min.to(run_units.length)
+        self.r_max: Quantity['length'] = (
+            r_max if r_max is not None else 85 * (r_s if r_s is not None else Quantity(2, 'kpc'))
         ).to(run_units.length)
 
         self.spline_s = spline_s
@@ -103,49 +103,49 @@ class Distribution:
         self.backend: backends = backend
 
         if c == 'Dutton14':
-            assert Mtot is not None, 'Mtot must be provided when using Dutton14'
-            c = self.c_from_M_Dutton14(Mtot)
+            assert total_mass is not None, 'total_mass must be provided when using Dutton14'
+            c = self.c_from_M_Dutton14(total_mass)
 
-        if Rs is None and R_half_light is not None:
-            Rs = self.R_half_light_to_Rs(R_half_light)
+        if r_s is None and R_half_light is not None:
+            r_s = self.R_half_light_to_r_s(R_half_light)
 
-        if Rs is not None and Rvir is not None:
-            c = (Rvir / Rs).decompose(run_units.system).value
-        elif Rs is not None and c is not None:
-            Rvir = Quantity(c * Rs.to(run_units.length))
-        elif Rvir is not None and c is not None:
-            Rs = Quantity(Rvir.to(run_units.length) / c)
+        if r_s is not None and r_vir is not None:
+            c = (r_vir / r_s).decompose(run_units.system).value
+        elif r_s is not None and c is not None:
+            r_vir = Quantity(c * r_s.to(run_units.length))
+        elif r_vir is not None and c is not None:
+            r_s = Quantity(r_vir.to(run_units.length) / c)
 
-        if Rs is not None:
-            self.Rs = Rs.to(run_units.length)
-        if Rvir is not None:
-            self.Rvir = Rvir.to(run_units.length)
+        if r_s is not None:
+            self.r_s = r_s.to(run_units.length)
+        if r_vir is not None:
+            self.r_vir = r_vir.to(run_units.length)
         if c is not None:
             self.c = c
-        if Mtot is not None:
-            self.Mtot = Mtot.to(run_units.mass)
+        if total_mass is not None:
+            self.total_mass = total_mass.to(run_units.mass)
         if rho_s is not None:
             self.rho_s = rho_s.to(run_units.density)
 
-        assert Rs is not None, 'Failed to evaluate Rs'
-        assert Rvir is not None, 'Failed to evaluate Rvir'
+        assert r_s is not None, 'Failed to evaluate r_s'
+        assert r_vir is not None, 'Failed to evaluate r_vir'
         assert c is not None, 'Failed to evaluate c'
-        assert Mtot is not None or rho_s is not None, 'Either Mtot or rho_s must be specified'
+        assert total_mass is not None or rho_s is not None, 'Either total_mass or rho_s must be specified'
 
-        self.Rs: Quantity['length'] = Rs.to(run_units.length)
-        self.Rvir: Quantity['length'] = Rvir.to(run_units.length)
+        self.r_s: Quantity['length'] = r_s.to(run_units.length)
+        self.r_vir: Quantity['length'] = r_vir.to(run_units.length)
         self.c: float = c
 
-        self.Rmax = (Rmax if Rmax is not None else 85 * self.Rs).to(run_units.length)
+        self.r_max = (r_max if r_max is not None else 85 * self.r_s).to(run_units.length)
 
-        if Mtot is not None:
-            self.Mtot: Quantity['mass'] = Mtot.to(run_units.mass)
+        if total_mass is not None:
+            self.total_mass: Quantity['mass'] = total_mass.to(run_units.mass)
         if rho_s is not None:
             self.rho_s: Quantity['mass density'] = rho_s.to(run_units.density)
         else:
             self.rho_s = self.calculate_rho_scale()
-        if Mtot is None:
-            self.Mtot = self.calculate_M_tot()
+        if total_mass is None:
+            self.total_mass = self.calculate_M_tot()
 
         if self.backend == 'agama':
             self.truncate_power = agama_truncation_power
@@ -169,8 +169,8 @@ class Distribution:
         return self.rho(r)
 
     def to_scale(self, x: Quantity['length']) -> Quantity['dimensionless']:
-        """Scale the distance, i.e. `x/Rs`"""
-        return x.to(self.Rs.unit) / self.Rs
+        """Scale the distance, i.e. `x/r_s`"""
+        return x.to(self.r_s.unit) / self.r_s
 
     @property
     def report(self) -> report.Report:
@@ -180,14 +180,14 @@ class Distribution:
             body_lines=[
                 report.Line(title='name', value=self.name),
                 report.Line(title='particle type', value=self.particle_type),
-                report.Line(title='Rs', value=self.Rs, format='.4f'),
+                report.Line(title='r_s', value=self.r_s, format='.4f'),
                 report.Line(title='c', value=self.c, format='.1f'),
-                report.Line(title='Rvir', value=self.Rvir, format='.4f'),
-                report.Line(title='Mtot', value=self.Mtot, format='.3e'),
+                report.Line(title='r_vir', value=self.r_vir, format='.4f'),
+                report.Line(title='total_mass', value=self.total_mass, format='.3e'),
                 report.Line(title='rho_s', value=self.rho_s, format='.3e'),
-                report.Line(title='Tdyn', value=(1 * self.Tdyn).to(run_units.time), format='.4f'),
-                report.Line(title='Rmin', value=self.Rmin, format='.4f'),
-                report.Line(title='Rmax', value=self.Rmax, format='.4f'),
+                report.Line(title='dynamical_time', value=(1 * self.dynamical_time).to(run_units.time), format='.4f'),
+                report.Line(title='r_min', value=self.r_min, format='.4f'),
+                report.Line(title='r_max', value=self.r_max, format='.4f'),
                 report.Line(title='space steps', value=self.space_steps, format='.0e'),
             ],
             header=f'{warn}{self.title} density function (ID={self.id})',
@@ -197,13 +197,11 @@ class Distribution:
     @staticmethod
     def c_from_M_Dutton14(M: Quantity['mass']) -> float:
         """Calculate the concentration parameter `c` from the total mass `M` based on Dutton & Maccio (2014) arXiv:1402.7073v2."""
-        return 10 ** (
-            1.025 - 0.097 * np.log10((M.to('Msun') / (1e12 * cosmology.Planck18.H0)).decompose(run_units.system).value)
-        )
+        return 10 ** (1.025 - 0.097 * np.log10((M.to('Msun') * cosmology.Planck18.h / Quantity(1e12, 'Msun')).value))
 
     @staticmethod
-    def R_half_light_to_Rs(r: Quantity['length'], projection_factor: float = 1.8) -> Quantity['length']:
-        """Calculates the scale radius (`Rs`) from the half-light radius."""
+    def R_half_light_to_r_s(r: Quantity['length'], projection_factor: float = 1.8) -> Quantity['length']:
+        """Calculates the scale radius (`r_s`) from the half-light radius."""
         return projection_factor * r / (1 + np.sqrt(2))
 
     @property
@@ -226,23 +224,23 @@ class Distribution:
         return True
 
     @property
-    def Tdyn(self) -> Unit:
+    def dynamical_time(self) -> Unit:
         """Calculate the dynamic time of the profile, returning it as a `Unit` object (memoized)."""
-        if 'Tdyn' not in self.memoization:
-            self.memoization['Tdyn'] = def_unit(
-                'Tdyn',
-                np.sqrt(self.Rs**3 / (constants.G * self.Mtot)).to(run_units.time),
+        if 'dynamical_time' not in self.memoization:
+            self.memoization['dynamical_time'] = def_unit(
+                'dynamical_time',
+                np.sqrt(self.r_s**3 / (constants.G * self.total_mass)).to(run_units.time),
                 doc=f'{self.title} dynamic time',
             )
-        return self.memoization['Tdyn']
+        return self.memoization['dynamical_time']
 
-    @Tdyn.setter
-    def Tdyn(self, Tdyn: Unit) -> None:
-        self.memoization['Tdyn'] = Tdyn
+    @dynamical_time.setter
+    def dynamical_time(self, dynamical_time: Unit) -> None:
+        self.memoization['dynamical_time'] = dynamical_time
 
     def scatter_time_scale(self, sigma: Quantity[run_units.cross_section]) -> Quantity['time']:
         """Time scale between scatter events"""
-        return 1 / np.sqrt((4 * np.pi * constants.G * self.Rs**2 * self.rho_s**3 * sigma**2)).decompose(
+        return 1 / np.sqrt((4 * np.pi * constants.G * self.r_s**2 * self.rho_s**3 * sigma**2)).decompose(
             run_units.system
         )
 
@@ -255,11 +253,11 @@ class Distribution:
                 type=type,
                 gamma=gamma,
                 beta=beta,
-                outerCutoffRadius=self.Rvir.value if self.truncate else None,
+                outerCutoffRadius=self.r_vir.value if self.truncate else None,
                 cutoffStrength=self.truncate_power if self.truncate else None,
             ),
-            mass=self.Mtot.value,
-            scaleRadius=self.Rs.value,
+            mass=self.total_mass.value,
+            scaleRadius=self.r_s.value,
             **kwargs,
         )
 
@@ -294,21 +292,21 @@ class Distribution:
         self, C: float = 0.9, sigma: Quantity[run_units.cross_section] = Quantity(50, 'cm^2/g')
     ) -> Quantity['time']:
         """Base estimation for the core collapse time"""
-        return (150 / C * 1 / (sigma * self.rho_s) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.Rs**2)).to(
-            run_units.time
-        )
+        return (
+            150 / C * 1 / (sigma * self.rho_s) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.r_s**2)
+        ).to(run_units.time)
 
     def tc(self, J: float = 1, sigma: Quantity[run_units.cross_section] = Quantity(50, 'cm^2/g')) -> Quantity['time']:
         """New estimation for the core collapse time"""
         return (
-            1 / (4 * np.pi * self.rho_s * sigma) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.Rs**2) * J
+            1 / (4 * np.pi * self.rho_s * sigma) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.r_s**2) * J
         ).to(run_units.time)
 
     @property
     def geomspace_grid(self) -> Quantity['length']:
         """Calculate the `internal logarithmic grid` (memoized)."""
         if 'geomspace_grid' not in self.memoization:
-            self.memoization['geomspace_grid'] = cast(Quantity, np.geomspace(self.Rmin, self.Rmax, self.space_steps))
+            self.memoization['geomspace_grid'] = cast(Quantity, np.geomspace(self.r_min, self.r_max, self.space_steps))
         return self.memoization['geomspace_grid']
 
     @staticmethod
@@ -316,8 +314,8 @@ class Distribution:
     def calculate_rho(
         r: FloatOrArray,
         rho_s: float = 1,
-        Rs: float = 1,
-        Rvir: float = 1,
+        r_s: float = 1,
+        r_vir: float = 1,
         truncate: bool = False,
         truncate_power: int = 4,
     ) -> FloatOrArray:
@@ -328,8 +326,8 @@ class Distribution:
         Parameters:
             r: The radius at which to calculate the density.
             rho_s: The scale density.
-            Rs: The scale radius.
-            Rvir: The virial radius.
+            r_s: The scale radius.
+            r_vir: The virial radius.
             truncate: Whether to truncate the density at the virial radius.
             truncate_power: The power law used for truncation.
 
@@ -347,8 +345,8 @@ class Distribution:
             self.calculate_rho(
                 r=r.to(run_units.length).value,
                 rho_s=self.rho_s.decompose(run_units.system).value,
-                Rs=self.Rs.decompose(run_units.system).value,
-                Rvir=self.Rvir.decompose(run_units.system).value,
+                r_s=self.r_s.decompose(run_units.system).value,
+                r_vir=self.r_vir.decompose(run_units.system).value,
                 truncate=self.truncate,
                 truncate_power=self.truncate_power,
             ),
@@ -380,8 +378,8 @@ class Distribution:
             np.atleast_1d(r.to(run_units.length).value),
             self.calculate_rho,
             rho_s,
-            self.Rs.decompose(run_units.system).value,
-            self.Rvir.decompose(run_units.system).value,
+            self.r_s.decompose(run_units.system).value,
+            self.r_vir.decompose(run_units.system).value,
         )
         return Quantity(integral, run_units.mass)
 
@@ -415,12 +413,12 @@ class Distribution:
         return self.memoization['M_spline']
 
     def calculate_M_tot(self) -> Quantity['mass']:
-        """Calculate the total mass, i.e. the integral over `[0, Rmax]`."""
-        return cast(Quantity, self.spherical_rho_integrate(self.Rmax, True)[0])
+        """Calculate the total mass, i.e. the integral over `[0, r_max]`."""
+        return cast(Quantity, self.spherical_rho_integrate(self.r_max, True)[0])
 
     def calculate_rho_scale(self) -> Quantity['mass density']:
-        """Calculate the density scale to set the integral over `[0, Rmax]` to equal `Mtot`."""
-        return self.Mtot / self.spherical_rho_integrate(self.Rmax, False)[0] * run_units.density
+        """Calculate the density scale to set the integral over `[0, r_max]` to equal `total_mass`."""
+        return self.total_mass / self.spherical_rho_integrate(self.r_max, False)[0] * run_units.density
 
     def mass_pdf(self, r: Quantity['length']) -> FloatOrArray:
         """Mass probability density function (pdf) at radius `r`. Normalized `rho*r^2`."""
@@ -430,7 +428,7 @@ class Distribution:
 
     def mass_cdf(self, r: Quantity['length']) -> FloatOrArray:
         """Mass cumulative probability density function (cdf) at radius `r`. Normalized enclosed mass."""
-        return (self.M(r) / self.Mtot).decompose(run_units.system).value
+        return (self.M(r) / self.total_mass).decompose(run_units.system).value
 
     def pdf(self, r: Quantity['length']) -> FloatOrArray:
         """Mass probability density function (pdf) interpolated at a given radius (memoized)."""
@@ -461,7 +459,7 @@ class Distribution:
         if 'quantile_function' not in self.memoization:
             cdf, rs = utils.joint_clean(arrays=[self.mass_cdf(self.geomspace_grid), self.geomspace_grid.value])
             self.memoization['quantile_function'] = scipy.interpolate.interp1d(
-                cdf, rs, kind='cubic', bounds_error=False, fill_value=(self.Rmin.value, self.Rmax.value)
+                cdf, rs, kind='cubic', bounds_error=False, fill_value=(self.r_min.value, self.r_max.value)
             )
         return Quantity(self.memoization['quantile_function'](p), run_units.length)
 
@@ -470,14 +468,14 @@ class Distribution:
         if self.backend == 'agama':
             assert self.agama_total_potential is not None, 'Agama potential not initialized'
             return self.agama_total_potential.Phi(r).to(run_units.specific_energy)
-        xs = Quantity(np.geomspace(self.Rmin, r, 1000), 'kpc').T
+        xs = Quantity(np.geomspace(self.r_min, r, 1000), 'kpc').T
         return np.trapezoid(y=constants.G * self.M(xs) / xs**2, x=xs).to(run_units.specific_energy)
 
     @property
     def Phi0(self) -> Quantity['specific energy']:
         """Calculate the relative value for the gravitational potential energy (`Phi0`), i.e. at `infinity` (memoized)."""
         if 'Phi0' not in self.memoization:
-            self.memoization['Phi0'] = self.Phi(self.Rmax * 100)
+            self.memoization['Phi0'] = self.Phi(self.r_max * 100)
         return self.memoization['Phi0']
 
     def calculate_Psi(self, r: Quantity['length']) -> Quantity['specific energy']:
@@ -746,8 +744,8 @@ class Distribution:
 
         Parameters:
             n_particles: Number of particles to sample.
-            radius_min_value: Minimum radius value to consider for the phase space distribution. If `None` use the quantile value for `0`. Regardless, this value is capped by `Rmin` even if provided.
-            radius_max_value: Maximum radius value to consider for the phase space distribution. If `None` use the quantile value for `1`. Regardless, this value is capped by `Rmax` even if provided.
+            radius_min_value: Minimum radius value to consider for the phase space distribution. If `None` use the quantile value for `0`. Regardless, this value is capped by `r_min` even if provided.
+            radius_max_value: Maximum radius value to consider for the phase space distribution. If `None` use the quantile value for `1`. Regardless, this value is capped by `r_max` even if provided.
             velocity_min_value: Minimum velocity norm value to consider for the phase space distribution.
             velocity_max_value: Maximum velocity norm value to consider for the phase space distribution. If `None` use 1.5x the square maximum energy grid value.
             radius_resolution: Resolution of the radius grid.
@@ -774,10 +772,10 @@ class Distribution:
         if radius_range is None:
             if radius_min_value is None:
                 radius_min_value = self.quantile_function(0)
-            radius_min_value = max(radius_min_value, self.Rmin)
+            radius_min_value = max(radius_min_value, self.r_min)
             if radius_max_value is None:
                 radius_max_value = self.quantile_function(1)
-            radius_max_value = min(radius_max_value, self.Rmax)
+            radius_max_value = min(radius_max_value, self.r_max)
             radius_range = Quantity(np.linspace(radius_min_value, radius_max_value, int(radius_resolution)))
         if velocity_range is None:
             if velocity_max_value is None:
@@ -879,7 +877,7 @@ class Distribution:
         return (
             r,
             v,
-            cast(Quantity, np.ones(len(r)) * self.Mtot / len(r)),
+            cast(Quantity, np.ones(len(r)) * self.total_mass / len(r)),
             np.full(len(r), self.particle_type),
             np.full(len(r), self.id),
         )
@@ -942,14 +940,14 @@ class Distribution:
     def add_plot_R_markers(self, ax: Axes, ymax: float, x_unit: UnitLike = 'kpc') -> Axes:
         """Add markers for the scale radius and virial radius to the plot."""
         ax.vlines(
-            x=[self.Rs.to(x_unit).value, self.Rvir.to(x_unit).value],
+            x=[self.r_s.to(x_unit).value, self.r_vir.to(x_unit).value],
             ymin=0,
             ymax=ymax,
             linestyles='dashed',
             colors='black',
         )
-        ax.text(x=self.Rs.to(x_unit).value, y=ymax, s='Rs')
-        ax.text(x=self.Rvir.to(x_unit).value, y=ymax, s='Rvir')
+        ax.text(x=self.r_s.to(x_unit).value, y=ymax, s='r_s')
+        ax.text(x=self.r_vir.to(x_unit).value, y=ymax, s='r_vir')
         return ax
 
     def plot_rho(
@@ -971,8 +969,8 @@ class Distribution:
         """Plot the density distribution (`rho`) of the density profile.
 
         Parameters:
-            r_start: The starting radius for the plot. If `None`, uses `Rmin`.
-            r_end: The ending radius for the plot. If `None` uses `Rmax`.
+            r_start: The starting radius for the plot. If `None`, uses `r_min`.
+            r_end: The ending radius for the plot. If `None` uses `r_max`.
             density_unit: The unit for the density axis.
             length_unit: The unit for the radius axis.
             xscale: The scale of the x-axis.
@@ -995,9 +993,9 @@ class Distribution:
         )
 
         if r_start is None:
-            r_start = self.Rmin
+            r_start = self.r_min
         if r_end is None:
-            r_end = self.Rmax
+            r_end = self.r_max
 
         r = cast(Quantity, np.geomspace(r_start, r_end, self.space_steps))
         rho = self.rho(r)
@@ -1026,8 +1024,8 @@ class Distribution:
         """Plot the radius distribution (`pdf`/`cdf`) of the density profile.
 
         Parameters:
-            r_start: The starting radius for the plot. If `None` uses `Rmin`.
-            r_end: The ending radius for the plot. If `None` uses `Rmax`.
+            r_start: The starting radius for the plot. If `None` uses `r_min`.
+            r_end: The ending radius for the plot. If `None` uses `r_max`.
             cumulative: Plot the `cdf`, if `False` plot the `pdf` instead.
             length_unit: The unit for the radius axis.
             label: The label for the plot (legend).
@@ -1051,9 +1049,9 @@ class Distribution:
         )
 
         if r_start is None:
-            r_start = self.Rmin
+            r_start = self.r_min
         if r_end is None:
-            r_end = self.Rmax
+            r_end = self.r_max
 
         r = cast(Quantity, np.geomspace(r_start, r_end, self.space_steps))
         y = self.mass_cdf(r) if cumulative else self.mass_pdf(r)

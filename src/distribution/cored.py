@@ -26,35 +26,35 @@ class Cored(Distribution):
 
     Parameters:
         rc: Core radius (scale radius)
-        M_total: Total halo mass (Mtot)
+        M_total: Total halo mass (total_mass)
         r_max_factor: Maximum radius as multiple of rc (default 85.0, maps to c parameter)
         particle_type: Particle type ('dm' or 'baryon')
     """
 
     def __init__(
         self,
-        Rs: Quantity['length'] | None = None,
-        Rvir: Quantity['length'] | None = None,
+        r_s: Quantity['length'] | None = None,
+        r_vir: Quantity['length'] | None = None,
         rc: Quantity['length'] | None = None,
         r_max_factor: Quantity['length'] | None = None,
         c: float | None = 1,
         truncate: bool = False,
         **kwargs: Any,
     ):
-        # Rs: core radius rc
+        # r_s: core radius rc
         # c: cutoff parameter (r_max = c × rc)
-        # Mtot: total halo mass
+        # total_mass: total halo mass
         # rho_s: central density ρ₀ (normalized from M_total)
 
         if rc is not None:
-            Rs = rc
+            r_s = rc
         if r_max_factor is not None:
-            Rvir = r_max_factor
-        super().__init__(Rs=Rs, Rvir=Rvir, c=c, truncate=truncate, **kwargs)
+            r_vir = r_max_factor
+        super().__init__(r_s=r_s, r_vir=r_vir, c=c, truncate=truncate, **kwargs)
         self.title = 'Cored'
 
         # Physical parameters
-        self.rc = self.Rs  # Core radius
+        self.rc = self.r_s  # Core radius
         self.rho_0 = self.rho_s  # Central density ρ₀
 
     @staticmethod
@@ -62,8 +62,8 @@ class Cored(Distribution):
     def calculate_rho(
         r: FloatOrArray,
         rho_s: float = 1,
-        Rs: float = 1,
-        Rvir: float = 1,
+        r_s: float = 1,
+        r_vir: float = 1,
         truncate: bool = False,
         truncate_power: int = 4,
     ) -> FloatOrArray:
@@ -74,19 +74,19 @@ class Cored(Distribution):
         Parameters:
             r: Radius
             rho_s: Central density ρ₀
-            Rs: Core radius rc
-            Rvir: Not used
+            r_s: Core radius rc
+            r_vir: Not used
 
         Returns:
             Density at radius r
 
         Note:
-            Parameter names (rho_s, Rs) follow Distribution class convention.
+            Parameter names (rho_s, r_s) follow Distribution class convention.
             For Cored: rho_s represents ρ₀ (actual density at r=0).
         """
-        rho = rho_s / (1 + (r / Rs) ** 2) ** 3
+        rho = rho_s / (1 + (r / r_s) ** 2) ** 3
         if truncate:
-            return rho / (1 + (r / Rvir) ** truncate_power)
+            return rho / (1 + (r / r_vir) ** truncate_power)
         return rho
 
     def to_agama_potential(
@@ -100,16 +100,16 @@ class Cored(Distribution):
         """Create a Plummer distribution from a predefined list of examples matching real galaxies."""
         if name == 'Draco':
             return cls(
-                Rs=Quantity(1.75e2, 'pc'),  # arXiv:2407.07769
-                Mtot=Quantity(5.07e5, 'Msun'),  # arXiv:2407.07769
+                r_s=Quantity(1.75e2, 'pc'),  # arXiv:2407.07769
+                total_mass=Quantity(5.07e5, 'Msun'),  # arXiv:2407.07769
                 name=name,
                 **kwargs,
             )
         elif name == 'default':
             return cls(
-                Rs=Quantity(23, 'kpc'),
+                r_s=Quantity(23, 'kpc'),
                 rho_s=Quantity(3.52e07, 'Msun/kpc**3'),
-                Rvir=Quantity(85, 'kpc'),
+                r_vir=Quantity(85, 'kpc'),
                 c=None,
                 name=name,
                 **kwargs,

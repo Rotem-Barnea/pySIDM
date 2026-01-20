@@ -21,15 +21,15 @@ class Hernquist(Distribution):
 
     def __init__(
         self,
-        Mtot: Quantity['mass'] | None = None,
+        total_mass: Quantity['mass'] | None = None,
         mass_stellar: Quantity['mass'] | None = None,
         c: float | None = 1,
         truncate: bool = False,
         **kwargs: Any,
     ) -> None:
-        if mass_stellar is not None and Mtot is None:
-            Mtot = mass_stellar
-        super().__init__(Mtot=Mtot, c=c, truncate=truncate, **kwargs)
+        if mass_stellar is not None and total_mass is None:
+            total_mass = mass_stellar
+        super().__init__(total_mass=total_mass, c=c, truncate=truncate, **kwargs)
         self.title = 'Hernquist'
 
     @staticmethod
@@ -37,8 +37,8 @@ class Hernquist(Distribution):
     def calculate_rho(
         r: FloatOrArray,
         rho_s: float = 1,
-        Rs: float = 1,
-        Rvir: float = 1,
+        r_s: float = 1,
+        r_vir: float = 1,
         truncate: bool = False,
         truncate_power: int = 4,
     ) -> FloatOrArray:
@@ -49,17 +49,17 @@ class Hernquist(Distribution):
         Parameters:
             r: The radius at which to calculate the density.
             rho_s: The scale density.
-            Rs: The scale radius.
-            Rvir: The virial radius.
+            r_s: The scale radius.
+            r_vir: The virial radius.
             truncate: Whether to truncate the density at the virial radius.
             truncate_power: The power law used for truncation.
 
         Returns:
             The density at the given radius.
         """
-        rho = rho_s / ((r / Rs) * (1 + (r / Rs)) ** 3)
+        rho = rho_s / ((r / r_s) * (1 + (r / r_s)) ** 3)
         if truncate:
-            return rho / (1 + (r / Rvir) ** truncate_power)
+            return rho / (1 + (r / r_vir) ** truncate_power)
         return rho
 
     def to_agama_potential(
@@ -79,14 +79,14 @@ class Hernquist(Distribution):
         if name == 'Sague-1':
             return cls(
                 R_half_light=Quantity(30, 'pc'),  # doi:10.1111/j.1365-2966.2009.15287.x
-                Mtot=Quantity(1e3, 'Msun'),  # arXiv:0809.2781
+                total_mass=Quantity(1e3, 'Msun'),  # arXiv:0809.2781
                 name=name,
                 **kwargs,
             )
         elif name == 'Daneng2024:DM11+baryon':
             return cls(
-                Mtot=Quantity(1e11, 'Msun') * 0.01,
-                Rs=Quantity(9.1, 'kpc') * 0.0844,
+                total_mass=Quantity(1e11, 'Msun') * 0.01,
+                r_s=Quantity(9.1, 'kpc') * 0.0844,
                 name=name,
                 **kwargs,
             )

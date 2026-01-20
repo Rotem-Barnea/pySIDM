@@ -229,8 +229,8 @@ def fast_spherical_rho_integrate(
     r: NDArray[np.float64],
     rho_fn: Callable[..., NDArray[np.float64]],
     rho_s: float = 1,
-    Rs: float = 1,
-    Rvir: float = 1,
+    r_s: float = 1,
+    r_vir: float = 1,
     start: float = 0,
     num_steps: int = 10000,
 ) -> NDArray[np.float64]:
@@ -240,8 +240,8 @@ def fast_spherical_rho_integrate(
         r: The radius points at which to calculate the density.
         rho_fn: The density function to integrate. must be njit compliant.
         rho_s: The scale density.
-        Rs: The scale radius.
-        Rvir: The virial radius.
+        r_s: The scale radius.
+        r_vir: The virial radius.
         start: The starting radius for the integration.
         num_steps: The number of radius steps for the integration (from start to `r`).
 
@@ -254,7 +254,7 @@ def fast_spherical_rho_integrate(
         x = np.empty_like(x_grid, dtype=np.float64)
         x[:] = x_grid
         J = 4 * np.pi * x**2
-        ys = rho_fn(x, rho_s=rho_s, Rs=Rs, Rvir=Rvir)
+        ys = rho_fn(x, rho_s=rho_s, r_s=r_s, r_vir=r_vir)
         integral[i] = np.trapezoid(y=ys * J, x=x)
     return integral
 

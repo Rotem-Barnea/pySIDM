@@ -49,8 +49,8 @@ class Lattice:
     ) -> Self:
         """Construct a lattice to match the extent of a density object."""
         return cls(
-            start=distribution.Rmin.value if overide_start else start,
-            end=distribution.Rmax.value,
+            start=distribution.r_min.value if overide_start else start,
+            end=distribution.r_max.value,
             n_posts=n_posts,
             **kwargs,
         )

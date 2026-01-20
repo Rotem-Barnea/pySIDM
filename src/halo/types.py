@@ -40,10 +40,10 @@ class OptimizeDtParams(TypedDict, total=False):
     """Parameter dictionary for optimizing the time step `dt`.
 
     Attributes:
-        max_factor (10): Maximum factor to divide the initial `dt` by.
+        max_factor (20): Maximum factor to divide the initial `dt` by.
         min_factor (1): Minimum factor to divide the initial `dt` by.
         factor_steps (30): Number of factors tested between 1 and `max_factor`.
-        factor_steps_down (None): Number of factors tested between 1 and `min_factor`. If `None` use the same value as `factor_steps`.
+        factor_steps_down (4): Number of factors tested between 1 and `min_factor`. If `None` use the same value as `factor_steps`.
         min_dt (None): Minimum allowed `dt` value.
         max_dt (None): Maximum allowed `dt` value.
         test_steps (100): Number of steps to take when testing `dt`.

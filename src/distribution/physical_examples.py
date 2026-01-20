@@ -22,8 +22,8 @@ distribution_options = Literal['dm_only', 'b_only', None]
 def by_name(
     name: physical_examples = 'default',
     suffix: distribution_options = None,
-    Rmin: Quantity['length'] = Quantity(1e-5, 'kpc'),
-    Rmax: Quantity['length'] = Quantity(300, 'kpc'),
+    r_min: Quantity['length'] = Quantity(1e-5, 'kpc'),
+    r_max: Quantity['length'] = Quantity(300, 'kpc'),
     dm_kwargs: dict[str, Any] = {},
     b_kwargs: dict[str, Any] = {},
     verbose: bool = False,
@@ -33,8 +33,8 @@ def by_name(
 
     Parameters:
         name: Name of the physical example.
-        Rmin: Minimum radius of the distribution. Set for all distributions to match internal grids.
-        Rmax: Maximum radius of the distribution. Set for all distributions to match internal grids.
+        r_min: Minimum radius of the distribution. Set for all distributions to match internal grids.
+        r_max: Maximum radius of the distribution. Set for all distributions to match internal grids.
         dm_kwargs: Keyword arguments for the dark matter distribution.
         b_kwargs: Keyword arguments for the baryonic distribution.
         verbose: Whether to print information about the distributions.
@@ -48,10 +48,10 @@ def by_name(
         print('running example', name)
     distributions: list[Distribution] = []
     if suffix == 'dm_only' or suffix is None:
-        distributions += [NFW.from_example(name, Rmin=Rmin, Rmax=Rmax, particle_type='dm', **dm_kwargs, **kwargs)]
+        distributions += [NFW.from_example(name, r_min=r_min, r_max=r_max, particle_type='dm', **dm_kwargs, **kwargs)]
     if suffix == 'b_only' or suffix is None:
         distributions += [
-            Hernquist.from_example(name, Rmin=Rmin, Rmax=Rmax, particle_type='baryon', **b_kwargs, **kwargs)
+            Hernquist.from_example(name, r_min=r_min, r_max=r_max, particle_type='baryon', **b_kwargs, **kwargs)
         ]
     Distribution.merge_distributions(distributions)
     return distributions
@@ -88,7 +88,7 @@ def calculate_J_integral(
 
     if rho0 is None and r0 is None and nfw_dist is not None and hernquist_dist is not None:
         rho0 = (hernquist_dist.rho_s / nfw_dist.rho_s).to('').value
-        r0 = (hernquist_dist.Rs / nfw_dist.Rs).to('').value
+        r0 = (hernquist_dist.r_s / nfw_dist.r_s).to('').value
 
     return scipy.integrate.quad(
         func=partial(integrand, rho0=rho0 or 0, r0=r0 or 1),
@@ -119,13 +119,13 @@ def describe_distributions(
 
     return report.Report(
         body_lines=[
-            report.Line(title='DM Rs', value=dm.Rs, unit=length_unit, format='.3f'),
-            report.Line(title='DM Mtot', value=dm.Mtot, unit=mass_unit, format='.2e'),
+            report.Line(title='DM r_s', value=dm.r_s, unit=length_unit, format='.3f'),
+            report.Line(title='DM total_mass', value=dm.total_mass, unit=mass_unit, format='.2e'),
             report.Line(title='DM rho0', value=dm.rho_s, unit=density_unit, format='.2e'),
-            report.Line(title='Baryon Rs', value=baryon.Rs, unit=length_unit, format='.3f'),
-            report.Line(title='Baryon Mtot', value=baryon.Mtot, unit=mass_unit, format='.2e'),
+            report.Line(title='Baryon r_s', value=baryon.r_s, unit=length_unit, format='.3f'),
+            report.Line(title='Baryon total_mass', value=baryon.total_mass, unit=mass_unit, format='.2e'),
             report.Line(title='Baryon rho0', value=baryon.rho_s, unit=density_unit, format='.2e'),
-            report.Line(title='Tilde Rs', value=baryon.Rs / dm.Rs, format='.2f'),
+            report.Line(title='Tilde r_s', value=baryon.r_s / dm.r_s, format='.2f'),
             report.Line(title='Tilde rho0', value=baryon.rho_s / dm.rho_s, format='.2f'),
         ],
         header=f'Description for {name}',

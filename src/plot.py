@@ -1160,7 +1160,7 @@ def animate_xy_presentation(snapshots: table.QTable, distribution: Distribution,
         x_grid, y_grid = np.meshgrid(np.diff(x_bins), np.diff(y_bins))
         r_2d = np.sqrt(x_grid**2 + y_grid**2)
         volume = x_grid * y_grid
-        volume[r_2d < distribution.Rvir] *= np.sqrt(distribution.Rvir**2 - r_2d[r_2d < distribution.Rvir] ** 2).value
+        volume[r_2d < distribution.r_vir] *= np.sqrt(distribution.r_vir**2 - r_2d[r_2d < distribution.r_vir] ** 2).value
         grid /= volume
         return cast(Quantity, grid), extent, x_bins, y_bins
 

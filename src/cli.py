@@ -58,11 +58,11 @@ def setup_distribution(i: int, **kwargs: Any) -> tuple[distribution.distribution
     else:
         n_particles = 0
     if 'scale_radius' in params:
-        params['Rs'] = params.pop('scale_radius')
+        params['r_s'] = params.pop('scale_radius')
     if 'virial_radius' in params:
-        params['Rvir'] = params.pop('virial_radius')
+        params['r_vir'] = params.pop('virial_radius')
     if 'total_mass' in params:
-        params['Mtot'] = params.pop('total_mass')
+        params['total_mass'] = params.pop('total_mass')
     if 'density_scale' in params:
         params['rho_s'] = params.pop('density_scale')
     if 'concentration' in params:
@@ -190,8 +190,8 @@ parser.add_argument('--dt', metavar='-dt', help='Time step for the simulation', 
 parser.add_argument(
     '--dt_unit',
     metavar='-dt_u',
-    help="Units for the time step provided, defaults to the first distribution's dynamical time. Must be acceptable by astropy.units or 'Tdyn'",
-    type=partial(parse_unit, whitelist=['Tdyn'], required_physical_type='time'),
+    help="Units for the time step provided, defaults to the first distribution's dynamical time. Must be acceptable by astropy.units or 'dynamical_time'",
+    type=partial(parse_unit, whitelist=['dynamical_time'], required_physical_type='time'),
 )
 parser.add_argument(
     '--cleanup_nullish_particles',
@@ -203,21 +203,21 @@ parser.add_argument(
 parser.add_argument(
     '--cleanup_particles_by_radius',
     metavar='-clean2',
-    help='Whether to remove particles from the halo based on their radius (r >= Rmax)',
+    help='Whether to remove particles from the halo based on their radius (r >= r_max)',
     default=True,
     type=bool,
 )
 parser.add_argument(
-    '--cleanup_Rmax',
+    '--cleanup_r_max',
     metavar='-clean2_value',
     help='Maximum radius of the halo, particles outside of this radius get killed off by `cleanup_particles_by_radius`',
     default=300,
     type=float,
 )
 parser.add_argument(
-    '--cleanup_Rmax_unit',
+    '--cleanup_r_max_unit',
     metavar='-clean2_value_u',
-    help='Units for `cleanup_Rmax`. Must be acceptable by astropy.units',
+    help='Units for `cleanup_r_max`. Must be acceptable by astropy.units',
     default='kpc',
     type=partial(parse_unit, required_physical_type='length'),
 )

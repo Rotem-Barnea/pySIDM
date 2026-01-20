@@ -94,11 +94,11 @@ class PhaseSpace:
             self.seed = rng.get_seed(self.generator)
 
         if self.distribution is not None:
-            self.Tdyn = self.distribution.Tdyn
+            self.dynamical_time = self.distribution.dynamical_time
         else:
-            self.Tdyn = self.calculate_Tdyn()
+            self.dynamical_time = self.calculate_dynamical_time()
         self.time: Quantity = t.copy()
-        self.dt: Quantity = (dt if isinstance(dt, Quantity) else self.Tdyn * dt).to(run_units.time)
+        self.dt: Quantity = (dt if isinstance(dt, Quantity) else self.dynamical_time * dt).to(run_units.time)
         self.save_every_t = save_every_t
         self.label = label or (self.distribution.label if self.distribution is not None else '')
         self.particle_type = particle_type or (self.distribution.particle_type if self.distribution is not None else '')
@@ -217,7 +217,7 @@ class PhaseSpace:
     @property
     def probability_grid(self) -> NDArray[np.float64]:
         """Probability grid of the distribution function (normalized mass grid)"""
-        return self.mass_grid / self.Mtot
+        return self.mass_grid / self.total_mass
 
     @property
     def shape(self) -> tuple[int, int]:
@@ -241,11 +241,11 @@ class PhaseSpace:
         self.f_grid = (grid / self.jacobian_rv).to(run_units.f_unit * run_units.mass)
 
     @property
-    def Mtot(self) -> Quantity['mass']:
+    def total_mass(self) -> Quantity['mass']:
         """Total mass of the distribution function"""
         return self.mass_grid.sum()
 
-    def calculate_Tdyn(self, mass_grid: Quantity | None = None) -> Unit:
+    def calculate_dynamical_time(self, mass_grid: Quantity | None = None) -> Unit:
         """Calculate the dynamical time of the distribution function. If `mass_grid` is not provided, the internal (current) grid will be used."""
         r_m = Quantity(scipy.stats.gmean(self.r_array.value), self.r_array.unit)
         M_m = Quantity(
@@ -260,7 +260,7 @@ class PhaseSpace:
         # $ T = sqrt((3 pi)/(G dot expval(rho))) = sqrt((3 pi)/(G dot (M(<r_m))/(4/3 pi r_m^3))) = 2 pi sqrt(r^3/(G dot M)) $
         # Should it have the factor of 2*pi at the start? the paper drops it.
         return def_unit(
-            'Tdyn',
+            'dynamical_time',
             2 * np.pi * np.sqrt(r_m**3 / (constants.G * M_m)).decompose(run_units.system),
             doc='phase space dynamic time',
         )
@@ -317,9 +317,9 @@ class PhaseSpace:
         return self.calculate_temperature(self.mass_grid)
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
-        """If the `unit` is `Tdyn` return `self.Tdyn`. Otherwise return `unit`."""
-        if unit == 'Tdyn':
-            return self.Tdyn
+        """If the `unit` is `dynamical_time` return `self.dynamical_time`. Otherwise return `unit`."""
+        if unit == 'dynamical_time' or unit == 'dynamical time':
+            return self.dynamical_time
         return unit
 
     @property
@@ -619,7 +619,7 @@ class PhaseSpace:
         cmap: str = 'jet',
         norm: colors.Normalize = colors.LogNorm(1, 1e7),
         title: str | None = 'Phase space distribution at time={time}',
-        title_time_unit: UnitLike | str = 'Tdyn',
+        title_time_unit: UnitLike | str = 'dynamical time',
         title_time_format: str = '.4f',
         cbar_label: str | None = None,
         cbar_label_autosuffix: bool = False,
@@ -816,7 +816,7 @@ class PhaseSpace:
         undersample: int | None = 1,
         color_palette: str | None = None,
         text_label_text: Literal['auto'] | str = 'auto',
-        text_label_unit: UnitLike | str = 'Tdyn',
+        text_label_unit: UnitLike | str = 'dynamical time',
         text_label_format: str = '.4f',
         save_kwargs: dict[str, Any] = {},
         **kwargs: Any,
@@ -863,7 +863,7 @@ class PhaseSpace:
         times: Quantity['time'] | None = None,
         undersample: int | None = None,
         color_palette: str | None = None,
-        text_label_unit: UnitLike | str = 'Tdyn',
+        text_label_unit: UnitLike | str = 'dynamical time',
         text_label_format: str = '.4f',
         lineplot_kwargs: dict[str, Any] = {},
         setup_kwargs: dict[str, Any] = {},
