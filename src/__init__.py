@@ -15,6 +15,7 @@ from . import (
     phase_space,
     distribution,
     agama_wrappers,
+    gravothermal_fluid,
     spatial_approximation,
 )
 
@@ -33,5 +34,6 @@ __all__ = [
     'phase_space',
     'distribution',
     'agama_wrappers',
+    'gravothermal_fluid',
     'spatial_approximation',
 ]
