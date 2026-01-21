@@ -353,9 +353,110 @@ class Distribution:
             run_units.density,
         )
 
+    def calculate_velocity_dispersion(self, r: Quantity['length']) -> Quantity['velocity']:
+        """Calculate the velocity dispersion at the provided radius, assuming isotropy. Only implemented for the AGAMA backend."""
+        if self.backend != 'agama':
+            raise NotImplementedError(
+                f'Velocity dispersion is only implemented for AGAMA backend, not for {self.backend}'
+            )
+        return self.agama_df.velocity_dispersion(r)
+
+    @property
+    def velocity_dispersion_grid(self) -> Quantity['specific energy']:
+        """Calculate the velocity dispersion at the `internal logarithmic grid` (memoized)."""
+        if self.backend != 'agama':
+            raise NotImplementedError(
+                f'Velocity dispersion calculation is only implemented for AGAMA backend, not for {self.backend}'
+            )
+        if 'velocity_dispersion_grid' not in self.memoization:
+            self.memoization['velocity_dispersion_grid'] = self.calculate_velocity_dispersion(self.geomspace_grid)
+        return self.memoization['velocity_dispersion_grid']
+
+    def calculate_temperature(self, r: Quantity['length']) -> Quantity['specific energy']:
+        """Calculate the temeprature at the provided radius, assuming isotropy. Only implemented for the AGAMA backend."""
+        if self.backend != 'agama':
+            raise NotImplementedError(
+                f'Temperature calculation is only implemented for AGAMA backend, not for {self.backend}'
+            )
+        return cast(Quantity, 3 * self.calculate_velocity_dispersion(r) ** 2)
+
+    @property
+    def temperature_grid(self) -> Quantity['specific energy']:
+        """Calculate the temperature at the `internal logarithmic grid` (memoized)."""
+        if self.backend != 'agama':
+            raise NotImplementedError(
+                f'Temperature calculation is only implemented for AGAMA backend, not for {self.backend}'
+            )
+        if 'temperature_grid' not in self.memoization:
+            self.memoization['temperature_grid'] = self.calculate_temperature(self.geomspace_grid)
+        return self.memoization['temperature_grid']
+
+    def calculate_pressure(self, r: Quantity['length']) -> Quantity['pressure']:
+        """Calculate the pressure at the provided radius, assuming isotropy. Only implemented for the AGAMA backend."""
+        if self.backend != 'agama':
+            raise NotImplementedError(
+                f'Pressure calculation is only implemented for AGAMA backend, not for {self.backend}'
+            )
+        return cast(Quantity, self.calculate_rho(r) * self.calculate_velocity_dispersion(r) ** 2)
+
+    @property
+    def pressure_grid(self) -> Quantity['pressure']:
+        """Calculate the pressure at the `internal logarithmic grid` (memoized)."""
+        if self.backend != 'agama':
+            raise NotImplementedError(
+                f'Pressure calculation is only implemented for AGAMA backend, not for {self.backend}'
+            )
+        if 'pressure_grid' not in self.memoization:
+            self.memoization['pressure_grid'] = self.calculate_pressure(self.geomspace_grid)
+        return self.memoization['pressure_grid']
+
+    def calculate_kinetic_energy(self, r: Quantity['length']) -> Quantity['specific energy']:
+        """Calculate the kinetic energy at the provided radius, assuming isotropy. Only implemented for the AGAMA backend."""
+        if self.backend != 'agama':
+            raise NotImplementedError(
+                f'Kinetic energy calculation is only implemented for AGAMA backend, not for {self.backend}'
+            )
+        return cast(Quantity, 3 / 2 * self.calculate_velocity_dispersion(r) ** 2)
+
+    @property
+    def kinetic_energy_grid(self) -> Quantity['specific energy']:
+        """Calculate the kinetic energy at the `internal logarithmic grid` (memoized)."""
+        if self.backend != 'agama':
+            raise NotImplementedError(
+                f'Kinetic energy calculation is only implemented for AGAMA backend, not for {self.backend}'
+            )
+        if 'kinetic_energy_grid' not in self.memoization:
+            self.memoization['kinetic_energy_grid'] = self.calculate_kinetic_energy(self.geomspace_grid)
+        return self.memoization['kinetic_energy_grid']
+
+    def calculate_entropy(self, r: Quantity['length']) -> Quantity:
+        """Calculate the entropy at the provided radius, assuming isotropy. Only implemented for the AGAMA backend."""
+        if self.backend != 'agama':
+            raise NotImplementedError(
+                f'Entropy calculation is only implemented for AGAMA backend, not for {self.backend}'
+            )
+        return Quantity(
+            np.log(
+                (self.calculate_velocity_dispersion(r) ** 3 / self.calculate_temperature(r))
+                .decompose(run_units.system)
+                .value
+            ),
+        )
+
+    @property
+    def entropy_grid(self) -> Quantity:
+        """Calculate the entropy at the `internal logarithmic grid` (memoized)."""
+        if self.backend != 'agama':
+            raise NotImplementedError(
+                f'Entropy calculation is only implemented for AGAMA backend, not for {self.backend}'
+            )
+        if 'entropy_grid' not in self.memoization:
+            self.memoization['entropy_grid'] = self.calculate_entropy(self.geomspace_grid)
+        return self.memoization['entropy_grid']
+
     @property
     def rho_grid(self) -> Quantity['mass density']:
-        """Calculate the density (`rho`) at the  `internal logarithmic grid` (memoized)."""
+        """Calculate the density (`rho`) at the `internal logarithmic grid` (memoized)."""
         if 'rho_grid' not in self.memoization:
             self.memoization['rho_grid'] = self.rho(self.geomspace_grid)
         return self.memoization['rho_grid']

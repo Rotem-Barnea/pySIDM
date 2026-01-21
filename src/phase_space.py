@@ -306,6 +306,28 @@ class PhaseSpace:
         temperature[den != 0] = num[den != 0] / den[den != 0]
         return temperature.to(run_units.specific_energy)
 
+    def calculate_velocity_dispersion(self, mass_grid: Quantity['mass']) -> Quantity['velocity']:
+        """Calculate the velocity dispersion as a function of radius for the provided mass grid"""
+        return np.sqrt(1 / 3 * self.calculate_temperature(mass_grid))
+
+    def calculate_pressure(self, mass_grid: Quantity['mass']) -> Quantity['pressure']:
+        """Calculate the pressure as a function of radius for the provided mass grid"""
+        return self.calculate_rho(mass_grid) * self.calculate_velocity_dispersion(mass_grid) ** 2
+
+    def calculate_kinetic_energy(self, mass_grid: Quantity['mass']) -> Quantity['specific energy']:
+        """Calculate the kinetic energy as a function of radius for the provided mass grid"""
+        return 3 / 2 * self.calculate_velocity_dispersion(mass_grid) ** 2
+
+    def calculate_entropy(self, mass_grid: Quantity['mass']) -> Quantity:
+        """Calculate the entropy as a function of radius for the provided mass grid"""
+        return Quantity(
+            np.log(
+                (self.calculate_velocity_dispersion(mass_grid) ** 3 / self.calculate_rho(mass_grid))
+                .decompose(run_units.system)
+                .value
+            )
+        )
+
     @property
     def rho(self) -> Quantity['mass density']:
         """Density as a function of radius (without the Jacobian)"""
@@ -315,6 +337,26 @@ class PhaseSpace:
     def temperature(self) -> Quantity['specific energy']:
         """Temperature as a function of radius"""
         return self.calculate_temperature(self.mass_grid)
+
+    @property
+    def velocity_dispersion(self) -> Quantity['velocity']:
+        """Velocity dispersion as a function of radius"""
+        return self.calculate_velocity_dispersion(self.mass_grid)
+
+    @property
+    def pressure(self) -> Quantity['pressure']:
+        """Pressure as a function of radius"""
+        return self.calculate_pressure(self.mass_grid)
+
+    @property
+    def kinetic_energy(self) -> Quantity['specific energy']:
+        """Kinetic energy as a function of radius"""
+        return self.calculate_kinetic_energy_dispersion(self.mass_grid)
+
+    @property
+    def entropy(self) -> Quantity:
+        """Entropy as a function of radius"""
+        return self.calculate_entropy(self.mass_grid)
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
         """If the `unit` is `dynamical_time` return `self.dynamical_time`. Otherwise return `unit`."""

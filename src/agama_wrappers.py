@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 
-from src import utils
+from src import utils, run_units
 from src.types import QuantityOrArray
 
 T = TypeVar('T')
@@ -152,13 +152,17 @@ class DistributionFunction:
         """Calculate the total mass."""
         return Quantity(self.df.totalMass(), mass())
 
-    def to_model(self) -> 'GalaxyModel':
+    @property
+    def model(self) -> 'GalaxyModel':
         """Convert the distribution function to an agama model."""
         return GalaxyModel(potential=self.potential, df=self.df)
 
     def sample(self, n: int | float) -> tuple[Quantity['length'], Quantity['velocity'], Quantity['mass']]:
         """Sample particles from the model."""
-        return self.to_model().sample(n=n)
+        return self.model.sample(n=n)
+
+    def velocity_dispersion(self, r: Quantity['length']) -> Quantity['velocity']:
+        return self.model.velocity_dispersion(r=r)
 
 
 class GalaxyModel:
@@ -187,3 +191,15 @@ class GalaxyModel:
         vr = cast(Quantity, (x * vx + y * vy + z * vz) / r)
         v = cast(Quantity, np.vstack([*utils.split_2d(np.sqrt(vx**2 + vy**2 + vz**2 - vr**2), acos=False), vr]).T)
         return r, v, m
+
+    @vectorize
+    def moments(self, r: Quantity['length'], **kwargs: Any) -> Any:
+        """General function for calculating the moments of the distribution function."""
+        return self.model.moments(to_3d(r.to(length())), **kwargs)
+
+    @vectorize
+    def velocity_dispersion(self, r: Quantity['length']) -> Quantity['velocity']:
+        """Calculate the velocity dispersion of the distribution function assuming isotropy."""
+        return Quantity(np.sqrt(np.mean(self.model.moments(to_3d(r), dens=False)[..., :3], axis=1)), velocity()).to(
+            run_units.velocity
+        )
