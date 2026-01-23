@@ -314,8 +314,8 @@ class PhaseSpace:
         """Calculate the pressure as a function of radius for the provided mass grid"""
         return self.calculate_rho(mass_grid) * self.calculate_velocity_dispersion(mass_grid) ** 2
 
-    def calculate_kinetic_energy(self, mass_grid: Quantity['mass']) -> Quantity['specific energy']:
-        """Calculate the kinetic energy as a function of radius for the provided mass grid"""
+    def calculate_internal_energy(self, mass_grid: Quantity['mass']) -> Quantity['specific energy']:
+        """Calculate the internal energy as a function of radius for the provided mass grid"""
         return 3 / 2 * self.calculate_velocity_dispersion(mass_grid) ** 2
 
     def calculate_entropy(self, mass_grid: Quantity['mass']) -> Quantity:
@@ -349,9 +349,9 @@ class PhaseSpace:
         return self.calculate_pressure(self.mass_grid)
 
     @property
-    def kinetic_energy(self) -> Quantity['specific energy']:
-        """Kinetic energy as a function of radius"""
-        return self.calculate_kinetic_energy_dispersion(self.mass_grid)
+    def internal_energy(self) -> Quantity['specific energy']:
+        """Internal energy as a function of radius"""
+        return self.calculate_internal_energy_dispersion(self.mass_grid)
 
     @property
     def entropy(self) -> Quantity:

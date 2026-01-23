@@ -410,24 +410,24 @@ class Distribution:
             self.memoization['pressure_grid'] = self.calculate_pressure(self.geomspace_grid)
         return self.memoization['pressure_grid']
 
-    def calculate_kinetic_energy(self, r: Quantity['length']) -> Quantity['specific energy']:
-        """Calculate the kinetic energy at the provided radius, assuming isotropy. Only implemented for the AGAMA backend."""
+    def calculate_internal_energy(self, r: Quantity['length']) -> Quantity['specific energy']:
+        """Calculate the internal energy at the provided radius, assuming isotropy. Only implemented for the AGAMA backend."""
         if self.backend != 'agama':
             raise NotImplementedError(
-                f'Kinetic energy calculation is only implemented for AGAMA backend, not for {self.backend}'
+                f'Internal energy calculation is only implemented for AGAMA backend, not for {self.backend}'
             )
         return cast(Quantity, 3 / 2 * self.calculate_velocity_dispersion(r) ** 2)
 
     @property
-    def kinetic_energy_grid(self) -> Quantity['specific energy']:
-        """Calculate the kinetic energy at the `internal logarithmic grid` (memoized)."""
+    def internal_energy_grid(self) -> Quantity['specific energy']:
+        """Calculate the internal energy at the `internal logarithmic grid` (memoized)."""
         if self.backend != 'agama':
             raise NotImplementedError(
-                f'Kinetic energy calculation is only implemented for AGAMA backend, not for {self.backend}'
+                f'Internal energy calculation is only implemented for AGAMA backend, not for {self.backend}'
             )
-        if 'kinetic_energy_grid' not in self.memoization:
-            self.memoization['kinetic_energy_grid'] = self.calculate_kinetic_energy(self.geomspace_grid)
-        return self.memoization['kinetic_energy_grid']
+        if 'internal_energy_grid' not in self.memoization:
+            self.memoization['internal_energy_grid'] = self.calculate_internal_energy(self.geomspace_grid)
+        return self.memoization['internal_energy_grid']
 
     def calculate_entropy(self, r: Quantity['length']) -> Quantity:
         """Calculate the entropy at the provided radius, assuming isotropy. Only implemented for the AGAMA backend."""

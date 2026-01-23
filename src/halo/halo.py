@@ -718,8 +718,8 @@ class Halo:
         return Quantity(self._particles['m'], run_units.mass)
 
     @property
-    def kinetic_energy(self) -> Quantity['energy']:
-        """The kinetic energy of the particle."""
+    def internal_energy(self) -> Quantity['energy']:
+        """The internal energy of the particle."""
         return 0.5 * self.m * self.v_norm**2
 
     @property
@@ -736,7 +736,7 @@ class Halo:
     @property
     def E(self) -> Quantity['specific energy']:
         """The energy of the particle."""
-        return (self.potential - self.kinetic_energy).to(run_units.energy)
+        return (self.potential - self.internal_energy).to(run_units.energy)
 
     @property
     def local_density(self) -> Quantity['mass density']:
