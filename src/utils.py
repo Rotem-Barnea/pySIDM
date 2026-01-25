@@ -15,7 +15,7 @@ from astropy.units.typing import UnitLike
 from src import run_units
 
 from . import rng
-from .types import FloatOrArray, QuantityOrArray
+from .types import FloatOrArray, QuantityLike, QuantityOrArray
 
 
 def random_angle(
@@ -643,3 +643,85 @@ def strip_kwargs_units(**kwargs: Any) -> dict[str, Any]:
     for key, value in kwargs.items():
         out_kwargs[key] = value.decompose(run_units.system).value if isinstance(value, Quantity) else value
     return kwargs
+
+
+def differentiate_savgol(
+    x: QuantityLike,
+    y: QuantityLike,
+    window_length: int = 11,
+    polyorder: int = 3,
+    deriv: int = 1,
+    **kwargs: Any,
+) -> QuantityLike:
+    """Calculate the derivative using a savgol filter to increase stability.
+
+    Taking the derivative using a savgol filter on argument logspace (`dy/dln(x)`), and then recovering the desired `dy/dx` using the chain rule.
+    The edges where the filter is unstable are replaced  with the first and last (`window_length//2`) points with the closest physically 'safe' calculated derivative.
+
+    Parameters:
+        x: The x values.
+        y: The y values.
+        window_length: The length of the filter window. Should be odd.
+        polyorder: The order of the polynomial used to fit the data.
+        deriv: The order of the derivative to compute.
+        **kwargs: Additional keyword arguments to pass to `scipy.signal.savgol_filter`.
+
+    Returns:
+        dy/dx
+    """
+    if isinstance(x, Quantity) and isinstance(y, Quantity):
+        out_unit = cast(Unit, y.unit) / cast(Unit, x.unit)
+    else:
+        out_unit = None
+
+    derivative = scipy.signal.savgol_filter(
+        np.array(y),
+        window_length=window_length,
+        polyorder=polyorder,
+        deriv=deriv,
+        delta=np.mean(np.diff(np.log(np.array(x)))),
+        **kwargs,
+    ) / np.array(x)
+
+    half_window = window_length // 2
+    derivative[:half_window] = derivative[half_window]
+    derivative[-half_window:] = derivative[-half_window]
+
+    if isinstance(x, Quantity) and isinstance(y, Quantity):
+        return Quantity(derivative, out_unit)
+    return derivative
+
+
+def to_center(
+    edges: QuantityLike, method: Literal['algebric', 'geometric'] = 'geometric', guard_geometric: bool = True
+) -> QuantityLike:
+    """Calculates the center of each grid cell"""
+    assert method in ['algebric', 'geometric'], ValueError(f"Invalid method '{method}'")
+    if method == 'geometric':
+        centers = np.sqrt(np.abs(edges[:-1] * edges[1:])) if guard_geometric else np.sqrt(edges[:-1] * edges[1:])
+    elif method == 'algebric':
+        centers = (edges[:-1] + edges[1:]) / 2
+    return cast(type(edges), centers)
+
+
+def to_edge(center_value: QuantityLike) -> QuantityLike:
+    """Interpolate the array to the shell edges from the center value"""
+    padded_center_value = np.pad(
+        center_value, (1, 1), mode='constant', constant_values=np.pad(center_value[[-1]], (1, 0))
+    )
+    return cast(type(center_value), (padded_center_value[:-1] + padded_center_value[1:]) / 2)
+
+
+def safe_inverse(denominator: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
+    """Safely calcualtes `1/denominator`, filling cells with `denominator=0` with `fill_value`"""
+    return np.divide(1, denominator, out=np.full_like(denominator, fill_value), where=denominator != 0)
+
+
+def safe_sqrt(x: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
+    """Safely calcualtes `np.sqrt(x)`, filling cells with `x<0` with `fill_value`"""
+    return np.sqrt(x, out=np.full_like(x, fill_value), where=x >= 0)
+
+
+def safe_log(x: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
+    """Safely calcualtes `np.safe_log(x)`, filling cells with `x<=0` with `fill_value`"""
+    return np.log(x, out=np.full_like(x, fill_value), where=x > 0)

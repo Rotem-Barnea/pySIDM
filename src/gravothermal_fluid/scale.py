@@ -1,0 +1,139 @@
+"""Normalization scheme for the gravitational fluid"""
+
+from typing import Any, Literal, cast, get_args, overload
+
+import numpy as np
+from astropy import constants
+from numpy.typing import NDArray
+from astropy.units import Unit, Quantity
+from astropy.units.typing import UnitLike
+
+from src import run_units
+from src.types import QuantityOrArray
+from src.distribution.distribution import Distribution
+
+ScaleType = Literal[
+    'length',
+    'volume',
+    'density',
+    'mass',
+    'velocity',
+    'time',
+    'cross_section',
+    'luminosity',
+    'energy',
+    'pressure',
+]
+
+
+class Scale:
+    """Scale management class for the physical properties in the gravitational fluid ODEs"""
+
+    def __init__(
+        self,
+        r_s: Quantity['length'],
+        rho_s: Quantity['mass density'],
+        sigma: Quantity[run_units.cross_section],
+        a: float = 4 / np.sqrt(np.pi),
+    ):
+        """Initialize a Scale object.
+
+        Parameters:
+            r_s: Scale length
+            rho_s: Scale density
+            sigma: Scale cross-section
+            a: Scale factor
+        """
+        self.r_s = r_s.decompose(run_units.system)
+        self.rho_s = rho_s.decompose(run_units.system)
+        self.sigma = sigma.decompose(run_units.system)
+        self.a = a
+
+    @classmethod
+    def from_distribution(cls, distribution: Distribution, **kwargs: Any):
+        """Create a Scale instance from a Distribution object"""
+        return cls(r_s=distribution.r_s, rho_s=distribution.rho_s, **kwargs)
+
+    @property
+    def scales(self) -> list[Quantity]:
+        """A list of all supported scales"""
+        return [getattr(self, key) for key in get_args(ScaleType)]
+
+    @overload
+    def __call__(self, x: Quantity, unit: UnitLike | ScaleType | None = None) -> NDArray[np.float64]: ...
+
+    @overload
+    def __call__(self, x: NDArray[np.float64], unit: UnitLike | ScaleType) -> Quantity: ...
+
+    @overload
+    def __call__(self, x: NDArray[np.float64], unit: None = None) -> NDArray[np.float64]: ...
+
+    def __call__(self, x: QuantityOrArray, unit: UnitLike | ScaleType | None = None) -> QuantityOrArray:
+        """Transform a quantity to a dimensionless array, or a dimensionless array to the dimensionfull quantity"""
+        if isinstance(x, Quantity):
+            for scale in self.scales:
+                if cast(Unit, scale.unit).is_equivalent(x.unit):
+                    return (x.to(scale.unit) / scale).value
+            raise IOError(
+                f"Input doesn't match a known any scale units: {x} of physical type {cast(Unit, x.unit).physical_type}"
+            )
+        elif str(unit) in get_args(ScaleType):
+            return x * getattr(self, str(unit))
+        elif unit is not None:
+            for scale in self.scales:
+                if cast(Unit, scale.unit).is_equivalent(unit):
+                    return (x * scale).to(unit)
+            raise IOError(
+                f"Input unit doesn't match a known scale: {unit} of physical type {Unit(str(unit)).physical_type}"
+            )
+        raise IOError("`x` isn't a Quantity and `unit` is missing, unclear instructions")
+
+    @property
+    def length(self) -> Quantity['length']:
+        """Length scale"""
+        return self.r_s
+
+    @property
+    def volume(self) -> Quantity['length']:
+        """Volume scale"""
+        return cast(Quantity, self.length**3)
+
+    @property
+    def density(self) -> Quantity['mass density']:
+        """Density scale"""
+        return self.rho_s
+
+    @property
+    def mass(self) -> Quantity['mass']:
+        """Mass scale"""
+        return (4 * np.pi * self.volume * self.density).decompose(run_units.system)
+
+    @property
+    def velocity(self) -> Quantity['velocity']:
+        """Velocity scale"""
+        return np.sqrt(constants.G * self.mass / self.length).decompose(run_units.system)
+
+    @property
+    def time(self) -> Quantity['time']:
+        """Time scale"""
+        return 1 / (self.a * self.sigma * self.velocity * self.density).decompose(run_units.system)
+
+    @property
+    def cross_section(self) -> Quantity[run_units.cross_section]:
+        """Cross section scale"""
+        return 1 / (self.length * self.density).decompose(run_units.system)
+
+    @property
+    def luminosity(self) -> Quantity['radiant flux']:
+        """Luminosity scale"""
+        return (constants.G * self.mass**2 / (self.length * self.time)).decompose(run_units.system)
+
+    @property
+    def energy(self) -> Quantity['specific energy']:
+        """Energy scale"""
+        return cast(Quantity, self.velocity**2).decompose(run_units.system)
+
+    @property
+    def pressure(self) -> Quantity['specific energy']:
+        """Energy scale"""
+        return cast(Quantity, self.density * self.velocity**2).decompose(run_units.system)

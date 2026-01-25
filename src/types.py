@@ -11,6 +11,7 @@ from astropy.units.typing import UnitLike
 
 FloatOrArray = TypeVar('FloatOrArray', float, NDArray[np.float64])
 QuantityOrArray = Quantity | NDArray[np.float64] | pd.Series
+QuantityLike = TypeVar('QuantityLike', Quantity, NDArray[np.float64])
 ParticleType = Literal['dm', 'baryon']
 
 
