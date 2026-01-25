@@ -146,9 +146,9 @@ class Distribution:
         if rho_s is not None:
             self.rho_s: Quantity['mass density'] = rho_s.to(run_units.density)
         else:
-            self.rho_s = self.calculate_rho_scale()
+            self.rho_s = self.calculate_density_scale()
         if total_mass is None:
-            self.total_mass = self.calculate_M_tot()
+            self.total_mass = self.calculate_total_mass()
 
         if self.backend == 'agama':
             self.truncate_power = agama_truncation_power
@@ -496,7 +496,7 @@ class Distribution:
             ext='const',
         )
 
-    def calculate_M_tot(self) -> Quantity['mass']:
+    def calculate_total_mass(self) -> Quantity['mass']:
         """Calculate the total mass, i.e. the integral over `[0, r_max]`."""
         return cast(Quantity, self.spherical_density_integrate(self.r_max, True)[0])
 
