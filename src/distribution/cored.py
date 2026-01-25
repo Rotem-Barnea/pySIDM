@@ -16,7 +16,7 @@ from src.types import FloatOrArray
 from .distribution import Distribution
 
 if TYPE_CHECKING:
-    from .physical_examples import physical_examples
+    from .bundle import physical_examples
 
 
 class Cored(Distribution):

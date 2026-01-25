@@ -1,5 +1,5 @@
 """Particle distribution modules"""
 
-from . import io, nfw, cored, example_db, distribution, physical_examples
+from . import io, nfw, cored, bundle, example_db, distribution
 
-__all__ = ['io', 'distribution', 'nfw', 'example_db', 'cored', 'physical_examples']
+__all__ = ['io', 'nfw', 'cored', 'bundle', 'example_db', 'distribution']

@@ -12,7 +12,7 @@ import pandas as pd
 from astropy.units import Quantity
 
 if TYPE_CHECKING:
-    from .physical_examples import physical_examples
+    from .bundle import physical_examples
 
 
 class ExampleParameters(TypedDict):
