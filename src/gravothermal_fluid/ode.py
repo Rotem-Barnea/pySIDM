@@ -1,6 +1,5 @@
 """Solver management class for the gravothermal fluid ODE equations"""
 
-from copy import deepcopy
 from typing import Any, cast
 from functools import cached_property
 
