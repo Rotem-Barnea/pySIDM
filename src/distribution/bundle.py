@@ -146,16 +146,40 @@ class HaloBaryonBundle(Bundle):
         self,
         distributions: list[Distribution] | None = None,
         dm_distribution: Distribution | None = None,
-        stellar_distribution: Distribution | None = None,
+        baryon_distribution: Distribution | None = None,
         **kwargs: Any,
     ):
         if distributions is None:
-            assert dm_distribution is not None and stellar_distribution is not None, (
+            assert dm_distribution is not None and baryon_distribution is not None, (
                 'DM and stellar distributions must be provided'
             )
-            distributions = [dm_distribution, stellar_distribution]
+            distributions = [dm_distribution, baryon_distribution]
         super().__init__(distributions=distributions, **kwargs)
         self.dm_distribution, self.baryon_distribution = self.distributions
+
+    @classmethod
+    def from_distributions(
+        cls,
+        r_min: Quantity['length'] = Quantity(1e-5, 'kpc'),
+        r_max: Quantity['length'] = Quantity(300, 'kpc'),
+        dm_kwargs: dict[str, Any] = {},
+        b_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> Self:
+        """Construct a bundle of a NFW dark matter halo and Hernquist baryonic matter on a consistent grid with merged potentials.
+
+        Parameters:
+            r_min: Minimum radius of the distribution. Set for all distributions to match internal grids.
+            r_max: Maximum radius of the distribution. Set for all distributions to match internal grids.
+            dm_kwargs: Keyword arguments for the dark matter distribution.
+            b_kwargs: Keyword arguments for the baryonic distribution.
+            **kwargs: Additional keyword arguments passed to both distributions.
+        """
+        return cls(
+            dm_distribution=NFW(r_min=r_min, r_max=r_max, particle_type='dm', **dm_kwargs, **kwargs),
+            baryon_distribution=Hernquist(r_min=r_min, r_max=r_max, particle_type='baryon', **b_kwargs, **kwargs),
+            merge=True,
+        )
 
     @property
     def name(self) -> str:
