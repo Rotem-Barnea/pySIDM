@@ -12,7 +12,7 @@ import pandas as pd
 from astropy.units import Quantity
 
 if TYPE_CHECKING:
-    from .bundle import physical_examples
+    from .bundle import PhysicalExample
 
 
 class ExampleParameters(TypedDict):
@@ -34,7 +34,7 @@ def load_db(path: str | Path | None = None):
 
 
 def get_db_parameters(
-    name: 'physical_examples',
+    name: 'PhysicalExample',
     on_unknown: Literal['error', 'warning', 'suppress'] = 'suppress',
     default: ExampleParameters | None = None,
     **kwargs: Any,

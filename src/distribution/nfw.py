@@ -16,7 +16,7 @@ from . import example_db
 from .distribution import Distribution
 
 if TYPE_CHECKING:
-    from .bundle import physical_examples
+    from .bundle import PhysicalExample
 
 
 class NFW(Distribution):
@@ -143,7 +143,7 @@ class NFW(Distribution):
     @classmethod
     def from_example(
         cls,
-        name: 'physical_examples' = 'default',
+        name: 'PhysicalExample' = 'default',
         c: float | Literal['Dutton14'] | None = None,
         **kwargs: Any,
     ) -> Self:

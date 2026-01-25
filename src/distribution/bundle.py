@@ -16,12 +16,10 @@ from src import plot, report, run_units
 
 from .nfw import NFW
 from .hernquist import Hernquist
-from .distribution import Distribution
+from .distribution import Distribution, PhysicalProperty
 
-physical_examples = Literal['Sague-1', 'Draco', 'Fornax dSph', 'default', 'Daneng2024:DM11+baryon']
-distribution_options = Literal['dm_only', 'b_only', None]
-
-DistributionGrids = Literal['density', 'velocity dispersion', 'temperature', 'pressure', 'internal energy']
+PhysicalExample = Literal['Sague-1', 'Draco', 'Fornax dSph', 'default', 'Daneng2024:DM11+baryon']
+BundleOption = Literal['dm_only', 'b_only', None]
 
 
 class Bundle:
@@ -35,8 +33,8 @@ class Bundle:
     @classmethod
     def by_name(
         cls,
-        name: physical_examples = 'default',
-        suffix: distribution_options = None,
+        name: PhysicalExample = 'default',
+        suffix: BundleOption = None,
         r_min: Quantity['length'] = Quantity(1e-5, 'kpc'),
         r_max: Quantity['length'] = Quantity(300, 'kpc'),
         dm_kwargs: dict[str, Any] = {},
@@ -79,19 +77,19 @@ class Bundle:
         return self.distributions[index]
 
     @staticmethod
-    def validate_input(name: str) -> tuple[physical_examples, distribution_options]:
+    def validate_input(name: str) -> tuple[PhysicalExample, BundleOption]:
         """Validate that the given name is a known physical example."""
         suffix = None
-        for option in filter(lambda x: x, get_args(distribution_options)):
+        for option in filter(lambda x: x, get_args(BundleOption)):
             if name.endswith(option):
                 name = regex.sub(rf'_{option}$', '', name)
                 suffix = option
-        assert name in get_args(physical_examples), f'Unknown physical example: {name}'
-        return cast(physical_examples, name), suffix
+        assert name in get_args(PhysicalExample), f'Unknown physical example: {name}'
+        return cast(PhysicalExample, name), suffix
 
     def plot(
         self,
-        method: DistributionGrids,
+        method: PhysicalProperty,
         x_unit: UnitLike | None | Literal['auto'] = 'auto',
         y_unit: UnitLike | None | Literal['auto'] = 'auto',
         xlabel: str | None | Literal['auto'] = 'auto',
@@ -127,7 +125,7 @@ class Bundle:
 
     def plot_with(
         self,
-        method: DistributionGrids,
+        method: PhysicalProperty,
         other: Self,
         labels: list[str] | None = None,
         lineplot_kwargs: list[dict[str, Any]] | None = None,
@@ -208,7 +206,7 @@ class HaloBaryonBundle(Bundle):
 
     def plot_pair(
         self,
-        method: DistributionGrids,
+        method: PhysicalProperty,
         dm_label: str = 'DM',
         baryon_label: str = 'Baryons',
         dm_lineplot_kwargs: dict[str, Any] = {},
@@ -225,7 +223,7 @@ class HaloBaryonBundle(Bundle):
 
     def plot_pair_with(
         self,
-        method: DistributionGrids,
+        method: PhysicalProperty,
         other: Bundle,
         other_labels: list[str] | None = None,
         other_lineplot_kwargs: list[dict[str, Any]] | None = None,

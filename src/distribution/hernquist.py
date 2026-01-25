@@ -13,7 +13,7 @@ from . import example_db
 from .distribution import Distribution
 
 if TYPE_CHECKING:
-    from .bundle import physical_examples
+    from .bundle import PhysicalExample
 
 
 class Hernquist(Distribution):
@@ -71,7 +71,7 @@ class Hernquist(Distribution):
     @classmethod
     def from_example(
         cls,
-        name: 'physical_examples' = 'default',
+        name: 'PhysicalExample' = 'default',
         on_unknown: Literal['error', 'warning', 'suppress'] = 'suppress',
         **kwargs: Any,
     ) -> Self:

@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 
 backends = Literal['python', 'agama']
 
+PhysicalProperty = Literal['density', 'velocity dispersion', 'temperature', 'pressure', 'internal energy']
+
 
 class Distribution:
     """General mass distribution profile."""

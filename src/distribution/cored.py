@@ -16,7 +16,7 @@ from src.types import FloatOrArray
 from .distribution import Distribution
 
 if TYPE_CHECKING:
-    from .bundle import physical_examples
+    from .bundle import PhysicalExample
 
 
 class Cored(Distribution):
@@ -96,7 +96,7 @@ class Cored(Distribution):
         return super().to_agama_potential(type=type, gamma=gamma, beta=beta, **kwargs)
 
     @classmethod
-    def from_example(cls, name: 'physical_examples' = 'default', **kwargs: Any) -> Self:
+    def from_example(cls, name: 'PhysicalExample' = 'default', **kwargs: Any) -> Self:
         """Create a Plummer distribution from a predefined list of examples matching real galaxies."""
         if name == 'Draco':
             return cls(
