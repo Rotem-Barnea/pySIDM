@@ -26,7 +26,7 @@ if __name__ == '__main__':
         halo = Halo.load(save_path)
     else:
         print('Starting new run')
-        distributions = distribution.bundle.Bundle.by_name(
+        distributions = distribution.bundle.Bundle.from_example(
             *distribution.bundle.Bundle.validate_input(os.environ.get('NAME', 'default')),
             verbose=True,
             backend='agama',

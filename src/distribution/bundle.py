@@ -31,7 +31,7 @@ class Bundle:
             Distribution.merge_distributions(self.distributions)
 
     @classmethod
-    def by_name(
+    def from_example(
         cls,
         name: PhysicalExample = 'default',
         suffix: BundleOption = None,
