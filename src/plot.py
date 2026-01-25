@@ -1096,8 +1096,8 @@ def phase_space_energy_lines(
     return fig, ax
 
 
-def animate_rho_presentation(snapshots: table.QTable, distribution: Distribution, save_path: str | Path) -> None:
-    """Animation of rho over time, made for a presentation keynote."""
+def animate_density_presentation(snapshots: table.QTable, distribution: Distribution, save_path: str | Path) -> None:
+    """Animation of the density over time, made for a presentation keynote."""
 
     def f(x: Any) -> tuple[Figure, Axes]:
         fig, ax = setup(
@@ -1112,7 +1112,7 @@ def animate_rho_presentation(snapshots: table.QTable, distribution: Distribution
             x_unit='kpc',
             y_unit='Msun/kpc^3',
         )
-        distribution.plot_rho(
+        distribution.plot_density(
             add_markers=False,
             label=r'initial $\rho$',
             lineplot_kwargs={'color': 'black', 'linestyle': '--'},

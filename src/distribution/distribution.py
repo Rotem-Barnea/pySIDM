@@ -167,7 +167,7 @@ class Distribution:
 
     def __call__(self, r: Quantity['length']) -> Quantity['mass density']:
         """Calculate `rho(r)`"""
-        return self.rho(r)
+        return self.density(r)
 
     def to_scale(self, x: Quantity['length']) -> Quantity['dimensionless']:
         """Scale the distance, i.e. `x/r_s`"""
@@ -310,7 +310,7 @@ class Distribution:
 
     @staticmethod
     @njit
-    def calculate_rho(
+    def calculate_density(
         r: FloatOrArray,
         rho_s: float = 1,
         r_s: float = 1,
@@ -335,13 +335,13 @@ class Distribution:
         """
         return r
 
-    def rho(self, r: Quantity['length']) -> Quantity['mass density']:
+    def density(self, r: Quantity['length']) -> Quantity['mass density']:
         """Calculate the density (`rho`) at a given radius."""
         if self.backend == 'agama':
             assert self.agama_potential is not None, 'Agama potential not initialized'
             return self.agama_potential.density(r)
         return Quantity(
-            self.calculate_rho(
+            self.calculate_density(
                 r=r.to(run_units.length).value,
                 rho_s=self.rho_s.decompose(run_units.system).value,
                 r_s=self.r_s.decompose(run_units.system).value,
@@ -392,7 +392,7 @@ class Distribution:
             raise NotImplementedError(
                 f'Pressure calculation is only implemented for AGAMA backend, not for {self.backend}'
             )
-        return cast(Quantity, self.calculate_rho(r) * self.calculate_velocity_dispersion(r) ** 2)
+        return cast(Quantity, self.calculate_density(r) * self.calculate_velocity_dispersion(r) ** 2)
 
     @cached_property
     def pressure_grid(self) -> Quantity['pressure']:
@@ -444,25 +444,25 @@ class Distribution:
         return self.calculate_entropy(self.geomspace_grid)
 
     @cached_property
-    def rho_grid(self) -> Quantity['mass density']:
+    def density_grid(self) -> Quantity['mass density']:
         """Calculate the density (`rho`) at the `internal logarithmic grid` (memoized)."""
-        return self.rho(self.geomspace_grid)
+        return self.density(self.geomspace_grid)
 
-    def rho_r2(self, r: Quantity['length']) -> Quantity['linear density']:
+    def density_r2(self, r: Quantity['length']) -> Quantity['linear density']:
         """Calculate the density (`rho`) times the jacobian (`r^2`) at a given radius."""
-        return self.rho(r) * r.to(run_units.length) ** 2
+        return self.density(r) * r.to(run_units.length) ** 2
 
     @cached_property
-    def rho_r2_grid(self) -> Quantity['linear density']:
+    def density_r2_grid(self) -> Quantity['linear density']:
         """Calculate the density (`rho`) times the jacobian (`r^2`) at the  `internal logarithmic grid` (memoized)."""
-        return self.rho_r2(self.geomspace_grid)
+        return self.density_r2(self.geomspace_grid)
 
-    def spherical_rho_integrate(self, r: Quantity['length'], use_rho_s: bool = True) -> Quantity['mass']:
+    def spherical_density_integrate(self, r: Quantity['length'], use_rho_s: bool = True) -> Quantity['mass']:
         """Calculate the density (`rho`) integral in `[0,r]` assuming spherical symmetry. `use_rho_s` is used internally to calculate the density scale and shouldn't be used."""
         rho_s = self.rho_s.decompose(run_units.system).value if use_rho_s else 1
-        integral = utils.fast_spherical_rho_integrate(
+        integral = utils.fast_spherical_density_integrate(
             np.atleast_1d(r.to(run_units.length).value),
-            self.calculate_rho,
+            self.calculate_density,
             rho_s,
             self.r_s.decompose(run_units.system).value,
             self.r_vir.decompose(run_units.system).value,
@@ -473,9 +473,9 @@ class Distribution:
         """Calculate the enclosed mass (`M(<=r)`) at a given radius. Integrates the density function (`rho`)."""
         scalar_input = np.isscalar(r)
         if len(r.shape) == 2:
-            M = Quantity([self.spherical_rho_integrate(r_) for r_ in r])
+            M = Quantity([self.spherical_density_integrate(r_) for r_ in r])
         else:
-            M = self.spherical_rho_integrate(r)
+            M = self.spherical_density_integrate(r)
         if scalar_input:
             return Quantity(np.array(M)[0], run_units.mass)
         return M
@@ -496,15 +496,15 @@ class Distribution:
 
     def calculate_M_tot(self) -> Quantity['mass']:
         """Calculate the total mass, i.e. the integral over `[0, r_max]`."""
-        return cast(Quantity, self.spherical_rho_integrate(self.r_max, True)[0])
+        return cast(Quantity, self.spherical_density_integrate(self.r_max, True)[0])
 
-    def calculate_rho_scale(self) -> Quantity['mass density']:
+    def calculate_density_scale(self) -> Quantity['mass density']:
         """Calculate the density scale to set the integral over `[0, r_max]` to equal `total_mass`."""
-        return self.total_mass / self.spherical_rho_integrate(self.r_max, False)[0] * run_units.density
+        return self.total_mass / self.spherical_density_integrate(self.r_max, False)[0] * run_units.density
 
     def mass_pdf(self, r: Quantity['length']) -> FloatOrArray:
         """Mass probability density function (pdf) at radius `r`. Normalized `rho*r^2`."""
-        mass_pdf = self.rho_r2(r).value
+        mass_pdf = self.density_r2(r).value
         mass_pdf /= np.trapezoid(mass_pdf, r.decompose(run_units.system).value)
         return mass_pdf
 
@@ -572,9 +572,9 @@ class Distribution:
         """Calculate the spline function for the antiderivative (`F`) of the distribution function (`f`)"""
         return physics.eddington.make_integral_f_spline(
             potential_grid=self.potential_grid,
-            rho_potential_spline=physics.eddington.make_rho_potential_spline(
+            density_potential_spline=physics.eddington.make_density_potential_spline(
                 potential_grid=self.potential_grid,
-                rho_grid=self.rho_grid,
+                density_grid=self.density_grid,
                 s=self.spline_s,
             ),
         )
@@ -1023,7 +1023,7 @@ class Distribution:
         ax.text(x=self.r_vir.to(x_unit).value, y=ymax, s='r_vir')
         return ax
 
-    def plot_rho(
+    def plot_density(
         self,
         r_start: Quantity['length'] | None = None,
         r_end: Quantity['length'] | None = Quantity(1e4, 'kpc'),
@@ -1071,11 +1071,11 @@ class Distribution:
             r_end = self.r_max
 
         r = cast(Quantity, np.geomspace(r_start, r_end, self.space_steps))
-        rho = self.rho(r)
-        sns.lineplot(x=r.to(length_unit).value, y=rho.to(density_unit).value, ax=ax, label=label, **lineplot_kwargs)
+        density = self.density(r)
+        sns.lineplot(x=r.to(length_unit).value, y=density.to(density_unit).value, ax=ax, label=label, **lineplot_kwargs)
 
         if add_markers:
-            ax = self.add_plot_radius_markers(ax, ymax=rho.max().to(density_unit).value, x_unit=length_unit)
+            ax = self.add_plot_radius_markers(ax, ymax=density.max().to(density_unit).value, x_unit=length_unit)
 
         if label is not None:
             ax.legend()

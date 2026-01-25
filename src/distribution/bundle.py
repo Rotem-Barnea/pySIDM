@@ -21,7 +21,7 @@ from .distribution import Distribution
 physical_examples = Literal['Sague-1', 'Draco', 'Fornax dSph', 'default', 'Daneng2024:DM11+baryon']
 distribution_options = Literal['dm_only', 'b_only', None]
 
-DistributionGrids = Literal['rho', 'velocity dispersion', 'temperature', 'pressure', 'internal energy']
+DistributionGrids = Literal['density', 'velocity dispersion', 'temperature', 'pressure', 'internal energy']
 
 
 class Bundle:

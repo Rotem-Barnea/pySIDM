@@ -25,7 +25,7 @@ def integral_f(
 
     Parameters:
         E: The energy value to calculate the antiderivative at.
-        spline: A `scipy` spline object for `rho` as a function of `potential`.
+        spline: A `scipy` spline object for `density` as a function of `potential`.
         limit: Passed on to `scipy.integrate.quad()`.
         epsrel: Passed on to `scipy.integrate.quad()`.
         kwargs: Additional keyword arguments to pass to `scipy.integrate.quad()`.
@@ -48,7 +48,7 @@ def integral_f(
 
 def make_rho_potential_spline(
     potential_grid: Quantity['specific energy'],
-    rho_grid: Quantity['mass density'],
+    density_grid: Quantity['mass density'],
     s: float | None = 1e-2,
     **kwargs: Any,
 ) -> QuantitySpline:
@@ -56,7 +56,7 @@ def make_rho_potential_spline(
 
     Parameters:
         potential_grid: A grid of potential values to calculate the spline on.
-        rho_grid: A grid of mass density values corresponding to the potential grid.
+        density_grid: A grid of mass density values corresponding to the potential grid.
         s: The smoothing factor for the spline.
         **kwargs: Additional keyword arguments to pass to the spline constructor.
 
@@ -65,17 +65,17 @@ def make_rho_potential_spline(
     """
     return QuantitySpline(
         x=potential_grid[indices := np.argsort(potential_grid)].value,
-        y=rho_grid[indices].value,
+        y=density_grid[indices].value,
         s=s,
-        in_unit=str(rho_grid.unit),
-        out_unit=str(rho_grid.unit),
+        in_unit=str(density_grid.unit),
+        out_unit=str(density_grid.unit),
         **kwargs,
     )
 
 
 def make_integral_f_spline(
     potential_grid: Quantity['specific energy'],
-    rho_potential_spline: QuantitySpline,
+    density_potential_spline: QuantitySpline,
     ext: int = 1,
     integral_f_kwargs: dict[str, Any] = {},
     tqdm_kwargs: dict[str, Any] = {'desc': 'Calculating `F`'},
@@ -85,7 +85,7 @@ def make_integral_f_spline(
 
     Parameters:
         potential_grid: A grid of potential values to calculate the spline on.
-        rho_potential_spline: A `scipy` spline object for `rho` as a function of `potential`.
+        density_potential_spline: A `scipy` spline object for `rho` as a function of `potential`.
         ext: Extrapolation mode for the spline.
         integral_f_kwargs: Additional keyword arguments to pass to the integrator `integral_f()`.
         tqdm_kwargs: Additional keyword arguments to pass to the tqdm progress bar.
@@ -94,7 +94,7 @@ def make_integral_f_spline(
     Returns:
         The spline of `F`.
     """
-    spline = rho_potential_spline.to_scipy()
+    spline = density_potential_spline.to_scipy()
     integral_f_grid = np.array(
         [integral_f(E=e, spline=spline, **integral_f_kwargs) for e in tqdm(potential_grid.value, **tqdm_kwargs)]
     )

@@ -225,9 +225,9 @@ def fast_assign(indices: NDArray[np.int64], array: NDArray[np.float64]) -> NDArr
 
 
 @njit(parallel=True)
-def fast_spherical_rho_integrate(
+def fast_spherical_density_integrate(
     r: NDArray[np.float64],
-    rho_fn: Callable[..., NDArray[np.float64]],
+    density_fn: Callable[..., NDArray[np.float64]],
     rho_s: float = 1,
     r_s: float = 1,
     r_vir: float = 1,
@@ -238,7 +238,7 @@ def fast_spherical_rho_integrate(
 
     Parameters:
         r: The radius points at which to calculate the density.
-        rho_fn: The density function to integrate. must be njit compliant.
+        density_fn: The density function to integrate. must be njit compliant.
         rho_s: The scale density.
         r_s: The scale radius.
         r_vir: The virial radius.
@@ -254,7 +254,7 @@ def fast_spherical_rho_integrate(
         x = np.empty_like(x_grid, dtype=np.float64)
         x[:] = x_grid
         J = 4 * np.pi * x**2
-        ys = rho_fn(x, rho_s=rho_s, r_s=r_s, r_vir=r_vir)
+        ys = density_fn(x, rho_s=rho_s, r_s=r_s, r_vir=r_vir)
         integral[i] = np.trapezoid(y=ys * J, x=x)
     return integral
 

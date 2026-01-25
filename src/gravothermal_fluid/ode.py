@@ -1,8 +1,8 @@
 """Solver management class for the gravothermal fluid ODE equations"""
 
 from typing import Any, cast
-from functools import cached_property
 
+# from functools import cached_property
 import numpy as np
 from numpy.typing import NDArray
 from astropy.units import Quantity
@@ -124,7 +124,7 @@ class GravothermalFluid:
         return cls(
             radius=radius,
             velocity_dispersion=distribution.calculate_velocity_dispersion(cell_center),
-            density=distribution.rho(cell_center),
+            density=distribution.density(cell_center),
             enclosed_mass=distribution.M(radius),
             sigma=sigma,
             dt=dt,

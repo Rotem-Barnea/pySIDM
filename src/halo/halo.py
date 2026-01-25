@@ -3026,7 +3026,7 @@ class Halo:
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
-    def plot_distributions_rho(
+    def plot_distributions_density(
         self,
         markers_on_first_only: bool = False,
         save_kwargs: dict[str, Any] | None = None,
@@ -3044,7 +3044,7 @@ class Halo:
         """
         fig, ax = None, None
         for i, distribution in enumerate(self.distributions):
-            fig, ax = distribution.plot_rho(
+            fig, ax = distribution.plot_density(
                 label=f'{distribution.label} ({distribution.title})',
                 fig=fig,
                 ax=ax,

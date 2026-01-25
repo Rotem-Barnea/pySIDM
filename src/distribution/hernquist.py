@@ -34,7 +34,7 @@ class Hernquist(Distribution):
 
     @staticmethod
     @njit
-    def calculate_rho(
+    def calculate_density(
         r: FloatOrArray,
         rho_s: float = 1,
         r_s: float = 1,

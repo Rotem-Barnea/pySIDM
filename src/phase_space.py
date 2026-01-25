@@ -294,14 +294,14 @@ class PhaseSpace:
         else:
             return (grid * self.jacobian_rv * self.volume_element).sum()
 
-    def calculate_rho(self, mass_grid: Quantity['mass']) -> Quantity['mass density']:
+    def calculate_density(self, mass_grid: Quantity['mass']) -> Quantity['mass density']:
         """Calcualte the density as a function of radius (without the Jacobian) for the provided mass grid"""
         return self.integrate(full_grid=self.to_f_grid(mass_grid), axis='v').to(run_units.density)
 
     def calculate_temperature(self, mass_grid: Quantity['mass']) -> Quantity['specific energy']:
         """Calcualte the temperature as a function of radius for the provided mass grid"""
         num = self.integrate(full_grid=self.v_grid**2 * self.to_f_grid(mass_grid), axis='v')
-        den = self.calculate_rho(mass_grid)
+        den = self.calculate_density(mass_grid)
         temperature = Quantity(np.full(num.shape, np.nan), cast(Unit, num.unit) / cast(Unit, den.unit))
         temperature[den != 0] = num[den != 0] / den[den != 0]
         return temperature.to(run_units.specific_energy)
@@ -312,7 +312,7 @@ class PhaseSpace:
 
     def calculate_pressure(self, mass_grid: Quantity['mass']) -> Quantity['pressure']:
         """Calculate the pressure as a function of radius for the provided mass grid"""
-        return self.calculate_rho(mass_grid) * self.calculate_velocity_dispersion(mass_grid) ** 2
+        return self.calculate_density(mass_grid) * self.calculate_velocity_dispersion(mass_grid) ** 2
 
     def calculate_internal_energy(self, mass_grid: Quantity['mass']) -> Quantity['specific energy']:
         """Calculate the internal energy as a function of radius for the provided mass grid"""
@@ -322,16 +322,16 @@ class PhaseSpace:
         """Calculate the entropy as a function of radius for the provided mass grid"""
         return Quantity(
             np.log(
-                (self.calculate_velocity_dispersion(mass_grid) ** 3 / self.calculate_rho(mass_grid))
+                (self.calculate_velocity_dispersion(mass_grid) ** 3 / self.calculate_density(mass_grid))
                 .decompose(run_units.system)
                 .value
             )
         )
 
     @property
-    def rho(self) -> Quantity['mass density']:
+    def density(self) -> Quantity['mass density']:
         """Density as a function of radius (without the Jacobian)"""
-        return self.calculate_rho(self.mass_grid)
+        return self.calculate_density(self.mass_grid)
 
     @property
     def temperature(self) -> Quantity['specific energy']:
@@ -724,7 +724,7 @@ class PhaseSpace:
             save_path=self.get_save_path(save_kwargs, default_stem='mass grid animation', default_suffix='.gif'),
         )
 
-    def plot_rho(
+    def plot_density(
         self,
         mass_grid: Quantity | None = None,
         smoothing_sigma: float | None = None,
@@ -773,10 +773,10 @@ class PhaseSpace:
             **kwargs,
         )
         if plot_distribution and self.distribution is not None:
-            fig, ax = self.distribution.plot_rho(fig=fig, ax=ax, **distribution_kwargs)
+            fig, ax = self.distribution.plot_density(fig=fig, ax=ax, **distribution_kwargs)
 
         x = self.r_array
-        y = self.rho if mass_grid is None else self.calculate_rho(mass_grid)
+        y = self.density if mass_grid is None else self.calculate_density(mass_grid)
         y = utils.smooth_holes_1d(x=x, y=y, include_zero=True, **smooth_kwargs)
         x, y = x[(y >= 0) * (~np.isnan(y))], y[(y >= 0) * (~np.isnan(y))]
         if smoothing_sigma is not None:
@@ -853,7 +853,7 @@ class PhaseSpace:
 
     def animate_plot(
         self,
-        plot_type: Literal['rho', 'temperature'] = 'rho',
+        plot_type: Literal['density', 'temperature'] = 'density',
         times: Quantity['time'] | None = None,
         undersample: int | None = 1,
         color_palette: str | None = None,
@@ -867,26 +867,25 @@ class PhaseSpace:
 
         Parameters:
             save_path: Path to save the animation.
-            plot_type: Type of plot to generate. Either 'rho' or 'temperature'.
+            plot_type: Type of plot to generate. Either 'density' or 'temperature'.
             times: Plot the closest times from `self.grids_time`. Takes priority over `undersample`.
             undersample: Plot every `undersample`-th time from `self.grids_time`.
             text_label_unit: Unit used for the time label in the plot.
             text_label_format: Format string for the time label.
             save_kwargs: Keyword arguments to pass to `save_plot()`.
-            **kwargs: Additional keyword arguments passed to `plot_rho()`.
+            **kwargs: Additional keyword arguments passed to `plot_density()`.
         """
         if text_label_text == 'auto':
-            text_label_text = r'$rho$' if plot_type == 'rho' else 'Temperature'
+            text_label_text = r'$rho$' if plot_type == 'density' else 'Temperature'
         assert times is not None or undersample is not None, "Either 'times' or 'undersample' must be provided."
 
         snapshots = self.closest_snapshots(times) if times is not None else self.snapshots[::undersample]
         palette = sns.color_palette(color_palette, len(snapshots))
-        plot_fn = self.plot_rho if plot_type == 'rho' else self.plot_temperature
 
         plot.save_images(
             plot.to_images(
                 iterator=list(enumerate(snapshots)),
-                plot_fn=lambda x: plot_fn(
+                plot_fn=lambda x: getattr(self, f'{plot}_{plot_type}')(
                     mass_grid=x[1][0],
                     lineplot_kwargs={
                         'label': f'{text_label_text} (t={x[1][1].to(self.fill_time_unit(text_label_unit)):{text_label_format}})',
@@ -901,7 +900,7 @@ class PhaseSpace:
 
     def plot_multi_line(
         self,
-        plot_type: Literal['rho', 'temperature'] = 'rho',
+        plot_type: Literal['density', 'temperature'] = 'density',
         times: Quantity['time'] | None = None,
         undersample: int | None = None,
         color_palette: str | None = None,
@@ -931,9 +930,8 @@ class PhaseSpace:
         snapshots = self.closest_snapshots(times) if times is not None else self.snapshots[::undersample]
         fig, ax = plot.setup(**setup_kwargs)
         palette = sns.color_palette(color_palette, len(snapshots))
-        plot_fn = self.plot_rho if plot_type == 'rho' else self.plot_temperature
         for i, (mass_grid, t) in enumerate(snapshots):
-            fig, ax = plot_fn(
+            fig, ax = (getattr(self, f'plot_{plot_type}'))(
                 mass_grid=mass_grid,
                 lineplot_kwargs={
                     'label': f'{t.to(text_label_unit):{text_label_format}}',
