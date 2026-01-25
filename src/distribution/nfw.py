@@ -174,7 +174,7 @@ class NFW(Distribution):
         #         **kwargs,
         #     )
         elif name == 'Fornax dSph':  # Calculation. Defaults to `c=18` if not provided.
-            assert c is None or isinstance(c, float), 'cannot use Dutton14 to calculate c when calculating from the db'
+            assert c != 'Dutton14', 'cannot use Dutton14 to calculate c when calculating from the db'
             return cls(
                 **{**cls.calculate_from_half_light(**example_db.get_db_parameters(name=name), c=c or 18), **kwargs},
                 name=name,
