@@ -2,6 +2,7 @@
 
 from typing import TYPE_CHECKING, Any, Self, Literal, cast, get_args
 
+import numpy as np
 import regex
 import seaborn as sns
 from astropy.units import Quantity
@@ -86,6 +87,25 @@ class Bundle:
                 suffix = option
         assert name in get_args(PhysicalExample), f'Unknown physical example: {name}'
         return cast(PhysicalExample, name), suffix
+
+    @property
+    def name(self) -> str:
+        """The name of the distribution bundle."""
+        names = [dist.name for dist in self.distributions]
+        unique_names = np.unique(names)
+        if len(unique_names) == 1:
+            return str(unique_names[0])
+        non_blank_names = [name for name in names if name != '']
+        if len(non_blank_names) == 0:
+            return ''
+        unique_non_blank_names = np.unique(non_blank_names)
+        if len(unique_non_blank_names) == 1:
+            return str(unique_non_blank_names[0])
+        out_names = []
+        for name in non_blank_names:
+            if len(out_names) == 0 or out_names[-1] != name:
+                out_names += [name]
+        return ' / '.join(out_names)
 
     def plot(
         self,
