@@ -391,7 +391,7 @@ class Distribution:
             raise NotImplementedError(
                 f'Pressure calculation is only implemented for AGAMA backend, not for {self.backend}'
             )
-        return cast(Quantity, self.calculate_density(r) * self.calculate_velocity_dispersion(r) ** 2)
+        return cast(Quantity, self.density(r) * self.calculate_velocity_dispersion(r) ** 2)
 
     @cached_property
     def pressure_grid(self) -> Quantity['pressure']:
