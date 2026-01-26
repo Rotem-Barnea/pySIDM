@@ -313,7 +313,7 @@ class Halo:
     def setup(
         cls,
         distributions: list[Distribution],
-        n_particles: NDArray[np.int64] | NDArray[np.float64] | list[int | float] | int | float,
+        n_particles: NDArray[np.int64] | NDArray[np.float64] | list[int | float] | int | float = 1e5,
         seed: int | None = None,
         generator: np.random.Generator | None = None,
         sample_kwargs: dict[str, Any] = {},
