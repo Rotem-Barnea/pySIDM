@@ -14,7 +14,7 @@ from ..tqdm import tqdm
 no_sigma = Quantity(0, 'cm^2/g')
 
 
-class Params(TypedDict, total=False):
+class Params(TypedDict):
     """Parameter dictionary for the SIDM calculation.
 
     Attributes:
@@ -53,21 +53,17 @@ default_params: Params = {
 }
 
 
-def normalize_params(params: Params | None, add_defaults: bool = False) -> Params:
-    """Normalize Quantity parameters to the run units.
+def normalize_params(params: Params | None) -> Params:
+    """Normalize Quantity parameters to the run units and add default values.
 
     Parameters:
         params: Dictionary of parameters.
-        add_defaults: Whether to add default parameters (under the input `params`).
 
     Returns:
         Normalized parameters.
     """
-    params = cast(Params, utils.handle_default(params, Params({})))
-    if add_defaults:
-        params = {**default_params, **params}
-    if 'sigma' in params:
-        params['sigma'] = params['sigma'].to(run_units.cross_section)
+    params = Params({**default_params, **cast(Params, utils.handle_default(params, {}))})
+    params['sigma'] = params['sigma'].to(run_units.cross_section)
     return params
 
 

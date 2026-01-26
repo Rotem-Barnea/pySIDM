@@ -15,7 +15,7 @@ from .. import utils, run_units
 G = constants.G.decompose(run_units.system).value
 
 
-class Params(TypedDict, total=False):
+class Params(TypedDict):
     """Parameter dictionary for the leapfrog integrator.
 
     Attributes:
@@ -56,20 +56,16 @@ default_params: Params = {
 }
 
 
-def normalize_params(params: Params | None, add_defaults: bool = False) -> Params:
-    """Normalize Quantity parameters to the run units.
+def normalize_params(params: Params | None) -> Params:
+    """Normalize Quantity parameters to the run units and add default values.
 
     Parameters:
         params: Dictionary of parameters.
-        add_defaults: Whether to add default parameters (under the input `params`).
 
     Returns:
         Normalized parameters.
     """
-    params = cast(Params, utils.handle_default(params, Params({})))
-    if add_defaults:
-        params = Params({**default_params, **params})
-    return params
+    return Params({**default_params, **cast(Params, utils.handle_default(params, {}))})
 
 
 class FactorGuessKwargs(TypedDict, total=False):

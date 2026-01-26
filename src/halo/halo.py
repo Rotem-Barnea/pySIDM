@@ -62,8 +62,8 @@ class Halo:
         last_saved_time: Quantity['time'] = 0 * run_units.time,
         save_every_time: Quantity['time'] | float | None = 10,
         save_every_n_steps: int | None = None,
-        dynamics_params: leapfrog.Params | None = None,
-        scatter_params: sidm.Params | None = None,
+        dynamics_params: leapfrog.Params | dict[str, Any] | None = None,
+        scatter_params: sidm.Params | dict[str, Any] | None = None,
         snapshots: table.QTable | None = None,
         hard_save: bool = True,
         save_path: Path | str | None = None,
@@ -172,8 +172,8 @@ class Halo:
             self.save_every_time = save_every_time.to(run_units.time)
         else:
             self.save_every_time = (self.distributions[0].dynamical_time * save_every_time).to(run_units.time)
-        self._dynamics_params: leapfrog.Params = leapfrog.normalize_params(dynamics_params, add_defaults=True)
-        self._scatter_params: sidm.Params = sidm.normalize_params(scatter_params, add_defaults=True)
+        self._dynamics_params = leapfrog.normalize_params(cast(leapfrog.Params | None, dynamics_params))
+        self._scatter_params = sidm.normalize_params(cast(sidm.Params | None, scatter_params))
         self.ministep_size: deque[float] = utils.handle_default(ministep_size, deque())
         self.scatter_track_time: deque[float] = utils.handle_default(scatter_track_time, deque())
         self.scatter_track_index: deque[NDArray[np.int64]] = utils.handle_default(scatter_track_index, deque())
@@ -227,7 +227,7 @@ class Halo:
     # ) -> str:
     #     """TODO"""
     #     scatter_params = deepcopy(scatter_params)
-    #     scatter_params['sigma'] = scatter_params.get('sigma', sidm.no_sigma).to('cm^2/g')
+    #     scatter_params['sigma'] = scatter_params['sigma'].to('cm^2/g')
     #     if dynamical_time is None:
     #         dynamical_time = distributions[0].dynamical_time
     #     description = {
@@ -746,7 +746,7 @@ class Halo:
             physics.utils.local_density(
                 self.r,
                 self.m,
-                self.scatter_params.get('max_radius_j', sidm.default_params.get('max_radius_j', 10)),
+                self.scatter_params['max_radius_j'],
             ),
         )
 
@@ -759,7 +759,7 @@ class Halo:
                 physics.utils.local_density(
                     cast(Quantity, data['r']),
                     cast(Quantity, data['m']),
-                    self.scatter_params.get('max_radius_j', sidm.default_params.get('max_radius_j', 10)),
+                    self.scatter_params['max_radius_j'],
                 ),
             )
             for particle_type, data in self.particles_by_type.items()
@@ -991,7 +991,7 @@ class Halo:
         r, vx, vy, vr, m, leapfrog_convergence_rounds = self._particles[
             ['r', 'vx', 'vy', 'vr', 'm', 'leapfrog_convergence_rounds']
         ].values.T
-        if not in_bootstrap and self.scatter_params.get('sigma', sidm.no_sigma) > sidm.no_sigma:
+        if not in_bootstrap and self.scatter_params['sigma'] > sidm.no_sigma:
             t0 = time.perf_counter()
             mask = cast(NDArray[np.bool_], self._particles['interacting'].values)
             (
@@ -2694,7 +2694,7 @@ class Halo:
             x = x[(x > x_range[0]) * (x < x_range[1])]
         if title is not None:
             title = title.format(
-                nn=self.scatter_params.get('max_radius_j', None),
+                nn=self.scatter_params['max_radius_j'],
                 time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
             )
         fig, ax = plot.setup(
@@ -2739,7 +2739,7 @@ class Halo:
         time_unit = self.fill_time_unit(time_unit)
         if title is not None:
             title = title.format(
-                nn=self.scatter_params.get('max_radius_j', None),
+                nn=self.scatter_params['max_radius_j'],
                 time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
             )
         fig, ax = plot.setup(**kwargs, **utils.drop_None(title=title, xlabel=xlabel), x_unit=density_unit)
