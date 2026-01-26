@@ -80,7 +80,7 @@ class BackgroundDistribution:
         Performs a linear interpolation between the two closest time points, and calculates the enclosed mass for every grid point (row in `self.M`).
         """
         if self.distribution is not None:
-            return self.distribution.M_grid
+            return self.distribution.enclosed_mass_grid
         assert (self.M is not None) and (self.time is not None), '`M`, or `time` are missing'
         mask = self.time == t
         if mask.any():
@@ -103,7 +103,7 @@ class BackgroundDistribution:
 
         Else, find the nearest grid point and use linear interpolation in the time dimension (see `self.at_time()`)."""
         if self.distribution is not None:
-            return self.distribution.M_spline(r)
+            return self.distribution.enclosed_mass_spline(r)
         assert self.lattice is not None, '`lattice` is missing'
         return cast(
             Quantity,

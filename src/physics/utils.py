@@ -13,11 +13,11 @@ from ..types import QuantityOrArray
 G = constants.G.decompose(run_units.system)
 
 
-def M(
+def enclosed_mass(
     r: Quantity['length'],
     m: Quantity['mass'] | None = None,
     count_self: bool = False,
-    M_below: Quantity['mass'] | None = None,
+    enclosed_mass_below: Quantity['mass'] | None = None,
 ) -> Quantity['mass']:
     """Calculate the cumulative mass of a set of particles.
 
@@ -27,18 +27,18 @@ def M(
         r: The positions of the particles.
         m: The masses of the particles. If `None` all particles are assumed to have a mass of 1 `Msun` (`run_units.mass`).
         count_self: Whether to include the mass of the particle at the current position in the cumulative mass.
-        M_below: Additional mass below the current position from an external source.
+        enclosed_mass_below: Additional mass below the current position from an external source.
 
     Returns
         The cumulative mass of the particles.
     """
     masses = m if m is not None else Quantity([1] * len(r), run_units.mass)
-    M = masses.cumsum()
+    enclosed_mass = masses.cumsum()
     if not count_self:
-        M -= masses
-    if M_below is not None:
-        M += M_below
-    return cast(Quantity, M)
+        enclosed_mass -= masses
+    if enclosed_mass_below is not None:
+        enclosed_mass += enclosed_mass_below
+    return cast(Quantity, enclosed_mass)
 
 
 def local_density(

@@ -725,3 +725,13 @@ def safe_sqrt(x: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float
 def safe_log(x: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
     """Safely calcualtes `np.safe_log(x)`, filling cells with `x<=0` with `fill_value`"""
     return np.log(x, out=np.full_like(x, fill_value), where=x > 0)
+
+
+def guess_unit(unit: UnitLike | None = None, array: NDArray[np.float64] | Quantity | None = None) -> UnitLike:
+    """Pull the desired unit from the array if not provided."""
+    if unit is None:
+        if isinstance(array, Quantity):
+            unit = cast(Unit, array.unit)
+        else:
+            unit = ''
+    return unit

@@ -696,7 +696,7 @@ class Halo:
     @property
     def M(self) -> Quantity['mass']:
         """The enclosed mass below the particle."""
-        halo_mass = physics.utils.M(r=self.r, m=self.m)
+        halo_mass = physics.utils.enclosed_mass(r=self.r, m=self.m)
         if self.background is not None:
             background_mass = self.background.M_at_time(self.r, self.time)
             return cast(Quantity, halo_mass + background_mass)

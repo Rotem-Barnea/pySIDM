@@ -125,7 +125,7 @@ class GravothermalFluid:
             radius=radius,
             velocity_dispersion=distribution.calculate_velocity_dispersion(cell_center),
             density=distribution.density(cell_center),
-            enclosed_mass=distribution.M(radius),
+            enclosed_mass=distribution.enclosed_mass(radius),
             sigma=sigma,
             dt=dt,
             scale=Scale.from_distribution(distribution, sigma=sigma, a=a),

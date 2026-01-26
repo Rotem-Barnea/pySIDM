@@ -16,7 +16,7 @@ from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
 from src import rng, plot, utils, report, physics, run_units, agama_wrappers
-from src.types import FloatOrArray, ParticleType, QuantitySpline
+from src.types import FloatOrArray, ParticleType, QuantitySpline, QuantityInterpolate
 
 from . import io
 
@@ -25,7 +25,9 @@ if TYPE_CHECKING:
 
 backends = Literal['python', 'agama']
 
-PhysicalProperty = Literal['density', 'velocity dispersion', 'temperature', 'pressure', 'internal energy']
+PhysicalProperty = Literal[
+    'density', 'velocity dispersion', 'temperature', 'pressure', 'internal energy', 'enclosed_mass'
+]
 
 
 class Distribution:
@@ -101,7 +103,6 @@ class Distribution:
         self.spline_s = spline_s
         self.truncate = truncate
         self.truncate_power = truncate_power
-        self.memoization = {}
         self.id = utils.make_id(id)
         self.backend: backends = backend
 
@@ -226,20 +227,14 @@ class Distribution:
         """Return whether the profile is physical."""
         return True
 
-    @property
+    @cached_property
     def dynamical_time(self) -> Unit:
-        """Calculate the dynamic time of the profile, returning it as a `Unit` object (memoized)."""
-        if 'dynamical_time' not in self.memoization:
-            self.memoization['dynamical_time'] = def_unit(
-                'dynamical_time',
-                np.sqrt(self.r_s**3 / (constants.G * self.total_mass)).to(run_units.time),
-                doc=f'{self.title} dynamic time',
-            )
-        return self.memoization['dynamical_time']
-
-    @dynamical_time.setter
-    def dynamical_time(self, dynamical_time: Unit) -> None:
-        self.memoization['dynamical_time'] = dynamical_time
+        """Calculate the dynamic time of the profile, returning it as a `Unit` object."""
+        return def_unit(
+            'dynamical_time',
+            np.sqrt(self.r_s**3 / (constants.G * self.total_mass)).to(run_units.time),
+            doc=f'{self.title} dynamic time',
+        )
 
     def scatter_time_scale(self, sigma: Quantity[run_units.cross_section]) -> Quantity['time']:
         """Time scale between scatter events"""
@@ -288,7 +283,9 @@ class Distribution:
         self, core_radius: Quantity = Quantity(0.2, 'kpc'), sizeup_factor: float = 3
     ) -> float:
         """Return the radius enclosing a mass of M(core_radius) * `sizeup_factor`, used to estimate the radius of collapsing halo during core collapse."""
-        r_prime = self.geomspace_grid[np.argmin(np.abs(self.M_grid - self.M(core_radius) * sizeup_factor))]
+        r_prime = self.geomspace_grid[
+            np.argmin(np.abs(self.enclosed_mass_grid - self.enclosed_mass(core_radius) * sizeup_factor))
+        ]
         return self.to_scale(cast(Quantity, r_prime)).value
 
     def tc0(
@@ -307,7 +304,7 @@ class Distribution:
 
     @cached_property
     def geomspace_grid(self) -> Quantity['length']:
-        """Calculate the `internal logarithmic grid` (memoized)."""
+        """Calculate the `internal logarithmic grid`."""
         return cast(Quantity, np.geomspace(self.r_min, self.r_max, self.space_steps))
 
     @staticmethod
@@ -364,7 +361,7 @@ class Distribution:
 
     @cached_property
     def velocity_dispersion_grid(self) -> Quantity['specific energy']:
-        """Calculate the velocity dispersion at the `internal logarithmic grid` (memoized)."""
+        """Calculate the velocity dispersion at the `internal logarithmic grid`."""
         if self.backend != 'agama':
             raise NotImplementedError(
                 f'Velocity dispersion calculation is only implemented for AGAMA backend, not for {self.backend}'
@@ -381,7 +378,7 @@ class Distribution:
 
     @cached_property
     def temperature_grid(self) -> Quantity['specific energy']:
-        """Calculate the temperature at the `internal logarithmic grid` (memoized)."""
+        """Calculate the temperature at the `internal logarithmic grid`."""
         if self.backend != 'agama':
             raise NotImplementedError(
                 f'Temperature calculation is only implemented for AGAMA backend, not for {self.backend}'
@@ -398,7 +395,7 @@ class Distribution:
 
     @cached_property
     def pressure_grid(self) -> Quantity['pressure']:
-        """Calculate the pressure at the `internal logarithmic grid` (memoized)."""
+        """Calculate the pressure at the `internal logarithmic grid`."""
         if self.backend != 'agama':
             raise NotImplementedError(
                 f'Pressure calculation is only implemented for AGAMA backend, not for {self.backend}'
@@ -415,7 +412,7 @@ class Distribution:
 
     @cached_property
     def internal_energy_grid(self) -> Quantity['specific energy']:
-        """Calculate the internal energy at the `internal logarithmic grid` (memoized)."""
+        """Calculate the internal energy at the `internal logarithmic grid`."""
         if self.backend != 'agama':
             raise NotImplementedError(
                 f'Internal energy calculation is only implemented for AGAMA backend, not for {self.backend}'
@@ -438,7 +435,7 @@ class Distribution:
 
     @cached_property
     def entropy_grid(self) -> Quantity:
-        """Calculate the entropy at the `internal logarithmic grid` (memoized)."""
+        """Calculate the entropy at the `internal logarithmic grid`."""
         if self.backend != 'agama':
             raise NotImplementedError(
                 f'Entropy calculation is only implemented for AGAMA backend, not for {self.backend}'
@@ -447,7 +444,7 @@ class Distribution:
 
     @cached_property
     def density_grid(self) -> Quantity['mass density']:
-        """Calculate the density (`rho`) at the `internal logarithmic grid` (memoized)."""
+        """Calculate the density (`rho`) at the `internal logarithmic grid`."""
         return self.density(self.geomspace_grid)
 
     def density_r2(self, r: Quantity['length']) -> Quantity['linear density']:
@@ -456,7 +453,7 @@ class Distribution:
 
     @cached_property
     def density_r2_grid(self) -> Quantity['linear density']:
-        """Calculate the density (`rho`) times the jacobian (`r^2`) at the  `internal logarithmic grid` (memoized)."""
+        """Calculate the density (`rho`) times the jacobian (`r^2`) at the  `internal logarithmic grid`."""
         return self.density_r2(self.geomspace_grid)
 
     def spherical_density_integrate(self, r: Quantity['length'], use_rho_s: bool = True) -> Quantity['mass']:
@@ -471,28 +468,28 @@ class Distribution:
         )
         return Quantity(integral, run_units.mass)
 
-    def M(self, r: Quantity['length']) -> Quantity['mass']:
+    def enclosed_mass(self, r: Quantity['length']) -> Quantity['mass']:
         """Calculate the enclosed mass (`M(<=r)`) at a given radius. Integrates the density function (`rho`)."""
         scalar_input = np.isscalar(r)
         if len(r.shape) == 2:
-            M = Quantity([self.spherical_density_integrate(r_) for r_ in r])
+            enclosed_mass = Quantity([self.spherical_density_integrate(r_) for r_ in r])
         else:
-            M = self.spherical_density_integrate(r)
+            enclosed_mass = self.spherical_density_integrate(r)
         if scalar_input:
-            return Quantity(np.array(M)[0], run_units.mass)
-        return M
+            return Quantity(np.array(enclosed_mass)[0], run_units.mass)
+        return enclosed_mass
 
     @cached_property
-    def M_grid(self) -> Quantity['mass']:
-        """Calculate the enclosed mass (`M(<=r)`) at the  `internal logarithmic grid` (memoized)."""
-        return self.M(self.geomspace_grid)
+    def enclosed_mass_grid(self) -> Quantity['mass']:
+        """Calculate the enclosed mass (`M(<=r)`) at the  `internal logarithmic grid`."""
+        return self.enclosed_mass(self.geomspace_grid)
 
     @cached_property
-    def M_spline(self) -> QuantitySpline:
+    def enclosed_mass_spline(self) -> QuantitySpline:
         """Calculate a spline of the enclosed mass (`M(<=r)`)"""
         return QuantitySpline(
             x=self.geomspace_grid,
-            y=self.M_grid,
+            y=self.enclosed_mass_grid,
             ext='const',
         )
 
@@ -512,40 +509,37 @@ class Distribution:
 
     def mass_cdf(self, r: Quantity['length']) -> FloatOrArray:
         """Mass cumulative probability density function (cdf) at radius `r`. Normalized enclosed mass."""
-        return (self.M(r) / self.total_mass).decompose(run_units.system).value
+        return (self.enclosed_mass(r) / self.total_mass).decompose(run_units.system).value
 
-    def pdf(self, r: Quantity['length']) -> FloatOrArray:
-        """Mass probability density function (pdf) interpolated at a given radius (memoized)."""
-        if 'pdf' not in self.memoization:
-            self.memoization['pdf'] = scipy.interpolate.interp1d(
-                self.geomspace_grid.value,
-                self.mass_pdf(self.geomspace_grid),
-                kind='cubic',
-                bounds_error=False,
-                fill_value=(0, 1),
-            )
-        return self.memoization['pdf'](r.to(run_units.length).value)
+    @cached_property
+    def pdf(self) -> QuantityInterpolate:
+        """Mass probability density function (pdf) interpolated at a given radius."""
+        return QuantityInterpolate(
+            x=self.geomspace_grid.value,
+            y=self.mass_pdf(self.geomspace_grid),
+            kind='cubic',
+            bounds_error=False,
+            fill_value=(0, 0),
+        )
 
-    def cdf(self, r: Quantity['length']) -> FloatOrArray:
-        """Mass cumulative probability density function (cdf) interpolated at a given radius `r` (memoized)."""
-        if 'cdf' not in self.memoization:
-            self.memoization['cdf'] = scipy.interpolate.interp1d(
-                self.geomspace_grid.value,
-                self.mass_cdf(self.geomspace_grid),
-                kind='cubic',
-                bounds_error=False,
-                fill_value=(0, 1),
-            )
-        return self.memoization['cdf'](r.to(run_units.length).value)
+    @cached_property
+    def cdf(self) -> QuantityInterpolate:
+        """Mass cumulative probability density function (cdf) interpolated at a given radius `r`."""
+        return QuantityInterpolate(
+            x=self.geomspace_grid.value,
+            y=self.mass_cdf(self.geomspace_grid),
+            kind='cubic',
+            bounds_error=False,
+            fill_value=(0, 1),
+        )
 
-    def quantile_function(self, p: FloatOrArray) -> Quantity['length']:
-        """Mass quantile function (inversed cdf) interpolated at a given radius `r` (memoized)."""
-        if 'quantile_function' not in self.memoization:
-            cdf, rs = utils.joint_clean(arrays=[self.mass_cdf(self.geomspace_grid), self.geomspace_grid.value])
-            self.memoization['quantile_function'] = scipy.interpolate.interp1d(
-                cdf, rs, kind='cubic', bounds_error=False, fill_value=(self.r_min.value, self.r_max.value)
-            )
-        return Quantity(self.memoization['quantile_function'](p), run_units.length)
+    @cached_property
+    def quantile_function(self) -> QuantityInterpolate:
+        """Mass quantile function (inversed cdf) interpolated at a given radius `r`."""
+        cdf, rs = utils.joint_clean(arrays=[self.mass_cdf(self.geomspace_grid), self.geomspace_grid.value])
+        return QuantityInterpolate(
+            x=cdf, y=rs, kind='cubic', bounds_error=False, fill_value=(self.r_min.value, self.r_max.value)
+        )
 
     def poisson_potential(self, r: Quantity['length']) -> Quantity['specific energy']:
         """Calculate the gravitational potential energy (`poisson_potential`), at a given radius `r`."""
@@ -553,11 +547,11 @@ class Distribution:
             assert self.agama_total_potential is not None, 'Agama potential not initialized'
             return self.agama_total_potential.poisson_potential(r).to(run_units.specific_energy)
         xs = Quantity(np.geomspace(self.r_min, r, 1000), 'kpc').T
-        return np.trapezoid(y=constants.G * self.M(xs) / xs**2, x=xs).to(run_units.specific_energy)
+        return np.trapezoid(y=constants.G * self.enclosed_mass(xs) / xs**2, x=xs).to(run_units.specific_energy)
 
     @cached_property
     def potential_reference(self) -> Quantity['specific energy']:
-        """Calculate the relative value for the gravitational potential energy (`potential_reference`), i.e. at `infinity` (memoized)."""
+        """Calculate the relative value for the gravitational potential energy (`potential_reference`), i.e. at `infinity`."""
         return self.poisson_potential(self.r_max * 100)
 
     def calculate_potential(self, r: Quantity['length']) -> Quantity['specific energy']:
@@ -566,7 +560,7 @@ class Distribution:
 
     @cached_property
     def potential_grid(self) -> Quantity['specific energy']:
-        """Calculate the relative gravitational potential (`potential`) at the  `internal logarithmic grid` (memoized)."""
+        """Calculate the relative gravitational potential (`potential`) at the  `internal logarithmic grid`."""
         return self.calculate_potential(self.geomspace_grid)
 
     @cached_property
@@ -600,7 +594,7 @@ class Distribution:
 
     @cached_property
     def potential(self) -> QuantitySpline | Callable[[Quantity], Quantity]:
-        """Interpolate the relative gravitational potential (`potential`) based on the  `internal logarithmic grid` (memoized)."""
+        """Interpolate the relative gravitational potential (`potential`) based on the  `internal logarithmic grid`."""
         if self.backend == 'agama':
             return self.calculate_potential
         return QuantitySpline(
@@ -649,10 +643,10 @@ class Distribution:
                 distribution.agama_total_potential = total_potential
         else:
             for distribution in physical_distributions:
-                distribution.memoization = {}
+                distribution.invalidate('potential_grid', 'potential_reference')
             potential_grid = sum([getattr(density, 'potential_grid') for density in physical_distributions])
             for distribution in physical_distributions:
-                distribution.memoization['potential_grid'] = potential_grid
+                distribution.potential_grid = potential_grid
 
     ## io
 
