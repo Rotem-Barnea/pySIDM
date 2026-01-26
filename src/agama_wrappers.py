@@ -200,6 +200,6 @@ class GalaxyModel:
     @vectorize
     def velocity_dispersion(self, r: Quantity['length']) -> Quantity['velocity']:
         """Calculate the velocity dispersion of the distribution function assuming isotropy."""
-        return Quantity(np.sqrt(np.mean(self.model.moments(to_3d(r), dens=False)[..., :3], axis=1)), velocity()).to(
+        return Quantity(np.sqrt(np.mean(self.model.moments(to_3d(r), dens=False)[..., :3], axis=-1)), velocity()).to(
             run_units.velocity
         )
