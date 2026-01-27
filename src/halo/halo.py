@@ -78,6 +78,7 @@ class Halo:
         runtime_track_sidm: deque[float] | None = None,
         runtime_track_leapfrog: deque[float] | None = None,
         runtime_track_full_step: deque[float] | None = None,
+        runtime_track_simulation_time: deque[float] | None = None,
         sort_kind: SortKind = 'stable',
         generator: np.random.Generator | None = None,
         seed: int | None = None,
@@ -199,6 +200,7 @@ class Halo:
         self.runtime_track_sidm: deque[float] = utils.handle_default(runtime_track_sidm, deque())
         self.runtime_track_leapfrog: deque[float] = utils.handle_default(runtime_track_leapfrog, deque())
         self.runtime_track_full_step: deque[float] = utils.handle_default(runtime_track_full_step, deque())
+        self.runtime_track_simulation_time: deque[float] = utils.handle_default(runtime_track_simulation_time, deque())
         if generator is not None:
             self.rng = generator
             self.seed = generator.bit_generator.seed_seq.entropy
@@ -468,6 +470,7 @@ class Halo:
         self.runtime_track_sidm = deque()
         self.runtime_track_leapfrog = deque()
         self.runtime_track_full_step = deque()
+        self.runtime_track_simulation_time = deque()
         self.runtime_realtime_track = deque()
         self.rng = np.random.default_rng(self.seed)
 
@@ -786,6 +789,7 @@ class Halo:
                 self.runtime_track_leapfrog,
                 self.runtime_track_full_step,
                 self.runtime_realtime_track,
+                self.runtime_track_simulation_time,
                 fillvalue=np.nan,
             ),
             columns=['sort', 'cleanup', 'sidm', 'leapfrog', 'full step', 'real timestep'],
@@ -959,6 +963,7 @@ class Halo:
         if early_quit_kwargs is not None and self.check_early_quit(**early_quit_kwargs):
             if self.hard_save:
                 self.save(**save_kwargs)
+            print('Quiting early!')
             return True
         return False
 
@@ -1040,6 +1045,7 @@ class Halo:
             self.time += self.dt
             self.ministep_size += [self.dt.value]
             self.steps += 1
+        self.runtime_track_simulation_time += [self.time.to(run_units.time).value]
         self.runtime_track_full_step += [time.perf_counter() - t_start]
 
     def evolve(

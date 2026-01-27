@@ -96,6 +96,7 @@ class HeavyPayload(TypedDict, total=False):
     runtime_track_sidm: deque[float] | None
     runtime_track_leapfrog: deque[float] | None
     runtime_track_full_step: deque[float] | None
+    runtime_track_simulation_time: deque[float] | None
 
 
 def metadata_keys() -> list[str]:
