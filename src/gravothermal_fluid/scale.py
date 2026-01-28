@@ -19,9 +19,11 @@ ScaleType = Literal[
     'mass',
     'velocity',
     'time',
-    'cross_section',
+    'cross section',
     'luminosity',
-    'energy',
+    'luminosity gradient',
+    'internal energy',
+    'internal energy gradient',
     'pressure',
 ]
 
@@ -57,7 +59,15 @@ class Scale:
     @property
     def scales(self) -> list[Quantity]:
         """A list of all supported scales"""
-        return [getattr(self, key) for key in get_args(ScaleType)]
+        return [self.get_scale(key) for key in get_args(ScaleType)]
+
+    def get_scale(self, scale_type: ScaleType) -> Quantity:
+        """Get the scale for a given scale type"""
+        return getattr(self, scale_type.replace(' ', '_'))
+
+    def get_unit(self, scale_type: ScaleType) -> Unit:
+        """Get the scale unit for a given scale type"""
+        return cast(Unit, self.get_scale(scale_type).unit)
 
     @overload
     def __call__(self, x: Quantity, unit: UnitLike | ScaleType | None = None) -> NDArray[np.float64]: ...
@@ -78,7 +88,7 @@ class Scale:
                 f"Input doesn't match a known any scale units: {x} of physical type {cast(Unit, x.unit).physical_type}"
             )
         elif str(unit) in get_args(ScaleType):
-            return x * getattr(self, str(unit))
+            return x * self.get_scale(cast(ScaleType, unit))
         elif unit is not None:
             for scale in self.scales:
                 if cast(Unit, scale.unit).is_equivalent(unit):
@@ -129,11 +139,21 @@ class Scale:
         return (constants.G * self.mass**2 / (self.length * self.time)).decompose(run_units.system)
 
     @property
-    def energy(self) -> Quantity['specific energy']:
-        """Energy scale"""
-        return cast(Quantity, self.velocity**2).decompose(run_units.system)
+    def luminosity_gradient(self) -> Quantity:
+        """Luminosity gradient (dL/dm) scale"""
+        return (self.luminosity / self.mass).decompose(run_units.system)
 
     @property
-    def pressure(self) -> Quantity['specific energy']:
+    def internal_energy(self) -> Quantity['specific energy']:
         """Energy scale"""
-        return cast(Quantity, self.density * self.velocity**2).decompose(run_units.system)
+        return (self.velocity**2).decompose(run_units.system)
+
+    @property
+    def internal_energy_gradient(self) -> Quantity:
+        """Energy gradient (du/dM) scale"""
+        return (self.internal_energy / self.mass).decompose(run_units.system)
+
+    @property
+    def pressure(self) -> Quantity['pressure']:
+        """Pressure scale"""
+        return (self.density * self.velocity**2).decompose(run_units.system)

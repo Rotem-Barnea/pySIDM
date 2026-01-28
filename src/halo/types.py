@@ -5,6 +5,10 @@ from pathlib import Path
 
 from astropy.units import Quantity
 
+from src.types import regulate_arguments
+
+__all__ = ['regulate_arguments']
+
 
 class EarlyQuitParams(TypedDict, total=False):
     """Parameter dictionary for the early quit check.
@@ -66,3 +70,19 @@ class OptimizeDtParams(TypedDict, total=False):
     verbose: bool
     tqdm_leave: bool
     reoptimize_rate: Quantity['time']
+
+
+class CoreCollapseDensityEstimateParams(TypedDict, total=False):
+    """Parameter dictionary for checking if the core is collapsing.
+
+    Attributes:
+        r: The radius of each particle.
+        initial_r: The initial radius of each particle.
+        inner_core_radius: The inner core radius.
+        critical_ratio: The critical ratio defining the core collapse.
+    """
+
+    r: Quantity['length']
+    initial_r: Quantity['length']
+    inner_core_radius: Quantity['length']
+    critical_ratio: float

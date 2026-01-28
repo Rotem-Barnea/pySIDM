@@ -94,24 +94,60 @@ def split_to_chunks(
     return start_points, reoptimize_rate
 
 
-def check_early_quit(
-    r: Quantity['length'],
-    initial_r: Quantity['length'],
-    inner_core_radius: Quantity['length'],
-    critical_ratio: float = 2,
-) -> bool:
+def check_early_quit(core_collape_kwargs: types.CoreCollapseDensityEstimateParams | None = None) -> bool:
     """Check if the simulation should be terminated early.
 
     Parameters:
-        r: The current radius of each particle.
-        initial_r: The initial radius of each particle.
-        inner_core_radius: The inner core radius. If None, use the current inner core radius.
-        critical_ratio: The critical ratio defining the core collapse.
+        core_collape_kwargs: Keyword arguments passed on to `core_is_collapsing()` to determine an early quit. If None ignores this check.
 
     Returns:
         `True` if the simulation should be terminated early, `False` otherwise.
     """
-    return (r < inner_core_radius).sum() / (initial_r < inner_core_radius).sum() >= critical_ratio
+    if core_collape_kwargs is not None:
+        return core_is_collapsing(**core_collape_kwargs)
+    return False
+
+
+def core_density_ratio(
+    r: Quantity['length'],
+    initial_r: Quantity['length'],
+    inner_core_radius: Quantity['length'],
+    **kwargs: Any,
+) -> bool:
+    """Calcualtes the density in the inner core, divided by the initial density
+
+    Parameters:
+        r: The radius of each particle.
+        initial_r: The initial radius of each particle.
+        inner_core_radius: The inner core radius.
+        **kwargs: Additional unused keyword arguments.
+
+    Returns:
+        density ratio in the inner core
+    """
+    return (r < inner_core_radius).sum() / (initial_r < inner_core_radius).sum()
+
+
+def core_is_collapsing(
+    r: Quantity['length'],
+    initial_r: Quantity['length'],
+    inner_core_radius: Quantity['length'],
+    critical_ratio: float = 2,
+    **kwargs: Any,
+) -> bool:
+    """Check if the simulation should be terminated early.
+
+    Parameters:
+        r: The radius of each particle.
+        initial_r: The initial radius of each particle.
+        inner_core_radius: The inner core radius.
+        critical_ratio: The critical ratio defining the core collapse.
+        **kwargs: Additional unused keyword arguments.
+
+    Returns:
+        `True` if the simulation should be terminated early, `False` otherwise.
+    """
+    return core_density_ratio(r=r, initial_r=initial_r, inner_core_radius=inner_core_radius) >= critical_ratio
 
 
 def core_collapse_scatter_estimate(
@@ -176,9 +212,12 @@ def core_collapse_core_density_estimate(
     """
     groups = snapshots.group_by('time').groups
     t = groups.keys['time']
-    n_c0 = (initial_r < inner_core_radius).sum()
-    ratio = np.array([(group['r'] < inner_core_radius).sum() for group in groups]) / n_c0
-    if (ratio > critical_ratio).any():
+
+    ratio = np.array(
+        [core_density_ratio(r=group['r'], initial_r=initial_r, inner_core_radius=inner_core_radius) for group in groups]
+    )
+
+    if (ratio >= critical_ratio).any():
         i = np.argmax(ratio > critical_ratio)
         return (t[i] - t[i - 1]) / (ratio[i] - ratio[i - 1]) * (critical_ratio - ratio[i - 1]) + t[i - 1]
     return Quantity(np.inf, t.unit)

@@ -1,18 +1,25 @@
 """Solver management class for the gravothermal fluid ODE equations"""
 
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 # from functools import cached_property
 import numpy as np
+import seaborn as sns
 from numpy.typing import NDArray
 from astropy.units import Quantity
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
+from astropy.units.typing import UnitLike
 
-from src import utils, run_units
+from src import plot, utils, run_units
 from src.tqdm import tqdm
 from src.distribution.distribution import Distribution
 
+# from src.distribution.distribution import PhysicalProperty as BasePhysicalProperty
 from . import types, snapshot
 from .scale import Scale
+
+# PhysicalProperty = BasePhysicalProperty | Literal['luminosity', 'luminosity gradient', 'internal energy gradient']
 
 
 class GravothermalFluid:
@@ -427,3 +434,76 @@ class GravothermalFluid:
             self.relax(dt=dt)
             self.time += dt
             self.save_snapshot()
+
+    def plot(
+        self,
+        y: snapshot.SavedAttributes,
+        x: Literal['radius', 'enclosed mass'] = 'radius',
+        xlabel: str | None | Literal['auto'] = 'auto',
+        ylabel: str | None | Literal['auto'] = 'auto',
+        x_unit: UnitLike | None | Literal['auto'] = 'auto',
+        y_unit: UnitLike | None | Literal['auto'] = 'auto',
+        xscale: plot.Scale = 'log',
+        yscale: plot.Scale | None = None,
+        label: str | None | Literal['auto'] = 'auto',
+        lineplot_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot a physical property's evolution over time.
+
+        Parameters:
+            y: Value to plot on the y-axis.
+            x: Value to plot on the x-axis.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            x_unit: The units of the x-axis.
+            y_unit: The units of the y-axis.
+            xscale: The scale of the x-axis.
+            yscale: The scale of the y-axis.
+            label: The label for each plot. If `auto` plots `initial` for t=0 and `{i} steps` for the i-th step.
+            lineplot_kwargs: Additional keyword arguments to pass to the lineplot function (`sns.lineplot()`).
+            **kwargs: Additional keyword arguments passed to `plot.setup_kwargs()`.
+
+        Returns:
+            fig, ax.
+        """
+        if x_unit == 'auto':
+            x_unit = str(self.scale.get_unit('length') if x == 'radius' else self.scale.get_unit('mass'))
+        if y_unit == 'auto':
+            y_unit = self.scale.get_unit(self.snapshots.physical_type(y))
+        if xlabel == 'auto':
+            xlabel = x.title()
+        if ylabel == 'auto':
+            ylabel = y.title()
+        if yscale is None:
+            yscale = 'log' if y in ['density', 'enclosed mass', 'shell mass', 'radius', 'shell center'] else 'linear'
+
+        fig, ax = plot.setup(
+            xlabel=xlabel, ylabel=ylabel, x_unit=x_unit, y_unit=y_unit, xscale=xscale, yscale=yscale, **kwargs
+        )
+
+        y_snapshots = self.snapshots(y)
+        if x == 'radius':
+            x_snapshots = self.snapshots.shell_center if y in self.snapshots.center_aligned else self.snapshots.radius
+        else:
+            x_snapshots = (
+                self.snapshots.enclosed_mass[..., 1:]
+                if y in self.snapshots.center_aligned
+                else self.snapshots.enclosed_mass
+            )
+
+        for i, (x_values, y_values) in enumerate(zip(x_snapshots, y_snapshots)):
+            if x_unit is not None:
+                x_values = self.scale(x_values, x_unit)
+            if y_unit is not None:
+                y_values = self.scale(y_values, y_unit)
+            if label == 'auto':
+                label = f'{i} steps' if i > 0 else 'initial'
+            sns.lineplot(
+                x=x_values,
+                y=y_values,
+                ax=ax,
+                label=label,
+                **lineplot_kwargs,
+            )
+        return fig, ax

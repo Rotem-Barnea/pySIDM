@@ -1,25 +1,58 @@
 """module handling the snapshot saving of the system"""
 
-from typing import Any
+from typing import Any, Literal, get_args
 from collections import deque
 
 import numpy as np
 from numpy.typing import NDArray
 
-saved_attributes = [
+from .scale import ScaleType
+
+EdgeAlignedAttributes = Literal[
     'radius',
-    'shell_center',
-    'velocity_dispersion',
-    'density',
-    'enclosed_mass',
-    'shell_mass',
-    'pressure',
-    'internal_energy',
-    'internal_energy_gradient',
+    'enclosed mass',
+    'internal energy gradient',
     'luminosity',
-    'luminosity_gradient',
+]
+CenterAlignedAttributes = Literal[
+    'shell center',
+    'velocity dispersion',
+    'density',
+    'shell mass',
+    'pressure',
+    'internal energy',
+    'luminosity gradient',
+]
+
+SavedAttributes = Literal[
+    'radius',
+    'shell center',
+    'velocity dispersion',
+    'density',
+    'enclosed mass',
+    'shell mass',
+    'pressure',
+    'internal energy',
+    'internal energy gradient',
+    'luminosity',
+    'luminosity gradient',
     'time',
 ]
+
+physical_type: dict[SavedAttributes, ScaleType] = {
+    'radius': 'length',
+    'shell center': 'length',
+    'velocity dispersion': 'velocity',
+    'density': 'density',
+    'enclosed mass': 'mass',
+    'shell mass': 'mass',
+    'pressure': 'pressure',
+    'internal energy': 'internal energy',
+    'internal energy gradient': 'internal energy gradient',
+    'luminosity': 'luminosity',
+    'luminosity gradient': 'luminosity gradient',
+    'time': 'time',
+}
 
 
 class Snapshot:
@@ -39,7 +72,7 @@ class Snapshot:
         luminosity: NDArray[np.float64],
         luminosity_gradient: NDArray[np.float64],
         time: float,
-    ):
+    ) -> None:
         self._radius: deque[NDArray[np.float64]] = deque()
         self._shell_center: deque[NDArray[np.float64]] = deque()
         self._velocity_dispersion: deque[NDArray[np.float64]] = deque()
@@ -68,6 +101,10 @@ class Snapshot:
             time=time,
         )
 
+    def __call__(self, key: SavedAttributes) -> NDArray[np.float64]:
+        """Returns the snapshot for the specified attribute."""
+        return getattr(self, key.replace(' ', '_'))
+
     def update(self, **kwargs: Any) -> None:
         """Update the snapshot with new data."""
         for key, value in kwargs.items():
@@ -75,65 +112,85 @@ class Snapshot:
 
     def rollback(self, to_index: int) -> None:
         """Rollback the snapshot to a previous state."""
-        for key in saved_attributes:
-            setattr(self, f'_{key}', deque(list(getattr(self, f'_{key}'))[:to_index]))
+        for key in map(lambda x: '_' + x.replace(' ', '_'), self.saved_properties):
+            setattr(self, key, deque(list(getattr(self, key))[:to_index]))
 
     @property
-    def radius(self):
+    def saved_properties(self) -> list[str]:
+        """Total saved physical properties"""
+        return list(get_args(SavedAttributes))
+
+    @property
+    def edge_aligned(self) -> list[str]:
+        """Edge-aligned physical properties"""
+        return list(get_args(EdgeAlignedAttributes))
+
+    @property
+    def center_aligned(self) -> list[str]:
+        """Center-aligned physical properties"""
+        return list(get_args(CenterAlignedAttributes))
+
+    @staticmethod
+    def physical_type(key: SavedAttributes) -> ScaleType:
+        """Return the physical type of a saved attribute."""
+        return physical_type[key]
+
+    @property
+    def radius(self) -> NDArray[np.float64]:
         """The radius of each shell (radius of the outer shell edge). Edge-aligned array (shape (N,))."""
         return np.vstack(self._radius)
 
     @property
-    def shell_center(self):
+    def shell_center(self) -> NDArray[np.float64]:
         """The radius of each shell's center. Center-aligned array (shape (N-1,))."""
         return np.vstack(self._shell_center)
 
     @property
-    def velocity_dispersion(self):
+    def velocity_dispersion(self) -> NDArray[np.float64]:
         """The velocity dispersion. Center-aligned array (shape (N-1,))."""
         return np.vstack(self._velocity_dispersion)
 
     @property
-    def density(self):
+    def density(self) -> NDArray[np.float64]:
         """The therodynamical density. Center-aligned array (shape (N-1,))."""
         return np.vstack(self._density)
 
     @property
-    def enclosed_mass(self):
+    def enclosed_mass(self) -> NDArray[np.float64]:
         """The mass enclosed by each shell's outer radius. Edge-aligned array (shape (N,))."""
         return np.vstack(self._enclosed_mass)
 
     @property
-    def shell_mass(self):
+    def shell_mass(self) -> NDArray[np.float64]:
         """The mass contained within each shell. Center-aligned array (shape (N-1,))."""
         return np.vstack(self._shell_mass)
 
     @property
-    def pressure(self):
+    def pressure(self) -> NDArray[np.float64]:
         """The pressure in each shell. Center-aligned array (shape (N-1,))."""
         return np.vstack(self._pressure)
 
     @property
-    def internal_energy(self):
+    def internal_energy(self) -> NDArray[np.float64]:
         """The internal energy in each shell. Center-aligned array (shape (N-1,))."""
         return np.vstack(self._internal_energy)
 
     @property
-    def internal_energy_gradient(self):
+    def internal_energy_gradient(self) -> NDArray[np.float64]:
         """The energy gradient in mass coordinates. Edge-aligned array (shape (N,))."""
         return np.vstack(self._internal_energy_gradient)
 
     @property
-    def luminosity(self):
+    def luminosity(self) -> NDArray[np.float64]:
         """The luminosity at each point. Edge-aligned array (shape (N,))."""
         return np.vstack(self._luminosity)
 
     @property
-    def luminosity_gradient(self):
+    def luminosity_gradient(self) -> NDArray[np.float64]:
         """The luminosity gradient in mass coordinates. Center-aligned array (shape (N-1,))."""
         return np.vstack(self._luminosity_gradient)
 
     @property
-    def time(self):
+    def time(self) -> NDArray[np.float64]:
         """The time of each snapshot."""
         return np.hstack(self._time)

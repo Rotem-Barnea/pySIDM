@@ -1,6 +1,6 @@
 """Defines types used in the simulation"""
 
-from typing import Any, Literal, TypeVar
+from typing import Any, Literal, TypeVar, cast
 
 import numpy as np
 import scipy
@@ -13,6 +13,15 @@ FloatOrArray = TypeVar('FloatOrArray', float, NDArray[np.float64])
 QuantityOrArray = Quantity | NDArray[np.float64] | pd.Series
 QuantityLike = TypeVar('QuantityLike', Quantity, NDArray[np.float64])
 ParticleType = Literal['dm', 'baryon']
+
+T = TypeVar('T')
+
+
+def regulate_arguments(scheme: type[T], **kwargs: Any) -> T:
+    """Regulates the kwargs argument to only insert the relevant ones to `scheme` (a TypedDict)."""
+    valid_keys = set(scheme.__annotations__.keys())
+    filtered_kwargs: dict[valid_keys, Any] = {k: v for k, v in kwargs.items() if k in valid_keys}
+    return cast(scheme, filtered_kwargs)
 
 
 class QuantitySpline(scipy.interpolate.UnivariateSpline):

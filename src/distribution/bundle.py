@@ -109,7 +109,7 @@ class Bundle:
 
     def plot(
         self,
-        method: PhysicalProperty,
+        property: PhysicalProperty,
         x_unit: UnitLike | None | Literal['auto'] = 'auto',
         y_unit: UnitLike | None | Literal['auto'] = 'auto',
         xlabel: str | None | Literal['auto'] = 'auto',
@@ -123,20 +123,20 @@ class Bundle:
         if xlabel == 'auto':
             xlabel = 'Radius'
         if ylabel == 'auto':
-            ylabel = method.title()
+            ylabel = property.title()
         if x_unit == 'auto':
             x_unit = str(self.distributions[0].geomspace_grid.unit)
         if y_unit == 'auto':
-            y_unit = str(getattr(self.distributions[0], f'{method.replace(" ", "_")}_grid').unit)
+            y_unit = str(getattr(self.distributions[0], f'{property.replace(" ", "_")}_grid').unit)
         fig, ax = plot.setup(**kwargs, xscale=xscale, x_unit=x_unit, y_unit=y_unit, xlabel=xlabel, ylabel=ylabel)
         if x_unit is None:
             x_unit = str(self.distributions[0].geomspace_grid.unit)
         if y_unit is None:
-            y_unit = str(getattr(self.distributions[0], f'{method.replace(" ", "_")}_grid').unit)
+            y_unit = str(getattr(self.distributions[0], f'{property.replace(" ", "_")}_grid').unit)
         for i, distribution in enumerate(self.distributions):
             sns.lineplot(
                 x=distribution.geomspace_grid.to(x_unit).value,
-                y=getattr(distribution, f'{method.replace(" ", "_")}_grid').to(y_unit),
+                y=getattr(distribution, f'{property.replace(" ", "_")}_grid').to(y_unit),
                 ax=ax,
                 label=labels[i] if labels is not None else None,
                 **(lineplot_kwargs[i] if lineplot_kwargs is not None else {}),
@@ -145,7 +145,7 @@ class Bundle:
 
     def plot_with(
         self,
-        method: PhysicalProperty,
+        property: PhysicalProperty,
         other: Self,
         labels: list[str] | None = None,
         lineplot_kwargs: list[dict[str, Any]] | None = None,
@@ -154,8 +154,10 @@ class Bundle:
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
         """Plot properties of the paired distributions alongside the bundle."""
-        fig, ax = self.plot(method=method, labels=labels, lineplot_kwargs=lineplot_kwargs, **kwargs)
-        other.plot(method=method, labels=other_labels, lineplot_kwargs=other_lineplot_kwargs, fig=fig, ax=ax, **kwargs)
+        fig, ax = self.plot(property=property, labels=labels, lineplot_kwargs=lineplot_kwargs, **kwargs)
+        other.plot(
+            property=property, labels=other_labels, lineplot_kwargs=other_lineplot_kwargs, fig=fig, ax=ax, **kwargs
+        )
         return fig, ax
 
 
@@ -250,7 +252,7 @@ class HaloBaryonBundle(Bundle):
 
     def plot_pair(
         self,
-        method: PhysicalProperty,
+        property: PhysicalProperty,
         dm_label: str = 'DM',
         baryon_label: str = 'Baryons',
         dm_lineplot_kwargs: dict[str, Any] = {},
@@ -259,7 +261,7 @@ class HaloBaryonBundle(Bundle):
     ) -> tuple[Figure, Axes]:
         """Plot properties of the paired distributions."""
         return self.plot(
-            method=method,
+            property=property,
             labels=[dm_label, baryon_label],
             lineplot_kwargs=[dm_lineplot_kwargs, baryon_lineplot_kwargs],
             **kwargs,
@@ -267,7 +269,7 @@ class HaloBaryonBundle(Bundle):
 
     def plot_pair_with(
         self,
-        method: PhysicalProperty,
+        property: PhysicalProperty,
         other: Bundle,
         other_labels: list[str] | None = None,
         other_lineplot_kwargs: list[dict[str, Any]] | None = None,
@@ -279,12 +281,14 @@ class HaloBaryonBundle(Bundle):
     ) -> tuple[Figure, Axes]:
         """Plot properties of the paired distributions alongside the bundle."""
         fig, ax = self.plot_pair(
-            method=method,
+            property=property,
             dm_label=dm_label,
             baryon_label=baryon_label,
             dm_lineplot_kwargs=dm_lineplot_kwargs,
             baryon_lineplot_kwargs=baryon_lineplot_kwargs,
             **kwargs,
         )
-        other.plot(method=method, labels=other_labels, lineplot_kwargs=other_lineplot_kwargs, fig=fig, ax=ax, **kwargs)
+        other.plot(
+            property=property, labels=other_labels, lineplot_kwargs=other_lineplot_kwargs, fig=fig, ax=ax, **kwargs
+        )
         return fig, ax

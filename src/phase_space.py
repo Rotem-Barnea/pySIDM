@@ -19,8 +19,8 @@ from astropy.units.typing import UnitLike
 from . import rng, plot, utils, physics, run_units
 from .tqdm import tqdm
 from .types import ParticleType
+from .distribution import Distribution, PhysicalProperty
 from .physics.leapfrog import FactorGuessKwargs
-from .distribution.distribution import Distribution
 
 
 class PhaseSpace:
@@ -752,8 +752,8 @@ class PhaseSpace:
             title: The title of the plot.
             xlabel: The label of the x-axis.
             ylabel: The label of the y-axis.
-            length_unit: Unit of length.
-            density_unit: Unit of density.
+            length_unit: Unit for the length axis.
+            density_unit: Unit for the density axis.
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
@@ -815,8 +815,8 @@ class PhaseSpace:
             title: The title of the plot.
             xlabel: The label of the x-axis.
             ylabel: The label of the y-axis.
-            length_unit: Unit of length.
-            temperature_unit: Unit of density.
+            length_unit: Unit for the length axis.
+            temperature_unit: Unit for the temperature axis.
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
@@ -849,6 +849,65 @@ class PhaseSpace:
             **lineplot_kwargs,
         )
         self.save_plot(fig=fig, save_kwargs=save_kwargs, default_stem='temperature', default_suffix='.png')
+        return fig, ax
+
+    def plot(
+        self,
+        y: PhysicalProperty,
+        smoothing_sigma: float | None = None,
+        title: str | None | Literal['auto'] = 'auto',
+        xlabel: str | None = 'Radius',
+        ylabel: str | None | Literal['auto'] = 'auto',
+        length_unit: UnitLike = 'kpc',
+        y_unit: UnitLike | None = None,
+        xscale: plot.Scale = 'log',
+        yscale: plot.Scale = 'guess',
+        lineplot_kwargs: dict[str, Any] = {},
+        smooth_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the profile of a physical property of the distribution function.
+
+        Parameters:
+            y: The property to plot.
+            smoothing_sigma: Smoothing parameter for the temperature profile. If `None`, no smoothing is applied.
+            title: The title of the plot.
+            xlabel: The label of the x-axis.
+            ylabel: The label of the y-axis.
+            length_unit: Unit for the length axis.
+            y_unit: Unit for the y-axis.
+            xscale: The scale of the x-axis.
+            yscale: The scale of the y-axis.
+            lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
+            smooth_kwargs: Additional keyword arguments passed to `utils.smooth_holes_1d()`.
+            save_kwargs: Keyword arguments to pass to `save_plot()`. If `None` ignores saving.
+            **kwargs: Additional keyword arguments passed to `plot.setup()`.
+        """
+
+        x = self.r_array
+        y_values = getattr(self, y.replace(' ', '_'))
+        y_values = utils.smooth_holes_1d(x=x, y=y_values, include_zero=True, **smooth_kwargs)
+        x, y_values = x[(y_values >= 0) * (~np.isnan(y_values))], y_values[(y_values >= 0) * (~np.isnan(y_values))]
+        if smoothing_sigma is not None:
+            y_values = Quantity(scipy.ndimage.gaussian_filter(y_values.value, smoothing_sigma), y_values.unit)
+
+        if y_unit is None:
+            y_unit = str(y_values.unit)
+
+        fig, ax = plot.setup(
+            xscale=xscale,
+            yscale=yscale,
+            title=y.title() if title == 'auto' else title,
+            xlabel=xlabel,
+            ylabel=y.title() if ylabel == 'auto' else ylabel,
+            x_unit=length_unit,
+            y_unit=y_unit,
+            **kwargs,
+        )
+
+        sns.lineplot(x=x.to(length_unit).value, y=y_values.to(y_unit).value, ax=ax, **lineplot_kwargs)
+        self.save_plot(fig=fig, save_kwargs=save_kwargs, default_stem=y, default_suffix='.png')
         return fig, ax
 
     def animate_plot(

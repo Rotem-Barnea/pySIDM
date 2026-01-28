@@ -37,6 +37,7 @@ class Metadata(TypedDict, total=False):
         inner_core_radius: Inner core radius of the halo, used for estimating the collapse.
         cleanup_nullish_particles: Whether to cleanup nullish particles.
         cleanup_particles_by_radius: Whether to cleanup particles by radius.
+        reached_core_collapse: Whether the halo has reached core collapse.
         seed: The seed for the random number generator.
         generator_state: The state of the random number generator.
         n_particles: The number of particles in the simulation.
@@ -59,6 +60,7 @@ class Metadata(TypedDict, total=False):
     inner_core_radius: Quantity['length']
     cleanup_nullish_particles: bool
     cleanup_particles_by_radius: bool
+    reached_core_collapse: bool
     seed: Any
     generator_state: Any
     n_particles: int

@@ -113,6 +113,8 @@ def setup(
         title: The title of the plot.
         xlabel: The label of the x-axis.
         ylabel: The label of the y-axis.
+        x_unit: The units of the x-axis.
+        y_unit: The units of the y-axis.
         xlim: The limits of the x-axis. If `None` ignores.
         ylim: The limits of the y-axis. If `None` ignores.
         hlines: List of horizontal lines to plot. Each element contains the keywords arguments passed to `ax.axhline()`. If the argument `transform` is `'transAxes'`, the transformed is derived from the `ax`.
@@ -262,6 +264,8 @@ def format_ax_ticks(
                     if len(np.unique([f'{x:{tick_format}}' for x in bins])) == nbins:
                         ax_axis.set_major_formatter(ticker.StrMethodFormatter(f'{{x:{tick_format}}}'))
                         break
+        else:
+            ax_axis.set_major_formatter(ticker.StrMethodFormatter(f'{{x:{tick_format}}}'))
     if axis == 'x' and align:
         ax_axis.tick_bottom()
         for lab in ax.get_xticklabels():
