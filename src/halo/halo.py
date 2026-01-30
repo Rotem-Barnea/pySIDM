@@ -6,6 +6,7 @@ from copy import deepcopy
 from typing import Any, Self, Unpack, Literal, cast
 from pathlib import Path
 from datetime import datetime
+from functools import cached_property
 from collections import deque
 from collections.abc import Mapping
 
@@ -32,6 +33,7 @@ from src.phase_space import PhaseSpace
 from src.distribution.distribution import Distribution, backends
 
 from . import io, types, run_optimization
+from .types import TimeUnitLike
 
 
 class Halo:
@@ -148,15 +150,15 @@ class Halo:
             run_units.time
         )
         self.unoptimized_dt: Quantity['time'] = utils.handle_default(unoptimized_dt, self.dt)
-        self.dynamical_time: Quantity['time']
+        self.dynamical_time_unit: Quantity['time']
         if dynamical_time is not None:
-            self.dynamical_time = (
+            self.dynamical_time_unit = (
                 dynamical_time if isinstance(dynamical_time, Quantity) else Quantity(1, dynamical_time)
             )
         elif len(self.distributions) > 0:
-            self.dynamical_time = Quantity(1, self.distributions[0].dynamical_time)
+            self.dynamical_time_unit = self.distributions[0].dynamical_time
         elif len(self.distributions) == 0:
-            self.dynamical_time = Quantity(1, run_units.time)
+            self.dynamical_time_unit = run_units.time
         if isinstance(background, Distribution):
             self.background: BackgroundDistribution | None = BackgroundDistribution(distribution=background)
         else:
@@ -695,9 +697,19 @@ class Halo:
         return Quantity(self._particles[['vx', 'vy', 'vr']], run_units.velocity)
 
     @property
-    def time_step(self) -> Unit:
+    def time_step_unit(self) -> Unit:
         """Calculate the time step size, returning it as a `Unit` object"""
         return def_unit('time step', self.dt.to(run_units.time), format={'latex': r'time\ step'})
+
+    @property
+    def time_step(self) -> Quantity['time']:
+        """Calculate the time step size, returning it as a `Quantity` object"""
+        return Quantity(1, self.time_step_unit)
+
+    @property
+    def dynamical_time(self) -> Quantity['time']:
+        """Calculate the time step size, returning it as a `Quantity` object"""
+        return Quantity(1, self.dynamical_time_unit)
 
     @property
     def M(self) -> Quantity['mass']:
@@ -819,6 +831,20 @@ class Halo:
             np.hstack([[t.value] * len(i) for i, t in zip(self.scatter_track_index, self.scatter_times)]),
             run_units.time,
         )
+
+    @cached_property
+    def core_collapse_time_unit(self) -> Unit:
+        """The core collapse time of the halo, as a unit"""
+        return def_unit(
+            'Tc',
+            self.core_collapse_estimate(),
+            doc='Core collapse time',
+        )
+
+    @cached_property
+    def core_collapse_time(self) -> Quantity['time']:
+        """The core collapse time of the halo, as a Quantity"""
+        return Quantity(1, self.core_collapse_time_unit)
 
     def scatter_track_time_raveled_binned(self, time_bin_size: Quantity | None | Literal['save cadence']):
         """Get a raveled array with the scatter time matching each particle in the hstack-ed `self.scatter_track_index`, with the time binned to a fixed bin size."""
@@ -1249,12 +1275,14 @@ class Halo:
             save_kwargs['save_path'] = self.results_path / save_kwargs.pop('name')
         plot.save(fig=fig, **save_kwargs)
 
-    def fill_time_unit(self, unit: UnitLike) -> UnitLike:
-        """If the `unit` is `dynamical_time` return `self.dynamical_time`. If it's `time step` return `self.time_step`, otherwise return `unit`."""
-        if unit == 'dynamical_time' or unit == 'dynamical time':
-            return self.dynamical_time
+    def fill_time_unit(self, unit: TimeUnitLike) -> UnitLike:
+        """If `unit` is a halo-related time parameter return it's unit, otherwise return `unit`."""
+        if unit == 'dynamical time':
+            return self.dynamical_time_unit
+        elif unit == 'core collapse time':
+            return self.core_collapse_time_unit
         elif unit == 'time step':
-            return self.time_step
+            return self.time_step_unit
         return unit
 
     def energy_change_summary(self, filter_particle_type: ParticleType | None = None, **kwargs: Any) -> report.Report:
@@ -1378,7 +1406,7 @@ class Halo:
         self,
         manual_times: Quantity['time'] = Quantity([], 'Myr'),
         manual_labels: list[str] = [],
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
     ) -> tuple[Quantity['time'], list[str]]:
         """Automatically pull max core and collapse times for use in plotting."""
         time_unit = self.fill_time_unit(time_unit)
@@ -1406,7 +1434,7 @@ class Halo:
         x_range: Quantity['length'] | None = None,
         x_clip: Quantity['length'] | None = None,
         x_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'dynamical time',
+        time_unit: TimeUnitLike = 'dynamical time',
         time_format: str = '.1f',
         title: str | None = 'Density progression over time',
         xlabel: str | None = 'Radius',
@@ -1991,7 +2019,7 @@ class Halo:
         include_now: bool = False,
         radius: Quantity['length'] | None = None,
         filter_particle_type: ParticleType | None = None,
-        time_unit: UnitLike = 'dynamical time',
+        time_unit: TimeUnitLike = 'dynamical time',
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Particles',
         title: str | None = 'Particles in inner core ({radius})',
@@ -2081,7 +2109,7 @@ class Halo:
         radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
         time_range: Quantity | None = None,
         length_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'dynamical time',
+        time_unit: TimeUnitLike = 'dynamical time',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = 'Particles',
@@ -2148,7 +2176,7 @@ class Halo:
         time_range: Quantity | None = None,
         specific_energy_unit: UnitLike = 'km^2/second^2',
         length_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'dynamical time',
+        time_unit: TimeUnitLike = 'dynamical time',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = r'$\propto$Temperature (velocity variance)',
@@ -2218,7 +2246,7 @@ class Halo:
         v_axis: Literal['vx', 'vy', 'vr'] = 'vr',
         heat_unit: UnitLike = '1/Myr^3',
         length_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'dynamical time',
+        time_unit: TimeUnitLike = 'dynamical time',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = 'Specific Heat flux',
@@ -2290,7 +2318,7 @@ class Halo:
         time_bin_size: Quantity | None | Literal['save cadence'] = 'save cadence',
         normalize_by_n_particles: bool = False,
         length_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'dynamical time',
+        time_unit: TimeUnitLike = 'dynamical time',
         xlabel: str | None = 'Radius',
         ylabel: str | None = 'Time',
         cbar_label: str | None = 'Number of scattering events per {time}',
@@ -2396,7 +2424,7 @@ class Halo:
     def plot_start_end_distribution(
         self,
         key: str = 'r',
-        time_unit: UnitLike = 'dynamical time',
+        time_unit: TimeUnitLike = 'dynamical time',
         time_format: str = '.1f',
         label_start: str = 'start',
         label_end: str = 'after {t}',
@@ -2454,7 +2482,7 @@ class Halo:
         title: str | None = 'Scattering location distribution within the first {time}, total of {n_scatters} events',
         xlabel: str | None = 'Radius',
         length_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
         time_format: str = '.1f',
         figsize: tuple[int, int] = (12, 6),
         fig: Figure | None = None,
@@ -2543,7 +2571,7 @@ class Halo:
         ylabel: str | None = 'Density',
         title: str | None = 'Scattering density within the first {time}, total of {n_scatters} events',
         length_unit: UnitLike = 'kpc',
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
         time_format: str = '.1f',
         smooth_sigma: float = 5,
         smooth_interpolate_kind: str = 'linear',
@@ -2673,7 +2701,7 @@ class Halo:
         title: str | None = 'Local density ({nn} nearest neighbors) after t={time}',
         x_unit: UnitLike = 'kpc',
         density_unit: UnitLike = 'Msun/kpc**3',
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
         time_format: str = '.1f',
         smooth_sigma: float = 50,
         save_kwargs: dict[str, Any] | None = None,
@@ -2723,7 +2751,7 @@ class Halo:
         xlabel: str | None = 'local density',
         title: str | None = 'Local density ({nn} nearest neighbors) after t={time}',
         density_unit: UnitLike = 'Msun/kpc**3',
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
         time_format: str = '.1f',
         log_scale: bool = True,
         stat: str = 'density',
@@ -2777,7 +2805,7 @@ class Halo:
         ylabel: str | None = None,
         title: str | None = 'Trace of particle id={particle_index}, initial position={r}',
         label: str | None = 'particle id={particle_index}, initial position={r}',
-        time_unit: UnitLike = 'dynamical time',
+        time_unit: TimeUnitLike = 'dynamical time',
         y_unit: UnitLike | None = None,
         length_unit: UnitLike = 'kpc',
         length_format: str = '.1f',
@@ -2825,7 +2853,7 @@ class Halo:
 
     def plot_cumulative_scattering_amount_over_time(
         self,
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
         undersample: int | None = None,
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Cumulative number of scattering events',
@@ -2851,6 +2879,7 @@ class Halo:
         Returns:
             fig, ax.
         """
+        time_unit = self.fill_time_unit(time_unit)
         fig, ax = plot.setup(
             xlabel=xlabel,
             ylabel=ylabel,
@@ -2870,7 +2899,7 @@ class Halo:
 
     def plot_cumulative_scattering_amount_per_particle_over_time(
         self,
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
         undersample: int | None = None,
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Cumulative number of scattering events',
@@ -2909,7 +2938,7 @@ class Halo:
     def plot_binned_scattering_amount_over_time(
         self,
         time_binning: Quantity = Quantity(100, 'Myr'),
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Number of scattering events',
         title: str | None = 'Number of scattering events over time per {time}',
@@ -2971,7 +3000,7 @@ class Halo:
         rounds: bool = True,
         total_required: bool = True,
         underestimations: bool = False,
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Number of scattering subdivisions per time step',
         title: str | None = 'Scattering subdivisions and underestimation over time',
@@ -3259,7 +3288,7 @@ class Halo:
         title: str | None = 'Distribution by number of scattering events at {time}',
         title_suffix: str | None = None,
         cbar_label: str | None = 'Number of particles',
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
         time_format: str = '.1f',
         xscale: plot.Scale = 'log',
         yscale: plot.Scale = 'log',
@@ -3393,7 +3422,7 @@ class Halo:
         self,
         bin_edges: Quantity['time'] = Quantity(np.linspace(0, 13.5, 20), 'Gyr'),
         length_unit: UnitLike = 'pc',
-        time_unit: UnitLike = 'Gyr',
+        time_unit: TimeUnitLike = 'Gyr',
         xlabel: str | None = 'Time',
         ylabel: str | None = 'Interaction distance',
         title: str | None = 'Mean interaction distance over time',
