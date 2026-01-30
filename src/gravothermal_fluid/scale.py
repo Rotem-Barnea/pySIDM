@@ -59,15 +59,15 @@ class Scale:
     @property
     def scales(self) -> list[Quantity]:
         """A list of all supported scales"""
-        return [self.get_scale(key) for key in get_args(ScaleType)]
+        return [self[key] for key in get_args(ScaleType)]
 
-    def get_scale(self, scale_type: ScaleType) -> Quantity:
+    def __getitem__(self, y: ScaleType) -> Quantity:
         """Get the scale for a given scale type"""
-        return getattr(self, scale_type.replace(' ', '_'))
+        return getattr(self, y.replace(' ', '_'))
 
     def get_unit(self, scale_type: ScaleType) -> Unit:
         """Get the scale unit for a given scale type"""
-        return cast(Unit, self.get_scale(scale_type).unit)
+        return cast(Unit, self[scale_type].unit)
 
     @overload
     def __call__(self, x: Quantity, unit: UnitLike | ScaleType | None = None) -> NDArray[np.float64]: ...
@@ -88,7 +88,7 @@ class Scale:
                 f"Input doesn't match a known any scale units: {x} of physical type {cast(Unit, x.unit).physical_type}"
             )
         elif str(unit) in get_args(ScaleType):
-            return x * self.get_scale(cast(ScaleType, unit))
+            return x * self[cast(ScaleType, unit)]
         elif unit is not None:
             for scale in self.scales:
                 if cast(Unit, scale.unit).is_equivalent(unit):

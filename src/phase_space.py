@@ -104,6 +104,10 @@ class PhaseSpace:
         self.particle_type = particle_type or (self.distribution.particle_type if self.distribution is not None else '')
         self.save_path: Path | None = Path(save_path) if isinstance(save_path, str) else save_path
 
+    def __getitem__(self, y: PhysicalProperty) -> Quantity:
+        """Get the specified property"""
+        return cast(Quantity, getattr(self, y.replace(' ', '_')))
+
     @classmethod
     def from_particles(
         cls,
@@ -858,7 +862,7 @@ class PhaseSpace:
         title: str | None | Literal['auto'] = 'auto',
         xlabel: str | None = 'Radius',
         ylabel: str | None | Literal['auto'] = 'auto',
-        length_unit: UnitLike = 'kpc',
+        x_unit: UnitLike | None = None,
         y_unit: UnitLike | None = None,
         xscale: plot.Scale = 'log',
         yscale: plot.Scale = 'guess',
@@ -875,7 +879,7 @@ class PhaseSpace:
             title: The title of the plot.
             xlabel: The label of the x-axis.
             ylabel: The label of the y-axis.
-            length_unit: Unit for the length axis.
+            x_unit: Unit for the y-axis.
             y_unit: Unit for the y-axis.
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
@@ -886,27 +890,32 @@ class PhaseSpace:
         """
 
         x = self.r_array
-        y_values = getattr(self, y.replace(' ', '_'))
+        y_values = self[y]
         y_values = utils.smooth_holes_1d(x=x, y=y_values, include_zero=True, **smooth_kwargs)
-        x, y_values = x[(y_values >= 0) * (~np.isnan(y_values))], y_values[(y_values >= 0) * (~np.isnan(y_values))]
+        x, y_values = map(
+            lambda x: cast(Quantity, x),
+            (x[(y_values >= 0) * (~np.isnan(y_values))], y_values[(y_values >= 0) * (~np.isnan(y_values))]),
+        )
         if smoothing_sigma is not None:
             y_values = Quantity(scipy.ndimage.gaussian_filter(y_values.value, smoothing_sigma), y_values.unit)
 
+        if x_unit is None:
+            x_unit = str(x.unit)
         if y_unit is None:
             y_unit = str(y_values.unit)
 
         fig, ax = plot.setup(
-            xscale=xscale,
-            yscale=yscale,
+            xscale=utils.guess_scale(x) if xscale == 'guess' else xscale,
+            yscale=utils.guess_scale(y_values) if yscale == 'guess' else yscale,
             title=y.title() if title == 'auto' else title,
             xlabel=xlabel,
             ylabel=y.title() if ylabel == 'auto' else ylabel,
-            x_unit=length_unit,
+            x_unit=x_unit,
             y_unit=y_unit,
             **kwargs,
         )
 
-        sns.lineplot(x=x.to(length_unit).value, y=y_values.to(y_unit).value, ax=ax, **lineplot_kwargs)
+        sns.lineplot(x=x.to(x_unit).value, y=y_values.to(y_unit).value, ax=ax, **lineplot_kwargs)
         self.save_plot(fig=fig, save_kwargs=save_kwargs, default_stem=y, default_suffix='.png')
         return fig, ax
 
