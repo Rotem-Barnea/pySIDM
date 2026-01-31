@@ -110,6 +110,11 @@ class Potential:
         return Quantity(self.potential.density(to_3d(r).to(length()).value), mass() / length() ** 3)
 
     @vectorize
+    def enclosed_mass(self, r: Quantity['length']) -> Quantity['mass density']:
+        """Calculate the enclosed mass at a given radius."""
+        return Quantity(self.potential.enclosedMass(r.to(length()).value), mass())
+
+    @vectorize
     def poisson_potential(self, r: Quantity['length']) -> Quantity['specific energy']:
         """Calculate the potential at a given radius."""
         return Quantity(self.potential.potential(to_3d(r).to(length()).value), velocity() ** 2)
