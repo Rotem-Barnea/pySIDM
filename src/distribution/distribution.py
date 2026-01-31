@@ -102,6 +102,7 @@ class Distribution:
 
         if c == 'From mass':
             assert total_mass is not None, 'total_mass must be provided when using Dutton14'
+            self.total_mass = cast(Quantity, total_mass.to(run_units.mass))
             c = self.calculate_c()
 
         if r_s is None and r_half_light is not None:
@@ -139,7 +140,7 @@ class Distribution:
         assert total_mass is not None or rho_s is not None, 'Either total_mass or rho_s must be specified'
 
         if total_mass is not None:
-            self.total_mass: Quantity['mass'] = cast(Quantity, total_mass.to(run_units.mass))
+            self.total_mass = cast(Quantity, total_mass.to(run_units.mass))
         if rho_s is not None:
             self.rho_s: Quantity['mass density'] = cast(Quantity, rho_s.to(run_units.density))
 
