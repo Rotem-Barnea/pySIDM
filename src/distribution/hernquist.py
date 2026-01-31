@@ -85,8 +85,8 @@ class Hernquist(Distribution):
             )
         elif name == 'Daneng2024:DM11+baryon':
             return cls(
-                total_mass=Quantity(1e11, 'Msun') * 0.01,
                 r_s=Quantity(9.1, 'kpc') * 0.0844,
+                rho_s=Quantity(6.89e6, 'Msun/kpc^3') * 51.7,
                 name=name,
                 **kwargs,
             )
@@ -98,6 +98,7 @@ class Hernquist(Distribution):
                     mass_stellar=Quantity(1.11e5, 'Msun'),
                     mass_half_light=Quantity(np.nan, 'Msun'),
                     r_half_light=Quantity(1.18, 'kpc'),
+                    velocity_dispersion=Quantity(np.nan, 'Msun'),
                 ),
             ),
             name=name,
