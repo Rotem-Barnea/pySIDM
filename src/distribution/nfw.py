@@ -29,7 +29,7 @@ class NFW(Distribution):
         **kwargs: Any,
     ) -> None:
         if r_vir == 'From mass':
-            assert 'total_mass' in kwargs, 'total_mass must be provided when calculating r_vir from the total mass'
+            assert 'total_mass' in kwargs, '`total_mass` must be provided when calculating r_vir from the total mass'
             r_vir = self.calculate_theoretical_r_vir(kwargs['total_mass'])
 
         super().__init__(r_vir=r_vir, truncate=truncate, **kwargs)
@@ -65,7 +65,7 @@ class NFW(Distribution):
             return rho / (1 + (r / r_vir) ** truncate_power)
         return rho
 
-    def calculate_theoretical_M(self, r: Quantity['length']) -> Quantity['mass']:
+    def theoretical_enclosed_mass(self, r: Quantity['length']) -> Quantity['mass']:
         """Calculate the enclosed mass based on the theoretical density profile (without truncation)."""
         x = self.to_scale(r)
         return 4 * np.pi * self.rho_s * self.r_s**3 * (np.log(1 + x) - x / (1 + x))
@@ -144,7 +144,7 @@ class NFW(Distribution):
     def from_example(
         cls,
         name: 'PhysicalExample' = 'default',
-        c: float | Literal['Dutton14'] | None = None,
+        c: float | Literal['From mass'] | None = None,
         **kwargs: Any,
     ) -> Self:
         """Create an NFW distribution from a predefined list of examples matching real galaxies."""
@@ -152,7 +152,7 @@ class NFW(Distribution):
             return cls(
                 total_mass=Quantity(4.5e5, 'Msun'),
                 r_vir='From mass',
-                c=c or 'Dutton14',
+                c=c or 'From mass',
                 name=name,
                 **kwargs,
             )
@@ -174,17 +174,15 @@ class NFW(Distribution):
         #         **kwargs,
         #     )
         elif name == 'Fornax dSph':  # Calculation. Defaults to `c=18` if not provided.
-            assert c != 'Dutton14', 'cannot use Dutton14 to calculate c when calculating from the db'
+            assert c != 'From mass', 'cannot use `From mass` to calculate c when calculating from the db'
             return cls(
                 **{**cls.calculate_from_half_light(**example_db.get_db_parameters(name=name), c=c or 18), **kwargs},
                 name=name,
             )
         elif name == 'Daneng2024:DM11+baryon':
             return cls(
-                total_mass=Quantity(1e11, 'Msun'),
                 r_s=Quantity(9.1, 'kpc'),
-                r_vir='From mass',
-                c='Dutton14',
+                rho_s=Quantity(6.89e6, 'Msun/kpc^3'),
                 name=name,
                 **kwargs,
             )

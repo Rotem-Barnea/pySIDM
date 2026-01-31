@@ -39,7 +39,7 @@ class Distribution:
         r_max: Quantity['length'] | None = None,
         r_s: Quantity['length'] | None = None,
         r_half_light: Quantity['length'] | None = None,
-        c: int | float | None | Literal['Dutton14'] = None,
+        c: int | float | None | Literal['From mass'] = None,
         r_vir: Quantity['length'] | None = None,
         total_mass: Quantity['mass'] | None = None,
         rho_s: Quantity['mass density'] | None = None,
@@ -47,7 +47,6 @@ class Distribution:
         spline_s: float | None = None,
         truncate: bool = False,
         truncate_power: int = 4,
-        initialize_grids: list[str] = [],
         label: str = '',
         particle_type: ParticleType = 'dm',
         name: str = '',
@@ -66,7 +65,7 @@ class Distribution:
             r_max: Maximum radius of the density profile, used for calculating the `internal logarithmic grid` and set internal cutoffs.
             r_s: Scale radius of the distribution profile.
             r_half_light: Half-light radius of the distribution profile.
-            c: Concentration parameter of the distribution profile (such that r_vir = c * r_s). If 'Dutton14', calculate it based on the total mass (must be provided via `total_mass`).
+            c: Concentration parameter of the distribution profile (such that r_vir = c * r_s). If 'From mass', calculate it based on the total mass (must be provided via `total_mass`).
             r_vir: Virial radius of the distribution profile.
             rho_s: Scale density of the distribution profile. Either `total_mass` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
             total_mass: Total mass of the distribution profile. Either `total_mass` or `rho_s` must be provided, and the other will be calculated from the rest of the parameters. If both are provided, they are hard set with no attempts to reconcile the parameters.
@@ -74,7 +73,6 @@ class Distribution:
             spline_s: Spline smoothing parameter for calculating the drho/dpotential derivative.
             truncate: Whether to truncate the density at the virial radius.
             truncate_power: The power law used for truncation.
-            initialize_grid: Grids to initialize at startup, otherwise they will only be calculated at runtime as needed.
             label: Label for the density profile.
             name: Additional name for the distribution profile.
             id: Unique identifier for the distribution profile.
@@ -95,10 +93,6 @@ class Distribution:
         self.particle_type: ParticleType = particle_type
         self._label: str = label
         self.name: str = name
-        self.r_min: Quantity['length'] = r_min.to(run_units.length)
-        self.r_max: Quantity['length'] = (
-            r_max if r_max is not None else 85 * (r_s if r_s is not None else Quantity(2, 'kpc'))
-        ).to(run_units.length)
 
         self.spline_s = spline_s
         self.truncate = truncate
@@ -106,9 +100,9 @@ class Distribution:
         self.id = utils.make_id(id)
         self.backend: Backends = backend
 
-        if c == 'Dutton14':
+        if c == 'From mass':
             assert total_mass is not None, 'total_mass must be provided when using Dutton14'
-            c = self.c_from_M_Dutton14(total_mass)
+            c = self.calculate_c()
 
         if r_s is None and r_half_light is not None:
             r_s = self.r_half_light_to_r_s(r_half_light)
@@ -120,36 +114,39 @@ class Distribution:
         elif r_vir is not None and c is not None:
             r_s = Quantity(r_vir.to(run_units.length) / c)
 
-        if r_s is not None:
+        if (r_s is not None and rho_s is not None) and (c is None and r_vir is None):
             self.r_s = r_s.to(run_units.length)
-        if r_vir is not None:
-            self.r_vir = r_vir.to(run_units.length)
-        if c is not None:
-            self.c = c
-        if total_mass is not None:
-            self.total_mass = total_mass.to(run_units.mass)
-        if rho_s is not None:
             self.rho_s = rho_s.to(run_units.density)
+            params = self.calculate_virial_from_scales()
+            r_vir = params['r_vir']
+            total_mass = params['total_mass']
+            c = float(params['c'])
 
         assert r_s is not None, 'Failed to evaluate r_s'
-        assert r_vir is not None, 'Failed to evaluate r_vir'
-        assert c is not None, 'Failed to evaluate c'
-        assert total_mass is not None or rho_s is not None, 'Either total_mass or rho_s must be specified'
+        self.r_s: Quantity['length'] = cast(Quantity, r_s.to(run_units.length))
 
-        self.r_s: Quantity['length'] = r_s.to(run_units.length)
-        self.r_vir: Quantity['length'] = r_vir.to(run_units.length)
+        assert r_vir is not None, 'Failed to evaluate r_vir'
+        self.r_vir: Quantity['length'] = cast(Quantity, r_vir.to(run_units.length))
+
+        assert c is not None, 'Failed to evaluate c'
         self.c: float = c
 
-        self.r_max = (r_max if r_max is not None else 85 * self.r_s).to(run_units.length)
+        self.r_min: Quantity['length'] = cast(Quantity, r_min.to(run_units.length))
+        self.r_max: Quantity['length'] = cast(
+            Quantity, (r_max if r_max is not None else 85 * self.r_s).to(run_units.length)
+        )
+
+        assert total_mass is not None or rho_s is not None, 'Either total_mass or rho_s must be specified'
 
         if total_mass is not None:
-            self.total_mass: Quantity['mass'] = total_mass.to(run_units.mass)
+            self.total_mass: Quantity['mass'] = cast(Quantity, total_mass.to(run_units.mass))
         if rho_s is not None:
-            self.rho_s: Quantity['mass density'] = rho_s.to(run_units.density)
-        else:
-            self.rho_s = self.calculate_density_scale()
+            self.rho_s: Quantity['mass density'] = cast(Quantity, rho_s.to(run_units.density))
+
         if total_mass is None:
             self.total_mass = self.calculate_total_mass()
+        if rho_s is not None:
+            self.rho_s = self.calculate_density_scale()
 
         if self.backend == 'agama':
             self.truncate_power = agama_truncation_power
@@ -162,8 +159,6 @@ class Distribution:
             self.agama_total_potential = None
 
         self.agama_save_params = agama_save_params
-        for grid in initialize_grids:
-            getattr(self, grid)
 
     def __repr__(self):
         return str(self.report)
@@ -198,10 +193,76 @@ class Distribution:
             body_prefix='  - ',
         )
 
-    @staticmethod
-    def c_from_M_Dutton14(M: Quantity['mass']) -> float:
-        """Calculate the concentration parameter `c` from the total mass `M` based on Dutton & Maccio (2014) arXiv:1402.7073v2."""
-        return 10 ** (1.025 - 0.097 * np.log10((M.to('Msun') * cosmology.Planck18.h / Quantity(1e12, 'Msun')).value))
+    def calculate_c(
+        self,
+        mass: Quantity['mass'] | None = None,
+        method: Literal['Dutton14'] = 'Dutton14',
+        delta: Literal[200, 'vir'] = 'vir',
+    ) -> float:
+        """Calculate the concentration parameter `c` from the total mass based on Dutton & Maccio (2014) arXiv:1402.7073v2.
+
+        Parameters:
+            mass: The total mass of the distribution. If `None`, use the internal `total_mass` parameter.
+            method: The method to use for calculating the concentration parameter. Only 'Dutton14' is supported.
+            delta: The concentration type. Only 200 (as a number) and 'vir' are supported.
+
+        Returns:
+            c
+        """
+        if mass is None:
+            mass = cast(Quantity, self.total_mass.to('Msun'))
+        assert method == 'Dutton14', f'Unsupported method: {method}. Only Dutton14 is supported'
+        if method == 'Dutton14':
+            assert delta in [200, 'vir'], f'Unsupported delta: {delta}. Only 200 (as a number) and "vir" are supported'
+            log_m = np.log10((mass * cosmology.Planck18.h / Quantity(1e12, 'Msun')).value)
+            if delta == 'vir':
+                log_c = 1.025 - 0.097 * log_m
+            elif delta == 200:
+                log_c = 0.905 - 0.101 * log_m
+            return 10**log_c
+
+    def theoretical_enclosed_mass(self, r: Quantity['length']) -> Quantity['mass']:
+        """Calculate the enclosed mass based on the theoretical density profile (without truncation)."""
+        raise NotImplementedError(
+            'Theoretical enclosed mass calculation must be implemented for the subclass (if you see this error it means the code is reaching the base class instead).'
+        )
+
+    def calculate_virial_from_scales(self, **kwargs: Any) -> dict[str, Quantity]:
+        """Calculate the total mass and virial radius from the scale radius (`r_s`) and scale density (`rho_s`).
+
+        Optimize for the virial radius and `Delta` such that the enclosed mass at `r_vir` is the same as when calculated from `Delta*rho_crit`, while at the same time maintaining the mass-concentration relations from Dutton14.
+
+        Parameters:
+            **kwargs: Additional keyword arguments passed to the solver (`scipy.optimize.least_squares`).
+
+        Returns:
+            A dict with the keys: `r_vir` (Quantity), `total_mass` (Quantity), `c` (float).
+        """
+
+        def m_crit(r_vir: Quantity['length'], delta: float) -> Quantity['mass']:
+            return 4 / 3 * np.pi * r_vir**3 * delta * cosmology.Planck18.critical_density0.decompose(run_units.system)
+
+        def equation(params: tuple[float, float]) -> tuple[float, float]:
+            """Helper function for the optimizer"""
+            r_vir, delta = params
+            r_vir = Quantity(r_vir, 'kpc')
+            c = self.to_scale(r_vir)
+            total_mass = Quantity([self.theoretical_enclosed_mass(r_vir), m_crit(r_vir, delta)])
+            return (
+                float((cast(Quantity, total_mass.diff()[0])) / total_mass.mean()),
+                float((self.calculate_c(mass=cast(Quantity, total_mass.mean())) - c) / c),
+            )
+
+        results = scipy.optimize.least_squares(equation, (self.r_s.value, 200), **kwargs).x
+        r_vir = Quantity(results[0], run_units.length)
+        delta: float = results[1]
+        if kwargs.get('verbose', 0) > 0:
+            print(f'Optimization reached with Delta={delta}')
+        return {
+            'r_vir': r_vir,
+            'total_mass': Quantity([self.theoretical_enclosed_mass(r_vir), m_crit(r_vir, delta)]).mean(),
+            'c': r_vir / self.r_s,
+        }
 
     @staticmethod
     def r_half_light_to_r_s(r: Quantity['length'], projection_factor: float = 1.8) -> Quantity['length']:
