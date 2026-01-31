@@ -225,14 +225,19 @@ class Halos:
             return {**params, 'xlim': (2e-4, 5e2), 'ylim': (5e-3, 1.1)}
         return {}
 
-    def plot_cumulative_scattering(
-        self,
-        time_unit: TimeUnitLike = 'Gyr',
-        path_condition: dict[str, dict[str, Any]] = {
+    @staticmethod
+    def defualt_path_condition() -> dict[str, dict[str, Any]]:
+        """Default path condition for plotting."""
+        return {
             'dm only': {'label': 'No baryons', 'color': 'tab:blue'},
             'static baryons': {'label': 'Static baryons', 'color': 'tab:orange'},
             'dynamic baryons': {'label': 'Dynamic baryons', 'color': 'tab:green'},
-        },
+        }
+
+    def plot_cumulative_scattering(
+        self,
+        time_unit: TimeUnitLike = 'Gyr',
+        path_condition: dict[str, dict[str, Any]] | Literal['default'] = 'default',
         lineplot_kwargs: dict[str, Any] = {},
         plot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
@@ -243,6 +248,8 @@ class Halos:
 
         Parameters
             time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use it's own value for it's plot.
+            path_condition: A dictionary of conditions to apply to the plot of each halo. If 'default', use the default set in `Halos.defualt_path_condition()`.
+            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`
             plot_kwargs: Additional keyword arguments to pass to the plot function (`Halo.plot_cumulative_scattering_amount_over_time()`).
             save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
             early_quit: If `True` force the plot on a predefined `fig` and `ax`. If `False` allows the plotting function (`phase_space.plot()`) to define axis parameters (title, axis labels, etc.).
@@ -253,6 +260,8 @@ class Halos:
         """
         fig, ax = plot.setup(**kwargs)
         plot_kwargs = plot_kwargs.copy()
+        if path_condition == 'default':
+            path_condition = self.defualt_path_condition()
 
         for halo in self:
             assert halo.save_path is not None
@@ -272,5 +281,28 @@ class Halos:
                 time_unit=time_unit,
                 **plot_kwargs,
             )
-
+        plot.save(fig=fig, **save_kwargs)
         return fig, ax
+
+    def print_core_collapse_time(
+        self,
+        time_unit: TimeUnitLike = 'Gyr',
+        time_format: str = '.1f',
+        path_condition: dict[str, dict[str, Any]] | Literal['default'] = 'default',
+    ) -> None:
+        """Print the core collapse time for each halo.
+
+        Parameters:
+            time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use it's own value for it's plot.
+            time_format: Format for the core collapse time.
+            path_condition: A dictionary of conditions to apply to the print of each halo. If 'default', use the default set in `Halos.defualt_path_condition()`.
+        """
+        if path_condition == 'default':
+            path_condition = self.defualt_path_condition()
+        for halo in self:
+            assert halo.save_path is not None
+            label = ''
+            for key, value in path_condition.items():
+                if key in halo.save_path.stem:
+                    label = value.get('label', label)
+            print(f'{label}: {halo.core_collapse_time.to(time_unit):{time_format}}')
