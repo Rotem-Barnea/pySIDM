@@ -23,7 +23,7 @@ from . import io
 if TYPE_CHECKING:
     from ..phase_space import PhaseSpace
 
-backends = Literal['python', 'agama']
+Backends = Literal['python', 'agama']
 
 PhysicalProperty = Literal[
     'density', 'velocity dispersion', 'temperature', 'pressure', 'internal energy', 'enclosed_mass'
@@ -52,7 +52,7 @@ class Distribution:
         particle_type: ParticleType = 'dm',
         name: str = '',
         id: int | None = None,
-        backend: backends = 'agama',
+        backend: Backends = 'agama',
         agama_potential: agama_wrappers.Potential | None = None,
         agama_total_potential: agama_wrappers.Potential | None = None,
         agama_truncation_power: int = 20,
@@ -104,7 +104,7 @@ class Distribution:
         self.truncate = truncate
         self.truncate_power = truncate_power
         self.id = utils.make_id(id)
-        self.backend: backends = backend
+        self.backend: Backends = backend
 
         if c == 'Dutton14':
             assert total_mass is not None, 'total_mass must be provided when using Dutton14'

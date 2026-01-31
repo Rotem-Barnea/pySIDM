@@ -4,7 +4,7 @@ from . import io, nfw, cored, bundle, example_db, distribution
 from .nfw import NFW
 from .cored import Cored
 from .hernquist import Hernquist
-from .distribution import Distribution, PhysicalProperty, backends
+from .distribution import Backends, Distribution, PhysicalProperty
 
 __all__ = [
     'io',
@@ -18,5 +18,5 @@ __all__ = [
     'Hernquist',
     'Distribution',
     'PhysicalProperty',
-    'backends',
+    'Backends',
 ]

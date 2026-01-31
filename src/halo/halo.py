@@ -30,7 +30,7 @@ from src.types import ParticleType
 from src.physics import sidm, leapfrog
 from src.background import BackgroundDistribution
 from src.phase_space import PhaseSpace
-from src.distribution.distribution import Distribution, backends
+from src.distribution.distribution import Backends, Distribution
 
 from . import io, types, run_optimization
 from .types import TimeUnitLike
@@ -391,7 +391,7 @@ class Halo:
         return [distribution.name for distribution in self.distributions]
 
     @property
-    def backend(self) -> backends | list[backends]:
+    def backend(self) -> Backends | list[Backends]:
         """If the halo is made out of a physical example, return it's name"""
         unique_backends = np.unique([distribution.backend for distribution in self.distributions])
         if len(unique_backends) == 1 and unique_backends[0] != '':
