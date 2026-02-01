@@ -1,5 +1,6 @@
 """Base distribution class"""
 
+import warnings
 from typing import TYPE_CHECKING, Any, Literal, Callable, cast
 from pathlib import Path
 from functools import cached_property
@@ -100,53 +101,51 @@ class Distribution:
         self.id = utils.make_id(id)
         self.backend: Backends = backend
 
-        if c == 'From mass':
-            assert total_mass is not None, 'total_mass must be provided when using Dutton14'
-            self.total_mass = cast(Quantity, total_mass.to(run_units.mass))
-            c = self.calculate_c()
+        self._r_s = self._r_vir = self._c = self._total_mass = self._rho_s = None
 
         if r_s is None and r_half_light is not None:
             r_s = self.r_half_light_to_r_s(r_half_light)
 
-        if r_s is not None and r_vir is not None:
-            c = (r_vir / r_s).decompose(run_units.system).value
-        elif r_s is not None and c is not None:
-            r_vir = Quantity(c * r_s.to(run_units.length))
-        elif r_vir is not None and c is not None:
-            r_s = Quantity(r_vir.to(run_units.length) / c)
-
-        if (r_s is not None and rho_s is not None) and (c is None and r_vir is None):
+        if r_s is not None:
             self.r_s = r_s.to(run_units.length)
-            self.rho_s = rho_s.to(run_units.density)
-            params = self.calculate_virial_from_scales()
-            r_vir = params['r_vir']
-            total_mass = params['total_mass']
-            c = float(params['c'])
-
-        assert r_s is not None, 'Failed to evaluate r_s'
-        self.r_s: Quantity['length'] = cast(Quantity, r_s.to(run_units.length))
-
-        assert r_vir is not None, 'Failed to evaluate r_vir'
-        self.r_vir: Quantity['length'] = cast(Quantity, r_vir.to(run_units.length))
-
-        assert c is not None, 'Failed to evaluate c'
-        self.c: float = c
-
-        self.r_min: Quantity['length'] = cast(Quantity, r_min.to(run_units.length))
-        self.r_max: Quantity['length'] = cast(
-            Quantity, (r_max if r_max is not None else 85 * self.r_s).to(run_units.length)
-        )
-
-        assert total_mass is not None or rho_s is not None, 'Either total_mass or rho_s must be specified'
-
+        if r_vir is not None:
+            self.r_vir = r_vir.to(run_units.length)
+        if c is not None and c != 'From mass':
+            self.c = float(c)
         if total_mass is not None:
-            self.total_mass = cast(Quantity, total_mass.to(run_units.mass))
+            self.total_mass = total_mass.to(run_units.mass)
         if rho_s is not None:
-            self.rho_s: Quantity['mass density'] = cast(Quantity, rho_s.to(run_units.density))
+            self.rho_s = rho_s.to(run_units.density)
 
-        if total_mass is None:
+        if c == 'From mass':
+            assert total_mass is not None, 'total_mass must be provided when using Dutton14'
+            self.c = self.calculate_c()
+
+        if self._r_s is not None and self._r_vir is not None:
+            self.c = (self.r_vir / self.r_s).decompose(run_units.system).value
+        elif self._r_s is not None and self._c is not None:
+            self.r_vir = self.c * self.r_s.to(run_units.length)
+        elif self._r_vir is not None and self._c is not None:
+            self.r_s = self.r_vir.to(run_units.length) / self.c
+
+        if (self._r_s is not None and self._rho_s is not None) and (self._c is None and self._r_vir is None):
+            params = self.calculate_virial_from_scales()
+            self.r_vir = params['r_vir']
+            self.total_mass = params['total_mass']
+            self.c = float(params['c'])
+
+        assert self._r_s is not None, 'Failed to evaluate r_s'
+        assert self._r_vir is not None, 'Failed to evaluate r_vir'
+        assert self._c is not None, 'Failed to evaluate c'
+
+        self.r_min = cast(Quantity, r_min.to(run_units.length))
+        self.r_max = cast(Quantity, (r_max if r_max is not None else 85 * self.r_s).to(run_units.length))
+
+        assert self._total_mass is not None or self._rho_s is not None, 'Either total_mass or rho_s must be specified'
+
+        if self._total_mass is None:
             self.total_mass = self.calculate_total_mass()
-        if rho_s is not None:
+        if self._rho_s is None:
             self.rho_s = self.calculate_density_scale()
 
         if self.backend == 'agama':
@@ -172,6 +171,16 @@ class Distribution:
         """Scale the distance, i.e. `x/r_s`"""
         return x.to(self.r_s.unit) / self.r_s
 
+    def overdefined_warn(
+        self, key: Literal['r_s', 'r_vir', 'c', 'total_mass', 'rho_s'], value: Any, cutoff: float = 0.1
+    ) -> None:
+        """Warn if the value is overdefined in an inconsistent manner"""
+        current_value = getattr(self, f'_{key}')
+        if current_value is None:
+            return
+        if np.abs((current_value - value) / ((value + current_value) / 2)) > cutoff:
+            warnings.warn(f'overdefined c, c={current_value} vs. c={value}')
+
     @property
     def report(self) -> report.Report:
         """Generate a report of the distribution's properties"""
@@ -193,6 +202,66 @@ class Distribution:
             header=f'{warn}{self.title} density function (ID={self.id})',
             body_prefix='  - ',
         )
+
+    @property
+    def r_s(self) -> Quantity['length']:
+        """The scale radius of the distribution."""
+        if self._r_s is None:
+            raise ValueError('r_s is not defined')
+        return self._r_s
+
+    @r_s.setter
+    def r_s(self, value: Quantity['length']) -> None:
+        self.overdefined_warn('r_s', value)
+        self._r_s = value
+
+    @property
+    def r_vir(self) -> Quantity['length']:
+        """The virial radius of the distribution."""
+        if self._r_vir is None:
+            raise ValueError('r_vir is not defined')
+        return self._r_vir
+
+    @r_vir.setter
+    def r_vir(self, value: Quantity['length']) -> None:
+        self.overdefined_warn('r_vir', value)
+        self._r_vir = value
+
+    @property
+    def c(self) -> float:
+        """The concentration parameter `c` of the distribution."""
+        if self._c is None:
+            raise ValueError('c is not defined')
+        return self._c
+
+    @c.setter
+    def c(self, value: float) -> None:
+        self.overdefined_warn('c', value)
+        self._c = float(value)
+
+    @property
+    def total_mass(self) -> Quantity['mass']:
+        """The total mass of the distribution."""
+        if self._total_mass is None:
+            raise ValueError('total_mass is not defined')
+        return self._total_mass
+
+    @total_mass.setter
+    def total_mass(self, value: Quantity['mass']) -> None:
+        self.overdefined_warn('total_mass', value)
+        self._total_mass = value
+
+    @property
+    def rho_s(self) -> Quantity['mass density']:
+        """The scale density of the distribution."""
+        if self._rho_s is None:
+            raise ValueError('rho_s is not defined')
+        return self._rho_s
+
+    @rho_s.setter
+    def rho_s(self, value: Quantity['mass density']) -> None:
+        self.overdefined_warn('rho_s', value)
+        self._rho_s = value
 
     def calculate_c(
         self,
