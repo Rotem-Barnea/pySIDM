@@ -27,13 +27,10 @@ class GravothermalFluid:
 
     def __init__(
         self,
-        radius: Quantity['length'],
-        velocity_dispersion: Quantity['velocity'],
-        density: Quantity['mass density'],
-        enclosed_mass: Quantity['mass'],
+        distribution: Distribution,
         sigma: Quantity[run_units.cross_section],
         dt: Quantity['time'],
-        scale: Scale,
+        radius: Quantity['length'] | None = None,
         time: Quantity['time'] = Quantity(0, run_units.time),
         gamma: float = 5 / 3,
         a: float = 4 / np.sqrt(np.pi),
@@ -44,21 +41,29 @@ class GravothermalFluid:
         savgol_window_length: int = 11,
         eos_factor_from_data: bool = False,
     ):
+        if radius is None:
+            radius = distribution.geomspace_grid
+        self.distribution = distribution
+        cell_center = utils.to_center(radius, method='geometric')
+        velocity_dispersion = distribution.calculate_velocity_dispersion(cell_center)
+        density = distribution.density(cell_center)
+        enclosed_mass = distribution.enclosed_mass(radius)
+
         radius, velocity_dispersion, density, enclosed_mass = self.regulate_input(
             radius, velocity_dispersion, density, enclosed_mass
         )
 
-        self.scale = scale
+        self.scale = Scale.from_distribution(distribution, sigma=sigma, a=a)
 
-        # density[0] = 3 * enclosed_mass[0] / radius[0] ** 3
+        density[0] = enclosed_mass[0] / (4 / 3 * np.pi * radius[0] ** 3)
         _density, _velocity_dispersion = self.scale(density), self.scale(velocity_dispersion)
 
-        self._pressure = _density * _velocity_dispersion**2
-        # self._pressure[0] = utils.to_edge(_density)[0] * utils.to_edge(_velocity_dispersion)[0] ** 2
+        self._pressure = self.scale(self.distribution.calculate_pressure(cell_center))
+        # self._pressure[0] = utils.to_edge(self.scale(initial_density))[0] * utils.to_edge(_velocity_dispersion)[0] ** 2
         # _velocity_dispersion[0] = np.sqrt(
         #     (utils.to_edge(_density)[0] * utils.to_edge(_velocity_dispersion)[0] ** 2) / _density[0]
         # )
-        self._internal_energy = 3 / 2 * _velocity_dispersion**2
+        self._internal_energy = self.scale(self.distribution.calculate_internal_energy(cell_center))
 
         self.base_dt: float
         self.cross_section: float
@@ -113,32 +118,6 @@ class GravothermalFluid:
         velocity_dispersion[np.isnan(velocity_dispersion)] = min_velocity_dispersion
         density = cast(Quantity, density.clip(min=min_density))
         return radius, velocity_dispersion, density, enclosed_mass
-
-    @classmethod
-    def from_distribution(
-        cls,
-        distribution: Distribution,
-        sigma: Quantity[run_units.cross_section],
-        dt: Quantity['time'],
-        a: float = 4 / np.sqrt(np.pi),
-        radius: Quantity['length'] | None = None,
-        **kwargs: Any,
-    ):
-        """Create an object from a given distribution."""
-        if radius is None:
-            radius = distribution.geomspace_grid
-        cell_center = utils.to_center(radius, method='geometric')
-        return cls(
-            radius=radius,
-            velocity_dispersion=distribution.calculate_velocity_dispersion(cell_center),
-            density=distribution.density(cell_center),
-            enclosed_mass=distribution.enclosed_mass(radius),
-            sigma=sigma,
-            dt=dt,
-            scale=Scale.from_distribution(distribution, sigma=sigma, a=a),
-            a=a,
-            **kwargs,
-        )
 
     def invalidate(self, *properties: str):
         """Invalidates the cache for the specified properties, so they are recalculated."""
@@ -238,79 +217,26 @@ class GravothermalFluid:
     @property  # @cached_property
     def internal_energy_gradient(self) -> NDArray[np.float64]:
         """The energy gradient in mass coordinates. Edge-aligned array (shape (N,))."""
-        gradient = utils.to_edge(np.diff(utils.to_edge(self.internal_energy)) / np.diff(self.enclosed_mass))
-        gradient[0] = 0
-        return gradient
-
-        # return utils.to_center(
-        #     edges=utils.differentiate_savgol(
-        #         x=np.pad(self.enclosed_mass[1:], (1, 1), mode='edge'),
-        #         y=np.pad(self.internal_energy, (1, 1), mode='edge'),
-        #         window_length=self.savgol_window_length,
-        #     ),
-        #     method='algebric',
-        # )
-
-        # gradient = utils.differentiate_savgol(
-        #     x=np.pad(self.enclosed_mass[1:], (1, 1), mode='edge'),
-        #     y=np.pad(self.internal_energy, (1, 1), mode='edge'),
-        #     window_length=self.savgol_window_length,
-        # )
-
-        # # Linear interpolate the inner core gradient to avoid savgol filter boundary errors
-        # gradient[: self.savgol_window_length] = (
-        #     (gradient[self.savgol_window_length + 1] - gradient[self.savgol_window_length])
-        #     / (self.enclosed_mass[self.savgol_window_length + 1] - self.enclosed_mass[self.savgol_window_length])
-        # ) * (
-        #     self.enclosed_mass[: self.savgol_window_length] - self.enclosed_mass[self.savgol_window_length]
-        # ) + gradient[self.savgol_window_length]
-
-        # return utils.to_center(
-        #     edges=gradient,
-        #     method='algebric',
-        # )
+        grad = np.diff(self.internal_energy) / ((self.shell_mass[:-1] + self.shell_mass[1:]) / 2)
+        return np.hstack([(self.internal_energy[1] - self.internal_energy[0]) / (self.shell_mass[0]), grad, 0])
 
     @property  # @cached_property
     def luminosity(self) -> NDArray[np.float64]:
         """The luminosity at each point. Edge-aligned array (shape (N,))."""
         self.invalidate('luminosity_gradient')
-        luminosity = -(
-            self.radius**4 * utils.to_edge(self.pressure) * self.internal_energy_gradient
-        ) * utils.safe_inverse(utils.to_edge(self.heat_conduction) * utils.to_edge(self.velocity_dispersion))
-        # luminosity[:11] = 0  # No luminosity in the first cell
-        luminosity[0] = 0
-        return luminosity
+        return -(self.radius**4 * utils.to_edge(self.pressure) * self.internal_energy_gradient) * utils.safe_inverse(
+            utils.to_edge(self.heat_conduction) * utils.to_edge(self.velocity_dispersion)
+        )
 
     @property  # @cached_property
     def luminosity_gradient(self) -> NDArray[np.float64]:
         """The luminosity gradient in mass coordinates. Center-aligned array (shape (N-1,))."""
         self.invalidate('dt')
-        gradient = np.diff(self.luminosity) / np.diff(self.enclosed_mass)
-        gradient[0] = 0
-        gradient[1] = 0
-        # gradient = np.diff(self.luminosity) / np.diff(self.radius)
-        # gradient[(np.abs(gradient) < 1e-5)] = 0
-        # gradient /= (self.shell_center**2) * utils.safe_inverse(self.density)
-        return gradient
-        # gradient = utils.differentiate_savgol(
-        #     x=self.enclosed_mass, y=self.luminosity, window_length=self.savgol_window_length
-        # )
 
-        # # Linear interpolate the inner core gradient to avoid savgol filter boundary errors
-        # gradient[: self.savgol_window_length] = (
-        #     (gradient[self.savgol_window_length + 1] - gradient[self.savgol_window_length])
-        #     / (self.enclosed_mass[self.savgol_window_length + 1] - self.enclosed_mass[self.savgol_window_length])
-        # ) * (
-        #     self.enclosed_mass[: self.savgol_window_length] - self.enclosed_mass[self.savgol_window_length]
-        # ) + gradient[self.savgol_window_length]
+        grad = np.diff(self.luminosity) / self.shell_mass
+        return np.hstack([self.luminosity[0] / self.enclosed_mass[0], grad[1:]])
 
-        # # finite_gradient = np.gradient(self.luminosity, self.enclosed_mass)
-
-        # # n_blend = min(2 * self.savgol_window_length, len(gradient))
-        # # weights = np.linspace(1, 0, n_blend)
-        # # gradient[:n_blend] = (weights * finite_gradient[:n_blend]) + ((1 - weights) * gradient[:n_blend])
-
-        # return utils.to_center(gradient, method='algebric')
+        # return np.diff(self.luminosity) / np.diff(self.enclosed_mass)
 
     @property  # @cached_property
     def dt(self) -> float:
@@ -326,7 +252,7 @@ class GravothermalFluid:
         dt = self.dt.copy()
         heat = -self.luminosity_gradient * dt
         self.internal_energy += heat
-        self.pressure[:-1] += (self.pressure * utils.safe_inverse(self.internal_energy) * heat)[:-1]
+        self.pressure += self.pressure * utils.safe_inverse(self.internal_energy) * heat
         return dt
 
     @property  # @cached_property
@@ -370,9 +296,6 @@ class GravothermalFluid:
         return -utils.safe_inverse(np.sqrt(self.shell_density[:-1] * self.shell_density[1:])) * (
             np.diff(self.pressure) / np.diff(self.shell_center)
         )
-        # return -utils.safe_inverse(utils.to_edge(self.shell_density)[1:-1]) * (
-        #     np.diff(self.pressure) / np.diff(self.shell_center)
-        # )
 
     @property
     def net_force(self) -> NDArray[np.float64]:
@@ -411,7 +334,7 @@ class GravothermalFluid:
                 * self.relaxation_params['relaxation_dt_factor']
             )
 
-            self.pressure[:-1] = (2 / 3 * self.shell_density[:] * self.internal_energy)[:-1]
+            self.pressure = 2 / 3 * self.shell_density * self.internal_energy
 
             if np.max(
                 (np.abs(r_old - self.radius) / r_old)[
@@ -427,25 +350,30 @@ class GravothermalFluid:
         # print(f'Post-Relax GeoDensity[0:3]: {self.shell_density[:3]}')
         # print(f'Post-Relax Pressure[0:3]: {self.pressure[:3]}')
 
-    def evolve(self, n_steps: int | float = 1, verbose: bool = True) -> None:
+    def evolve(self, n_steps: int | float = 1, verbose: bool = True, save_every_n_steps: int | None = None) -> None:
         """Evolve the system."""
-        for _ in tqdm(range(int(n_steps))):
+        for step in tqdm(range(int(n_steps))):
             dt = self.transfer_heat()
             self.relax(dt=dt)
             self.time += dt
-            self.save_snapshot()
+            if save_every_n_steps is None or step % save_every_n_steps == 0:
+                self.save_snapshot()
 
     def plot(
         self,
         y: snapshot.SavedAttributes,
         x: Literal['radius', 'enclosed mass'] = 'radius',
+        specific_snapshots: int | list[int] | NDArray[np.int64] | Quantity['time'] | None = None,
+        undersample_snapshots: int | Quantity['time'] | None = None,
         xlabel: str | None | Literal['auto'] = 'auto',
         ylabel: str | None | Literal['auto'] = 'auto',
         x_unit: UnitLike | None | Literal['auto'] = 'auto',
         y_unit: UnitLike | None | Literal['auto'] = 'auto',
+        time_unit: UnitLike = run_units.time,
+        time_format: str | None = '.1f',
         xscale: plot.Scale = 'log',
         yscale: plot.Scale | None = None,
-        label: str | None | Literal['auto'] = 'auto',
+        label: str | None | Literal['auto step', 'auto time'] = 'auto',
         lineplot_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -454,6 +382,8 @@ class GravothermalFluid:
         Parameters:
             y: Value to plot on the y-axis.
             x: Value to plot on the x-axis.
+            specific_snapshots: Only plot the specified snapshots (if they exist). A Quantity input will filter by time, and an int (or array of ints) will filter by steps. Ignored if `None`.
+            undersample_snapshots: Only plot every `undersample_snapshots` snapshots. Ignored if `None` or if `specific_snapshots` is provided.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             x_unit: The units of the x-axis.
@@ -482,7 +412,6 @@ class GravothermalFluid:
             xlabel=xlabel, ylabel=ylabel, x_unit=x_unit, y_unit=y_unit, xscale=xscale, yscale=yscale, **kwargs
         )
 
-        y_snapshots = self.snapshots(y)
         if x == 'radius':
             x_snapshots = self.snapshots.shell_center if y in self.snapshots.center_aligned else self.snapshots.radius
         else:
@@ -492,18 +421,26 @@ class GravothermalFluid:
                 else self.snapshots.enclosed_mass
             )
 
-        for i, (x_values, y_values) in enumerate(zip(x_snapshots, y_snapshots)):
+        for i, (x_values, y_values, t) in enumerate(zip(x_snapshots, self.snapshots(y), self.snapshots('time'))):
+            t = self.scale(cast(NDArray[np.float64], t), 'time')
+            if self.snapshots.skip_snapshot(i, t, specific_snapshots, undersample_snapshots):
+                continue
             if x_unit is not None:
                 x_values = self.scale(x_values, x_unit)
             if y_unit is not None:
                 y_values = self.scale(y_values, y_unit)
-            if label == 'auto':
-                label = f'{i} steps' if i > 0 else 'initial'
+            if label == 'auto step':
+                _label = 'initial' if i == 0 else f'{i} steps'
+            elif label == 'auto time':
+                t_label = f'{t.to(time_unit):{time_format}}' if time_format is not None else t.to(time_unit)
+                _label = f't={t_label} time'
+            else:
+                _label = label
             sns.lineplot(
                 x=x_values,
                 y=y_values,
                 ax=ax,
-                label=label,
+                label=_label,
                 **lineplot_kwargs,
             )
         return fig, ax
