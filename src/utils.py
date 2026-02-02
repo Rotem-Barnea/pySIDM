@@ -704,12 +704,26 @@ def to_center(
     return cast(type(edges), centers)
 
 
-def to_edge(center_value: QuantityLike) -> QuantityLike:
+def to_edge(
+    center_value: QuantityLike,
+    low_bound: Literal[0, 'constant', 'center'] = 'constant',
+    upper_bound: Literal[0, 'constant', 'center'] = 'constant',
+) -> QuantityLike:
     """Interpolate the array to the shell edges from the center value"""
-    padded_center_value = np.pad(
-        center_value, (1, 1), mode='constant', constant_values=np.pad(center_value[[-1]], (1, 0))
-    )
-    return cast(type(center_value), (padded_center_value[:-1] + padded_center_value[1:]) / 2)
+    if low_bound == 0:
+        low = 0
+    elif low_bound == 'constant':
+        low = (center_value[0] + center_value[1]) / 2
+    else:
+        low = center_value[0]
+    if upper_bound == 0:
+        high = 0
+    elif upper_bound == 'constant':
+        high = (center_value[-2] + center_value[-1]) / 2
+    else:
+        high = center_value[-1]
+
+    return cast(type(center_value), np.hstack([low, (center_value[:-1] + center_value[1:]) / 2, high]))
 
 
 def safe_inverse(denominator: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
