@@ -76,7 +76,6 @@ def setup(
     ax: Axes | None = None,
     grid: bool = True,
     minorticks: bool = False,
-    figsize: tuple[int, int] | None = (6, 5),
     xscale: Scale = 'linear',
     yscale: Scale = 'linear',
     ax_set: dict[str, str] | None = None,
@@ -104,7 +103,6 @@ def setup(
         ax: Axes to plot on. If `None` a new axes is created.
         grid: Whether to add a grid to the plot (major ticks).
         minorticks: Whether to add the grid for the minor ticks.
-        figsize: The figure size to create. Ignored if `fig` / `ax` is provided.
         xscale: The scale of the x-axis. Superceded by `ax_set['xscale']` if provided.
         yscale: The scale of the y-axis. Superceded by `ax_set['yscale']` if provided.
         ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
@@ -129,7 +127,7 @@ def setup(
     if fig is not None and ax is not None and early_quit:
         return fig, ax
     if fig is None or ax is None:
-        fig, ax = plt.subplots(figsize=figsize, **kwargs)
+        fig, ax = plt.subplots(**kwargs)
     assert fig is not None and ax is not None
     fig.tight_layout()
     ax.grid(grid)
