@@ -138,9 +138,9 @@ class Halos:
                 time_label = (
                     f'{_time.to(halo.core_collapse_time):.2f}' if aboslute_time_mode else f'{_time.to(time_unit):.1f}'
                 )
-                label = f'label t={time_label}'
+                label = f'{label} t={time_label}'
             elif labels_suffix is not None:
-                label = f'label {labels_suffix}'
+                label = f'{label} {labels_suffix}'
             if title == 'auto':
                 time_label = (
                     f'{_time.to(time_unit):.1f}' if aboslute_time_mode else f'{_time.to(halo.core_collapse_time):.2f}'
@@ -263,7 +263,9 @@ class Halos:
         if path_condition == 'default':
             path_condition = self.defualt_path_condition()
 
-        for halo in self:
+        used_labels = []
+
+        for halo in tqdm(self.halos):
             assert halo.save_path is not None
             plot_kwargs.pop('save_kwargs', None)
             plot_kwargs.pop('lineplot_kwargs', None)
@@ -272,6 +274,11 @@ class Halos:
             for key, value in path_condition.items():
                 if key in halo.save_path.stem:
                     _lineplot_kwargs = {**_lineplot_kwargs, **value}
+                    if 'label' in _lineplot_kwargs:
+                        if _lineplot_kwargs['label'] in used_labels:
+                            _lineplot_kwargs.pop('label')
+                        else:
+                            used_labels += [_lineplot_kwargs['label']]
             fig, ax = halo.plot_cumulative_scattering_amount_over_time(
                 lineplot_kwargs=_lineplot_kwargs,
                 fig=fig,
