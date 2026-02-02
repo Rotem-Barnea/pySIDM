@@ -382,11 +382,11 @@ class Distribution:
                 type=type,
                 gamma=gamma,
                 beta=beta,
-                outerCutoffRadius=self.r_vir.value if self.truncate else None,
+                outerCutoffRadius=self.r_vir.to(agama_wrappers.length()).value if self.truncate else None,
                 cutoffStrength=self.truncate_power if self.truncate else None,
             ),
-            mass=self.total_mass.value,
-            scaleRadius=self.r_s.value,
+            densityNorm=self.rho_s.to(agama_wrappers.mass() / agama_wrappers.length() ** 3).value,
+            scaleRadius=self.r_s.to(agama_wrappers.length()).value,
             **kwargs,
         )
 
