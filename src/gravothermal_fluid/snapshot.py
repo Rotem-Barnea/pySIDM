@@ -1,10 +1,11 @@
 """module handling the snapshot saving of the system"""
 
-from typing import Any, Literal, get_args
+from typing import Any, Literal, cast, get_args
 from collections import deque
 
 import numpy as np
 from numpy.typing import NDArray
+from astropy.units import Quantity
 
 from .scale import ScaleType
 
@@ -105,6 +106,10 @@ class Snapshot:
         """Returns the snapshot for the specified attribute."""
         return getattr(self, key.replace(' ', '_'))
 
+    def __len__(self) -> int:
+        """The number of snapshots saved"""
+        return len(self.radius)
+
     def update(self, **kwargs: Any) -> None:
         """Update the snapshot with new data."""
         for key, value in kwargs.items():
@@ -194,3 +199,32 @@ class Snapshot:
     def time(self) -> NDArray[np.float64]:
         """The time of each snapshot."""
         return np.hstack(self._time)
+
+    @staticmethod
+    def skip_snapshot(
+        current_index: int,
+        current_time: Quantity['time'],
+        specific_snapshots: int | list[int] | NDArray[np.int64] | Quantity['time'] | None = None,
+        undersample_snapshots: int | Quantity['time'] | None = None,
+    ) -> bool:
+        """Checks whether the current snapshot should be ignored, used for plotting selective snapshots.
+
+        Parameters:
+            current_index: The index of the currently considered snapshot.
+            current_time: The time of the currently considered snapshot.
+            specific_snapshots: Only plot the specified snapshots (if they exist). A Quantity input will filter by time, and an int (or array of ints) will filter by steps. Ignored if `None`.
+            undersample_snapshots: Only plot every `undersample_snapshots` snapshots. Ignored if `None` or if `specific_snapshots` is provided.
+
+        Returns:
+            `True` if it should be skipped, `False` otherwise.
+        """
+        if specific_snapshots is not None:
+            if isinstance(specific_snapshots, Quantity):
+                specific_snapshots = cast(Quantity, specific_snapshots.copy().to(current_time))
+                return current_time != specific_snapshots and current_time not in specific_snapshots
+            return current_index not in np.array(specific_snapshots)
+        elif undersample_snapshots is not None:
+            if isinstance(undersample_snapshots, int):
+                return current_index % undersample_snapshots != 0
+            return current_time % undersample_snapshots != 0  # TODO - fix
+        return False
