@@ -282,9 +282,9 @@ class Halo:
             line_kwargs=line_kwargs
             or {
                 '_global': {
-                    'format_func': lambda x: '.1f'
-                    if isinstance(x, Quantity) and cast(Unit, x.unit).physical_type == 'time'
-                    else ''
+                    'format_func': lambda x: (
+                        '.1f' if isinstance(x, Quantity) and cast(Unit, x.unit).physical_type == 'time' else ''
+                    )
                 },
                 'time': {'unit': 'Gyr'},
             },
