@@ -218,60 +218,6 @@ class Halo:
             if generator_state is not None:
                 self.rng.bit_generator.state = generator_state
 
-    # @staticmethod
-    # def to_report(
-    #     scatter_params: sidm.Params,
-    #     dynamics_params: sidm.Params,
-    #     distributions: list[Distribution],
-    #     time: Quantity['time'],
-    #     dt: Quantity['time'],
-    #     cleanup_nullish_particles: bool,
-    #     cleanup_particles_by_radius: bool,
-    #     save_path: str,
-    #     hard_save: bool,
-    #     save_every_n_steps: int,
-    #     save_every_time: Quantity['time'],
-    #     dynamical_time: Unit | None = None,
-    #     n_particles: list[int] | None = None,
-    #     **kwargs: Any,
-    # ) -> str:
-    #     """TODO"""
-    #     scatter_params = deepcopy(scatter_params)
-    #     scatter_params['sigma'] = scatter_params['sigma'].to('cm^2/g')
-    #     if dynamical_time is None:
-    #         dynamical_time = distributions[0].dynamical_time
-    #     description = {
-    #         'Current time': f'{time:.1f}',
-    #         'Time step size': f'{dt:.4f} = {dt.to(dynamical_time):.1e} = 1/{1 / dt.to(dynamical_time).value:.1f} dynamical_time',
-    #         '#particles': n_particles,
-    #         'Save parameters': utils.drop_None(
-    #             **{
-    #                 'path': save_path,
-    #                 'hard save': hard_save,
-    #                 'Save every': f'{save_every_time:.1f}',
-    #                 'Save every [n] steps': save_every_n_steps,
-    #             }
-    #         ),
-    #         'Cleanup': {
-    #             'NaN': cleanup_nullish_particles,
-    #             'high radius': cleanup_particles_by_radius,
-    #         },
-    #         'Leapfrog parameters': dynamics_params,
-    #         'Scatter parameters': scatter_params,
-    #         'Distributions': {f'#{i}': d for i, d in enumerate(distributions)},
-    #     }
-
-    #     description_strings = []
-    #     for key, value in description.items():
-    #         if isinstance(value, dict):
-    #             description_strings += [f'{key}:']
-    #             description_strings += [
-    #                 '\n'.join([f'    {sub_key}: {sub_value}' for sub_key, sub_value in value.items()])
-    #             ]
-    #         else:
-    #             description_strings += [f'{key}: {value}']
-    #     return '\n'.join(description_strings)
-
     @staticmethod
     def to_report_concise(
         metadata: io.Metadata,
@@ -295,26 +241,6 @@ class Halo:
 
     def __str__(self) -> str:
         return str(self.to_report_concise(self.metadata))
-        # return self.to_report(
-        #     **{
-        #         k: getattr(self, k)
-        #         for k in [
-        #             'scatter_params',
-        #             'time',
-        #             'dt',
-        #             'n_particles',
-        #             'save_path',
-        #             'hard_save',
-        #             'save_every_time',
-        #             'save_every_n_steps',
-        #             'cleanup_nullish_particles',
-        #             'cleanup_particles_by_radius',
-        #             'dynamics_params',
-        #             'distributions',
-        #             'dynamical_time',
-        #         ]
-        #     }
-        # )
 
     def __repr__(self) -> str:
         return str(self)
