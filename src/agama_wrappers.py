@@ -46,9 +46,9 @@ def vectorize(func: Callable[..., T]) -> Callable[..., T]:
             self, r = args[0], args[1]
             rest_args = args[2:]
 
-        if np.isscalar(r) or (hasattr(r, 'shape') and r.shape == ()):
+        if np.isscalar(r) or (hasattr(r, 'isscalar') and r.isscalar) or (hasattr(r, 'shape') and r.shape == ()):
             # For scalar input, call function directly and return scalar result
-            result = func(*args, **kwargs)
+            result = func(self, r, *rest_args, **kwargs)
             # Ensure scalar output (in case function returns array with shape ())
             if hasattr(result, 'shape') and result.shape == ():
                 return result.item() if hasattr(result, 'item') else result

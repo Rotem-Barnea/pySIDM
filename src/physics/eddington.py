@@ -46,7 +46,7 @@ def integral_f(
     )[0] / (np.sqrt(8) * np.pi**2)
 
 
-def make_rho_potential_spline(
+def make_density_potential_spline(
     potential_grid: Quantity['specific energy'],
     density_grid: Quantity['mass density'],
     s: float | None = 1e-2,
