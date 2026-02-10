@@ -953,7 +953,7 @@ class PhaseSpace:
         plot.save_images(
             plot.to_images(
                 iterator=list(enumerate(snapshots)),
-                plot_fn=lambda x: getattr(self, f'{plot}_{plot_type}')(
+                plot_fn=lambda x: getattr(self, f'plot_{plot_type}')(
                     mass_grid=x[1][0],
                     lineplot_kwargs={
                         'label': f'{text_label_text} (t={x[1][1].to(self.fill_time_unit(text_label_unit)):{text_label_format}})',
