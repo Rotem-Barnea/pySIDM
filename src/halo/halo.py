@@ -71,6 +71,7 @@ class Halo:
         save_path: Path | str | None = None,
         r_max: Quantity['length'] = Quantity(300, 'kpc'),
         inner_core_radius: Quantity['length'] | float = 0.2,
+        critical_ratio: float = 7,
         bootstrap_steps: int = 100,
         cleanup_nullish_particles: bool = True,
         cleanup_particles_by_radius: bool = True,
@@ -121,6 +122,7 @@ class Halo:
             save_path: Path to save the halo to memory.
             r_max: Maximum radius of the halo, particles outside of this radius get killed off. If `None` ignores.
             inner_core_radius: Inner core radius of the halo, used for estimating the collapse. If a float is provided, assumed to be a factor multiplying the scale radius of the first distribution in `distributions`.
+            critical_ratio: The critical ratio defining the core collapse.
             bootstrap_steps: Number of bootstrap rounds to perform before scattering begins. Time only begins counting after the bootstrap steps.
             cleanup_nullish_particles: Whether to remove particles from the halo after each interaction if they are nullish.
             cleanup_particles_by_radius: Whether to remove particles from the halo based on their radius (r >= `r_max`).
@@ -195,6 +197,7 @@ class Halo:
             self.inner_core_radius: Quantity['length'] = inner_core_radius.to(run_units.length)
         else:
             self.inner_core_radius = self.distributions[0].r_s * inner_core_radius
+        self.critical_ratio = critical_ratio
         self.bootstrap_steps = bootstrap_steps
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
@@ -526,6 +529,12 @@ class Halo:
     def particles_by_type(self) -> dict[str, table.QTable]:
         """Return the `particles` QTable split by particle type (as a dictionary)."""
         groups = self.particles.group_by('particle_type').groups
+        return dict(zip(np.array(dict(groups.keys)['particle_type']), groups))
+
+    @property
+    def initial_particles_by_type(self) -> dict[str, table.QTable]:
+        """Return the `initial_particles` QTable split by particle type (as a dictionary)."""
+        groups = self.initial_particles.group_by('particle_type').groups
         return dict(zip(np.array(dict(groups.keys)['particle_type']), groups))
 
     @property
@@ -903,7 +912,9 @@ class Halo:
         )
 
     def core_collapse_core_density_estimate(
-        self, inner_core_radius: Quantity['length'] | None = None, **kwargs: Any
+        self,
+        inner_core_radius: Quantity['length'] | None = None,
+        critical_ratio: float | None = None,
     ) -> Quantity['time']:
         """Calculate the time at which the halo starts major core collapse.
 
@@ -911,16 +922,16 @@ class Halo:
 
         Parameters:
             inner_core_radius: The radius of the inner core. If `None` use the internal value.
-            **kwargs: Additional keyword arguments passed to the `run_optimizaiton.core_collapse_core_density_estimate()`.
+            critical_ratio: The critical ratio defining the core collapse.
 
         Returns:
             The core collapse start time
         """
         return run_optimization.core_collapse_core_density_estimate(
             snapshots=self.get_particle_states(),
-            initial_r=utils.get_columns(self.initial_particles, ['r'])[0],
+            initial_r=utils.get_columns(self.initial_particles_by_type['dm'], ['r'])[0],
             inner_core_radius=inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
-            **kwargs,
+            critical_ratio=critical_ratio if critical_ratio is not None else self.critical_ratio,
         )
 
     def core_collapse_estimate(
@@ -931,6 +942,14 @@ class Halo:
             return self.core_collapse_core_density_estimate(**kwargs)
         else:
             return self.core_collapse_scatter_estimate(**kwargs)
+
+    def core_density_ratio(self, inner_core_radius: Quantity['length'] | None = None) -> float:
+        """Calculate the ratio of the core density to the initial density."""
+        return run_optimization.core_density_ratio(
+            r=utils.get_columns(self.particles_by_type['dm'], ['r'])[0],
+            initial_r=utils.get_columns(utils.slice_closest(self.initial_particles, 'dm', 'particle_type'), ['r'])[0],
+            inner_core_radius=inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
+        )
 
     #####################
     ##Dynamic evolution
@@ -968,24 +987,25 @@ class Halo:
             return True
         return False
 
-    def check_early_quit(self, inner_core_radius: Quantity['length'] | None = None, **kwargs: Any) -> bool:
+    def check_early_quit(
+        self, inner_core_radius: Quantity['length'] | None = None, critical_ratio: float | None = None
+    ) -> bool:
         """Check if the simulation should be terminated early.
 
         Parameters:
             inner_core_radius: The inner core radius. If None, use the current inner core radius.
-            **kwargs: Additional keyword arguments to pass to the optimization function.
+            critical_ratio: The critical ratio defining the core collapse.
 
         Returns:
             `True` if the simulation should be terminated early, `False` otherwise.
         """
         return run_optimization.check_early_quit(
-            core_collape_kwargs=types.regulate_arguments(
-                scheme=types.CoreCollapseDensityEstimateParams,
-                r=self.r,
-                initial_r=utils.get_columns(self.initial_particles, ['r'])[0],
-                inner_core_radius=inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
-                **kwargs,
-            )
+            core_collape_kwargs={
+                'r': self.r,
+                'initial_r': utils.get_columns(self.initial_particles, ['r'])[0],
+                'inner_core_radius': inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
+                'critical_ratio': critical_ratio if critical_ratio is not None else self.critical_ratio,
+            }
         )
 
     def early_quit(
@@ -1107,6 +1127,8 @@ class Halo:
         Returns:
             None
         """
+        if early_quit_kwargs is not None:
+            self.reached_core_collapse = None
         if n_steps is None:
             if t is not None:
                 n_steps = self.to_step(t)
@@ -2924,6 +2946,7 @@ class Halo:
         Returns:
             fig, ax.
         """
+        time_unit = self.fill_time_unit(time_unit)
         fig, ax = plot.setup(xlabel=xlabel, ylabel=ylabel, x_unit=time_unit, title=title, **kwargs)
         x = self.scatter_times.to(time_unit)
         y = self.n_scatters.cumsum() / self.n_particles['dm']
@@ -2967,6 +2990,7 @@ class Halo:
         Returns:
             fig, ax.
         """
+        time_unit = self.fill_time_unit(time_unit)
         scatters, t = (
             np.bincount(
                 np.digitize(
@@ -3034,6 +3058,7 @@ class Halo:
         Returns:
             fig, ax.
         """
+        time_unit = self.fill_time_unit(time_unit)
         fig, ax = plot.setup(xlabel=xlabel, ylabel=ylabel, x_unit=time_unit, title=title, **kwargs)
         x = (np.arange(len(self.scatter_rounds)) * self.dt).to(time_unit)
         if total_required:
@@ -3332,6 +3357,7 @@ class Halo:
         Returns:
             fig, ax.
         """
+        time_unit = self.fill_time_unit(time_unit)
         if data is None:
             data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
             data = utils.slice_closest(utils.slice_closest(data, value=time), value='dm', key='particle_type')
@@ -3450,12 +3476,12 @@ class Halo:
             texts: Overwrites the autogenerated text bubbles from `plot_guidelines`. If provided must be a list of dictionaries valid for `ax.text()`.
             vlines: Overwrites the autogenerated vertical lines from `plot_guidelines`. If provided must be a list of dictionaries valid for `ax.axvline()`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments passed to `plot.setup_kwargs()`.
+            kwargs: Additional keyword arguments passed to `plot.setup()`.
 
         Returns:
             fig, ax.
         """
-
+        time_unit = self.fill_time_unit(time_unit)
         time_array = self.scatter_times
         values = []
         time_bins = []
@@ -3526,4 +3552,55 @@ class Halo:
             alpha=0.2,
         )
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
+        return fig, ax
+
+    def plot_core_density_ratio(
+        self,
+        inner_core_radius: Quantity['length'] | None = None,
+        include_start: bool = False,
+        include_now: bool = False,
+        time_unit: TimeUnitLike = 'Gyr',
+        xlabel: str | None = 'Time',
+        ylabel: str | None = r'$\rho_c$/$\rho_{c,0}$',
+        title: str | None = 'Inner core density ratio over time',
+        lineplot_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the inner core density ratio over time.
+
+        Parameters:
+            inner_core_radius: The inner core radius. If None, use the current inner core radius.
+            include_start: Whether to include the initial particle distribution in the data.
+            include_now: Whether to include the current particle distribution in the data.
+            time_unit: Units to use for x-axis.
+            xlabel: Label for the x-axis.
+            ylabel: Label for the y-axis.
+            title: The title of the plot.
+            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
+            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
+            kwargs: Additional keyword arguments passed to `plot.setup()`.
+
+        Returns:
+            fig, ax.
+
+        """
+
+        time_unit = self.fill_time_unit(time_unit)
+        fig, ax = plot.setup(xlabel=xlabel, ylabel=ylabel, title=title, x_unit=time_unit, **kwargs)
+        t, ratio = [], []
+        for group in (
+            self.get_particle_states(filter_particle_type='dm', initial=include_start, now=include_now)
+            .group_by('time')
+            .groups
+        ):
+            t += [group['time'][0]]
+            ratio += [
+                run_optimization.core_density_ratio(
+                    r=utils.get_columns(group, ['r'])[0],
+                    initial_r=utils.get_columns(self.initial_particles_by_type['dm'], ['r'])[0],
+                    inner_core_radius=inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
+                )
+            ]
+        sns.lineplot(x=Quantity(t).to(time_unit).value, y=ratio, ax=ax, **lineplot_kwargs)
         return fig, ax

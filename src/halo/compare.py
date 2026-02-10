@@ -226,7 +226,7 @@ class Halos:
         return {}
 
     @staticmethod
-    def defualt_path_condition() -> dict[str, dict[str, Any]]:
+    def default_path_condition() -> dict[str, dict[str, Any]]:
         """Default path condition for plotting."""
         return {
             'dm only': {'label': 'No baryons', 'color': 'tab:blue'},
@@ -247,8 +247,8 @@ class Halos:
         """Plot the cumulative scattering halos over time.
 
         Parameters
-            time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use it's own value for it's plot.
-            path_condition: A dictionary of conditions to apply to the plot of each halo. If 'default', use the default set in `Halos.defualt_path_condition()`.
+            time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use its own value for its plot.
+            path_condition: A dictionary of conditions to apply to the plot of each halo. If 'default', use the default set in `Halos.default_path_condition()`.
             lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`
             plot_kwargs: Additional keyword arguments to pass to the plot function (`Halo.plot_cumulative_scattering_amount_over_time()`).
             save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
@@ -261,7 +261,7 @@ class Halos:
         fig, ax = plot.setup(**kwargs)
         plot_kwargs = plot_kwargs.copy()
         if path_condition == 'default':
-            path_condition = self.defualt_path_condition()
+            path_condition = self.default_path_condition()
 
         used_labels = []
 
@@ -272,7 +272,7 @@ class Halos:
             plot_kwargs.pop('early_quit', None)
             _lineplot_kwargs = lineplot_kwargs.copy()
             for key, value in path_condition.items():
-                if key in halo.save_path.stem:
+                if key in halo.save_path.name:
                     _lineplot_kwargs = {**_lineplot_kwargs, **value}
                     if 'label' in _lineplot_kwargs:
                         if _lineplot_kwargs['label'] in used_labels:
@@ -283,7 +283,63 @@ class Halos:
                 lineplot_kwargs=_lineplot_kwargs,
                 fig=fig,
                 ax=ax,
-                save_kwargs=save_kwargs,
+                early_quit=early_quit,
+                time_unit=time_unit,
+                **plot_kwargs,
+            )
+        plot.save(fig=fig, **save_kwargs)
+        return fig, ax
+
+    def plot_core_density_ratio(
+        self,
+        time_unit: TimeUnitLike = 'Gyr',
+        path_condition: dict[str, dict[str, Any]] | Literal['default'] = 'default',
+        lineplot_kwargs: dict[str, Any] = {},
+        plot_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] = {},
+        early_quit: bool = False,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the inner core density ratio over time.
+
+        Parameters
+            time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use its own value for its plot.
+            path_condition: A dictionary of conditions to apply to the plot of each halo. If 'default', use the default set in `Halos.default_path_condition()`.
+            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`
+            plot_kwargs: Additional keyword arguments to pass to the plot function (`Halo.plot_cumulative_scattering_amount_over_time()`).
+            save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
+            early_quit: If `True` force the plot on a predefined `fig` and `ax`. If `False` allows the plotting function (`phase_space.plot()`) to define axis parameters (title, axis labels, etc.).
+            **kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
+
+        Returns:
+            fig, ax.
+        """
+
+        fig, ax = plot.setup(**kwargs)
+        plot_kwargs = plot_kwargs.copy()
+        if path_condition == 'default':
+            path_condition = self.default_path_condition()
+
+        used_labels = []
+
+        for halo in tqdm(self.halos):
+            assert halo.save_path is not None
+            plot_kwargs.pop('save_kwargs', None)
+            plot_kwargs.pop('lineplot_kwargs', None)
+            plot_kwargs.pop('early_quit', None)
+            _lineplot_kwargs = lineplot_kwargs.copy()
+            for key, value in path_condition.items():
+                if key in halo.save_path.name:
+                    _lineplot_kwargs = {**_lineplot_kwargs, **value}
+                    if 'label' in _lineplot_kwargs:
+                        if _lineplot_kwargs['label'] in used_labels:
+                            _lineplot_kwargs.pop('label')
+                        else:
+                            used_labels += [_lineplot_kwargs['label']]
+            fig, ax = halo.plot_core_density_ratio(
+                lineplot_kwargs=_lineplot_kwargs,
+                fig=fig,
+                ax=ax,
                 early_quit=early_quit,
                 time_unit=time_unit,
                 **plot_kwargs,
@@ -300,16 +356,16 @@ class Halos:
         """Print the core collapse time for each halo.
 
         Parameters:
-            time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use it's own value for it's plot.
+            time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use its own value for its plot.
             time_format: Format for the core collapse time.
-            path_condition: A dictionary of conditions to apply to the print of each halo. If 'default', use the default set in `Halos.defualt_path_condition()`.
+            path_condition: A dictionary of conditions to apply to the print of each halo. If 'default', use the default set in `Halos.default_path_condition()`.
         """
         if path_condition == 'default':
-            path_condition = self.defualt_path_condition()
+            path_condition = self.default_path_condition()
         for halo in self:
             assert halo.save_path is not None
             label = ''
             for key, value in path_condition.items():
-                if key in halo.save_path.stem:
+                if key in halo.save_path.name:
                     label = value.get('label', label)
             print(f'{label}: {halo.core_collapse_time.to(time_unit):{time_format}}')

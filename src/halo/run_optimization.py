@@ -132,7 +132,7 @@ def core_is_collapsing(
     r: Quantity['length'],
     initial_r: Quantity['length'],
     inner_core_radius: Quantity['length'],
-    critical_ratio: float = 2,
+    critical_ratio: float = 100,
     **kwargs: Any,
 ) -> bool:
     """Check if the simulation should be terminated early.
@@ -195,7 +195,7 @@ def core_collapse_core_density_estimate(
     snapshots: table.QTable,
     initial_r: Quantity['length'],
     inner_core_radius: Quantity['length'],
-    critical_ratio: float = 2,
+    critical_ratio: float = 100,
 ) -> Quantity['time']:
     """Calculate the time at which the halo starts major core collapse.
 

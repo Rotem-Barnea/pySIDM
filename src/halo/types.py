@@ -21,10 +21,8 @@ class EarlyQuitParams(TypedDict, total=False):
         critical_ratio: The critical ratio defining the core collapse.
     """
 
-    max_relaxation_iterations: int
-    relaxation_threshold: float
-    relaxation_core_fraction: float
-    relaxation_dt_factor: float
+    inner_core_radius: Quantity['length']
+    critical_ratio: float
 
 
 class SaveParams(TypedDict, total=False):

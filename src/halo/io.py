@@ -24,8 +24,8 @@ class Metadata(TypedDict, total=False):
     Attributes:
         time: The current time of the simulation.
         steps: The current step of the simulation.
-        dt: The current time step of the simulation.
-        unoptimized_dt: The unoptimized time step of the simulation.
+        dt: The current timestep of the simulation.
+        unoptimized_dt: The unoptimized timestep of the simulation.
         save_every_n_steps: The number of steps between saves.
         save_every_time: The time between saves.
         dynamics_params: The parameters for the dynamics.
@@ -35,8 +35,9 @@ class Metadata(TypedDict, total=False):
         save_path: The path to save the simulation to.
         r_max: Maximum radius of the halo, particles outside of this radius get killed off.
         inner_core_radius: Inner core radius of the halo, used for estimating the collapse.
-        cleanup_nullish_particles: Whether to cleanup nullish particles.
-        cleanup_particles_by_radius: Whether to cleanup particles by radius.
+        critical_ratio: The critical ratio defining the core collapse.
+        cleanup_nullish_particles: Whether to clean-up nullish particles.
+        cleanup_particles_by_radius: Whether to clean-up particles by radius.
         reached_core_collapse: Whether the halo has reached core collapse.
         seed: The seed for the random number generator.
         generator_state: The state of the random number generator.
@@ -58,6 +59,7 @@ class Metadata(TypedDict, total=False):
     save_path: Path
     r_max: Quantity['length']
     inner_core_radius: Quantity['length']
+    critical_ratio: float
     cleanup_nullish_particles: bool
     cleanup_particles_by_radius: bool
     reached_core_collapse: bool
@@ -72,15 +74,15 @@ class HeavyPayload(TypedDict, total=False):
     """Heavy payload metadata for a simulation.
 
     Attributes:
-        ministep_size: The size of the ministep used for each ministep (to track changes in them).
+        ministep_size: The size of the mini-step used for each mini-step (to track changes in them).
         scatter_track_time: The time for each scatter track round, must match `scatter_track_index` and `scatter_track_radius` in shape.
-        scatter_track_index: The interacting particles (particle index) at every time step.
-        scatter_track_radius: The location of the interacting particles at every time step.
-        scatter_rounds: Number of scatter rounds the halo had every time step.
-        scatter_rounds_underestimated: Number of underestimated scatter rounds the halo had every time step (due to `max_allowed_rounds` in `physics.sidm.scatter()`).
+        scatter_track_index: The interacting particles (particle index) at every timestep.
+        scatter_track_radius: The location of the interacting particles at every timestep.
+        scatter_rounds: Number of scatter rounds the halo had every timestep.
+        scatter_rounds_underestimated: Number of underestimated scatter rounds the halo had every timestep (due to `max_allowed_rounds` in `physics.sidm.scatter()`).
         runtime_realtime_track: The time at the start of each step.
         runtime_track_sort: The time taken to sort the particles.
-        runtime_track_cleanup: The time taken to cleanup the particles.
+        runtime_track_cleanup: The time taken to clean-up the particles.
         runtime_track_sidm: The time taken to perform SIDM calculations.
         runtime_track_leapfrog: The time taken to perform leapfrog calculations.
         runtime_track_full_step: The time taken to perform a full step.

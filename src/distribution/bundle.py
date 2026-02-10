@@ -292,3 +292,44 @@ class HaloBaryonBundle(Bundle):
             property=property, labels=other_labels, lineplot_kwargs=other_lineplot_kwargs, fig=fig, ax=ax, **kwargs
         )
         return fig, ax
+
+
+class MixedCSIDM(Bundle):
+    """Bundle for SIDM and CDM distributions (one of each)"""
+
+    def __init__(
+        self,
+        total_mass: Quantity['mass'],
+        cdm_factor: float = 1,
+        name: str = 'CDM+SIDM',
+        merge: bool = True,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(
+            distributions=[
+                NFW(
+                    total_mass=mass,
+                    **cast(dict[str, Any], {'c': 'From mass', 'r_vir': 'From mass', **kwargs}),
+                    name=name,
+                    particle_type=particle_type,
+                )
+                for mass, particle_type in zip(total_mass * np.array([1, cdm_factor]) / (1 + cdm_factor), ['dm', 'cdm'])
+            ],
+            merge=merge,
+        )
+        self.sidm_distribution, self.cdm_distribution = self.distributions
+
+    @property
+    def cdm_factor(self) -> float:
+        """CDM mass / SIDM mass"""
+        return float(self.cdm_distribution.total_mass / self.sidm_distribution.total_mass)
+
+    @property
+    def total_mass(self) -> Quantity['mass']:
+        """CDM mass + SIDM mass"""
+        return cast(Quantity, self.cdm_distribution.total_mass + self.sidm_distribution.total_mass)
+
+    @property
+    def cdm_fraction(self) -> float:
+        """CDM mass / total mass"""
+        return float(self.cdm_distribution.total_mass / self.total_mass)

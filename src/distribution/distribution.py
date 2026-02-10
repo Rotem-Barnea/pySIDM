@@ -1039,13 +1039,15 @@ class Distribution:
         self,
         n_particles: int | float,
         sample_method: Literal['distribution', 'phase space', 'legacy'] | None = None,
+        switch_particle_type: tuple[ParticleType, float] | None = None,
+        generator: np.random.Generator | None = None,
         phase_space_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[
         Quantity['length'],
         Quantity['velocity'],
         Quantity['mass'],
-        NDArray[np.str_],
+        NDArray[np.object_],
         NDArray[np.int64],
     ]:
         """Samples particles from the distribution. Wraps the sample method and returns additional particle properties.
@@ -1059,26 +1061,35 @@ class Distribution:
               - 'phase space': Samples particles from the phase space object. Works with any grid.
               - 'legacy': Samples the particles' radius by sampling from the quantile m(r) distribution, and then for each particle calculate the velocity pdf from the distribution function (`df`), and sample from it's CDF. THERE IS SOME BUG IN THIS METHOD.
 
+            switch_particle_type: If provided, consists of 2 inputs - `particle_type` and `fraction`, such that of the sampled particles (uniformly), `fraction` will use the provided `particle_type` instead of the internal `self.particle_type`. Used to allow mixing of DM types within the same overall distribution.
+            generator: If not provided, use the default generator defined in `rng.generator`.
             **phase_space_kwargs: Additional keyword arguments to pass to the phase space object during initialization. Only relevant if `sample_method='phase space'`.
             **kwargs: Additional keyword arguments to pass to the sample method.
 
         Returns:
             The particles' position, velocity, mass, particle type, and distribution ID.
         """
+        if generator is None:
+            generator = rng.generator
         if sample_method is None:
             sample_method = 'distribution' if self.backend == 'agama' else 'phase space'
 
         if sample_method == 'distribution':
-            r, v = self.sample(n_particles=n_particles, **kwargs)
+            r, v = self.sample(n_particles=n_particles, generator=generator, **kwargs)
         elif sample_method == 'phase space':
-            r, v = self.phase_space(**phase_space_kwargs).sample_weighted_particles(n_particles=n_particles, **kwargs)
+            r, v = self.phase_space(**phase_space_kwargs).sample_weighted_particles(
+                n_particles=n_particles, generator=generator, **kwargs
+            )
         elif sample_method == 'legacy':
-            r, v = self.sample_legacy(n_particles=n_particles, **kwargs)
+            r, v = self.sample_legacy(n_particles=n_particles, generator=generator, **kwargs)
+        particle_type = np.full(len(r), self.particle_type, dtype=np.object_)
+        if switch_particle_type is not None:
+            particle_type[rng.generator.random(len(particle_type)) <= switch_particle_type[1]] = switch_particle_type[0]
         return (
             r,
             v,
             cast(Quantity, np.ones(len(r)) * self.total_mass / len(r)),
-            np.full(len(r), self.particle_type),
+            particle_type,
             np.full(len(r), self.id),
         )
 
