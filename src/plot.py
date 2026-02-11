@@ -1,7 +1,7 @@
 """Plotting tools"""
 
 import warnings
-from typing import Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 from pathlib import Path
 from collections.abc import Iterable, Iterator, Collection
 
@@ -26,7 +26,8 @@ from matplotlib.collections import QuadMesh
 from numba.misc.coverage_support import Callable
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-from src.distribution.distribution import Distribution
+if TYPE_CHECKING:
+    from src.distribution.distribution import Distribution
 
 from . import types, utils, physics, run_units
 from .tqdm import tqdm
@@ -1105,7 +1106,7 @@ def phase_space_energy_lines(
     return fig, ax
 
 
-def animate_density_presentation(snapshots: table.QTable, distribution: Distribution, save_path: str | Path) -> None:
+def animate_density_presentation(snapshots: table.QTable, distribution: 'Distribution', save_path: str | Path) -> None:
     """Animation of the density over time, made for a presentation keynote."""
 
     def f(x: Any) -> tuple[Figure, Axes]:
@@ -1152,7 +1153,7 @@ def animate_density_presentation(snapshots: table.QTable, distribution: Distribu
     )
 
 
-def animate_xy_presentation(snapshots: table.QTable, distribution: Distribution, save_path: str | Path) -> None:
+def animate_xy_presentation(snapshots: table.QTable, distribution: 'Distribution', save_path: str | Path) -> None:
     """Animation of the simulation's "particles" in an x-y plane over time, made for a presentation keynote."""
 
     def g_(
