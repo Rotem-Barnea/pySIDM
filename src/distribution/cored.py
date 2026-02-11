@@ -64,8 +64,8 @@ class Cored(Distribution):
         rho_s: float = 1,
         r_s: float = 1,
         r_vir: float = 1,
-        truncate: bool = False,
         truncate_power: int = 4,
+        truncate: bool = False,
     ) -> FloatOrArray:
         """Cored Plummer density profile.
 

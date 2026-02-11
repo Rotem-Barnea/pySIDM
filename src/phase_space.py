@@ -270,7 +270,7 @@ class PhaseSpace:
         )
 
     def to_f_grid(self, mass_grid: Quantity['mass']) -> Quantity[run_units.f_unit]:
-        """Calcualte the f grid from the provided mass grid"""
+        """calculate the f grid from the provided mass grid"""
         return (mass_grid / (self.jacobian_rv * self.volume_element)).decompose(run_units.system)
 
     def integrate(
@@ -299,11 +299,11 @@ class PhaseSpace:
             return (grid * self.jacobian_rv * self.volume_element).sum()
 
     def calculate_density(self, mass_grid: Quantity['mass']) -> Quantity['mass density']:
-        """Calcualte the density as a function of radius (without the Jacobian) for the provided mass grid"""
+        """calculate the density as a function of radius (without the Jacobian) for the provided mass grid"""
         return self.integrate(full_grid=self.to_f_grid(mass_grid), axis='v').to(run_units.density)
 
     def calculate_temperature(self, mass_grid: Quantity['mass']) -> Quantity['specific energy']:
-        """Calcualte the temperature as a function of radius for the provided mass grid"""
+        """calculate the temperature as a function of radius for the provided mass grid"""
         num = self.integrate(full_grid=self.v_grid**2 * self.to_f_grid(mass_grid), axis='v')
         den = self.calculate_density(mass_grid)
         temperature = Quantity(np.full(num.shape, np.nan), cast(Unit, num.unit) / cast(Unit, den.unit))

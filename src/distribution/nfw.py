@@ -42,8 +42,8 @@ class NFW(Distribution):
         rho_s: float = 1,
         r_s: float = 1,
         r_vir: float = 1,
-        truncate: bool = True,
         truncate_power: int = 4,
+        truncate: bool = True,
     ) -> FloatOrArray:
         """Calculate the density (`rho`) at a given radius.
 
@@ -54,8 +54,8 @@ class NFW(Distribution):
             rho_s: The scale density.
             r_s: The scale radius.
             r_vir: The virial radius.
-            truncate: Whether to truncate the density at the virial radius.
             truncate_power: The power law used for truncation.
+            truncate: Whether to truncate the density at the virial radius.
 
         Returns:
             The density at the given radius.

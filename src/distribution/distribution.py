@@ -3,7 +3,7 @@
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, Callable, cast
 from pathlib import Path
-from functools import cached_property
+from functools import partial, cached_property
 
 import numpy as np
 import scipy
@@ -334,6 +334,25 @@ class Distribution:
             'c': r_vir / self.r_s,
         }
 
+    @classmethod
+    def fit_data(
+        cls,
+        x: Quantity['length'],
+        y: Quantity['mass density'],
+        data_mask: NDArray[np.bool_] | None = None,
+        truncate: bool = False,
+        distribution_kwargs: dict[str, Any] = {},
+    ) -> dict[str, Quantity]:
+        popt = utils.fit_curve(
+            f=lambda *x: partial(cls.calculate_density, truncate=truncate, **distribution_kwargs)(*x),
+            x=x,
+            y=y,
+            p0=(1, 1, 1) if truncate else (1, 1),
+            data_mask=data_mask,
+            output_scheme=['y', 'x', 'x'],
+        )
+        return {key: cast(Quantity, value) for key, value in zip(['rho_s', 'r_s', 'r_vir'], popt)}
+
     @staticmethod
     def r_half_light_to_r_s(r: Quantity['length'], projection_factor: float = 1.8) -> Quantity['length']:
         """Calculates the scale radius (`r_s`) from the half-light radius."""
@@ -445,8 +464,8 @@ class Distribution:
         rho_s: float = 1,
         r_s: float = 1,
         r_vir: float = 1,
-        truncate: bool = False,
         truncate_power: int = 4,
+        truncate: bool = False,
     ) -> FloatOrArray:
         """Calculate the density (`rho`) at a given radius.
 
@@ -457,8 +476,8 @@ class Distribution:
             rho_s: The scale density.
             r_s: The scale radius.
             r_vir: The virial radius.
-            truncate: Whether to truncate the density at the virial radius.
             truncate_power: The power law used for truncation.
+            truncate: Whether to truncate the density at the virial radius.
 
         Returns:
             The density at the given radius.

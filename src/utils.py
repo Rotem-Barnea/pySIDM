@@ -1,7 +1,7 @@
 """General purpose utility functions"""
 
 import datetime
-from typing import Any, Literal, Callable, cast
+from typing import Any, Literal, Callable, Sequence, cast
 
 import numpy as np
 import scipy
@@ -727,17 +727,17 @@ def to_edge(
 
 
 def safe_inverse(denominator: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
-    """Safely calcualtes `1/denominator`, filling cells with `denominator=0` with `fill_value`"""
+    """Safely calculates `1/denominator`, filling cells with `denominator=0` with `fill_value`"""
     return np.divide(1, denominator, out=np.full_like(denominator, fill_value), where=denominator != 0)
 
 
 def safe_sqrt(x: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
-    """Safely calcualtes `np.sqrt(x)`, filling cells with `x<0` with `fill_value`"""
+    """Safely calculates `np.sqrt(x)`, filling cells with `x<0` with `fill_value`"""
     return np.sqrt(x, out=np.full_like(x, fill_value), where=x >= 0)
 
 
 def safe_log(x: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
-    """Safely calcualtes `np.safe_log(x)`, filling cells with `x<=0` with `fill_value`"""
+    """Safely calculates `np.safe_log(x)`, filling cells with `x<=0` with `fill_value`"""
     return np.log(x, out=np.full_like(x, fill_value), where=x > 0)
 
 
@@ -749,3 +749,36 @@ def guess_unit(unit: UnitLike | None = None, array: NDArray[np.float64] | Quanti
         else:
             unit = ''
     return unit
+
+
+def fit_curve(
+    f: Callable[Any, NDArray[np.float64]],
+    x: QuantityLike,
+    y: QuantityLike,
+    data_mask: NDArray[np.bool_] | None = None,
+    xlog: bool = False,
+    ylog: bool = False,
+    output_scheme: Sequence[UnitLike | Literal['x', 'y'] | None] = ['x', 'y'],
+    p0: tuple[float, ...] | None = None,
+    bounds: tuple[float, float] = (0, np.inf),
+    max_nfev: int = 10000,
+    **kwargs: Any,
+) -> list[Quantity | float]:
+    xdata, ydata = (np.log(np.array(value)) if log else np.array(value) for value, log in zip([x, y], [xlog, ylog]))
+
+    if data_mask is not None:
+        xdata, ydata = xdata[data_mask], ydata[data_mask]
+    popt, _ = scipy.optimize.curve_fit(
+        f=(lambda *x: np.log(f(*x))) if ylog else f,
+        xdata=xdata,
+        ydata=ydata,
+        p0=p0,
+        bounds=bounds,
+        max_nfev=max_nfev,
+        **kwargs,
+    )
+    return [
+        Quantity(p, x.unit if unit == 'x' else (y.unit if unit == 'y' else unit)) if unit is not None else p
+        for p, unit in zip(popt, output_scheme)
+    ]
+    # lambda r, r_s, rho_s: np.log(rho_s / ((r / r_s) * (1 + r / r_s) ** 2))

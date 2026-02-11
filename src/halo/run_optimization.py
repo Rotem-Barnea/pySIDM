@@ -114,7 +114,7 @@ def core_density_ratio(
     inner_core_radius: Quantity['length'],
     **kwargs: Any,
 ) -> bool:
-    """Calcualtes the density in the inner core, divided by the initial density
+    """calculates the density in the inner core, divided by the initial density
 
     Parameters:
         r: The radius of each particle.
