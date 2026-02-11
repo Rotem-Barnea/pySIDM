@@ -500,7 +500,7 @@ class Distribution:
         return self.calculate_velocity_dispersion(self.geomspace_grid)
 
     def calculate_temperature(self, r: Quantity['length']) -> Quantity['specific energy']:
-        """Calculate the temeprature at the provided radius, assuming isotropy. Only implemented for the AGAMA backend."""
+        """Calculate the temperature at the provided radius, assuming isotropy. Only implemented for the AGAMA backend."""
         if self.backend != 'agama':
             raise NotImplementedError(
                 f'Temperature calculation is only implemented for AGAMA backend, not for {self.backend}'
@@ -627,6 +627,25 @@ class Distribution:
     def calculate_total_mass(self) -> Quantity['mass']:
         """Calculate the total mass, i.e. the integral over `[0, r_max]`."""
         return cast(Quantity, self.spherical_density_integrate(self.r_max, True)[0])
+
+    @cached_property
+    def gravitational_scale_height_grid(self) -> Quantity['length']:
+        """Calculate the gravitational scale height at the `internal logarithmic grid`."""
+        return self.gravitational_scale_height(self.geomspace_grid)
+
+    def gravitational_scale_height(self, r: Quantity['length']) -> Quantity['length']:
+        """Calculate the gravitational scale height of the distribution"""
+        return np.sqrt(
+            self.calculate_velocity_dispersion(r) ** 2 / (4 * np.pi * constants.G * self.density(r))
+        ).decompose(run_units.system)
+
+    def mean_free_path_grid(self, sigma: Quantity[run_units.cross_section]) -> Quantity['length']:
+        """Calculate the mean free path at the `internal logarithmic grid`."""
+        return self.mean_free_path(self.geomspace_grid, sigma)
+
+    def mean_free_path(self, r: Quantity['length'], sigma: Quantity[run_units.cross_section]) -> Quantity['length']:
+        """Calculate the mean free path of the distribution"""
+        return 1 / (self.density(r) * sigma).decompose(run_units.system)
 
     def calculate_density_scale(self) -> Quantity['mass density']:
         """Calculate the density scale to set the integral over `[0, r_max]` to equal `total_mass`."""
