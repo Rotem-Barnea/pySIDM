@@ -17,7 +17,10 @@ if __name__ == '__main__':
 
     fraction = float(os.environ.get('FRACTION', 0))
 
-    save_path = Path(os.environ['SAVE_PATH']) / f'run results/{dist.name} single fraction={fraction}'
+    save_path = (
+        Path(os.environ['SAVE_PATH'])
+        / f'run results/{dist.name} single fraction={fraction} [{os.environ.get("SLURM_JOB_ID", "local")}]'
+    )
 
     if save_path.exists():
         print(f'Loaded existing halo (continuing run) from path {save_path}')
