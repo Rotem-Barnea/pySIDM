@@ -1,7 +1,8 @@
 """General purpose utility functions"""
 
 import datetime
-from typing import Any, Literal, Callable, Sequence, cast
+from typing import Any, Literal, Callable, cast
+from collections.abc import Sequence
 
 import numpy as np
 import scipy
@@ -764,6 +765,24 @@ def fit_curve(
     max_nfev: int = 10000,
     **kwargs: Any,
 ) -> list[Quantity | float]:
+    """Fit data to a curve.
+
+    Parameters:
+        f: Function to fit to.
+        x: Array of input x values.
+        y: Array of input y values.
+        data_mask: A mask to filter out only parts of the data for the fitting.
+        xlog: If True, apply a log to the x-values whenever used during fitting.
+        ylog: If True, apply a log to the y-values whenever used during fitting.
+        output_scheme: A list of units to wrap the results in. `'x'` and `'y`' are interpreted as the units of `x` and `y` respectively (will raise an error if they are not a Quantity object). `None` will leave the parameter as a float.
+        p0: Initial guess, passed on to the solver (scipy.optimize.curve_fit()). Also defines the number of parameters to solve (positional from `f`).
+        bounds: Bounds for the parameters, passed on to the solver (scipy.optimize.curve_fit()).
+        max_nfev: max number of iterations, passed on to the solver (scipy.optimize.curve_fit()).
+        kwargs: Additional keyword arguments passed on to the solver (scipy.optimize.curve_fit()).
+
+    Returns:
+        A list of optimized parameters.
+    """
     xdata, ydata = (np.log(np.array(value)) if log else np.array(value) for value, log in zip([x, y], [xlog, ylog]))
 
     if data_mask is not None:

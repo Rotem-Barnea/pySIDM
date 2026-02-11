@@ -342,7 +342,21 @@ class Distribution:
         data_mask: NDArray[np.bool_] | None = None,
         truncate: bool = False,
         distribution_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
     ) -> dict[str, Quantity]:
+        """Fit data to the density curve.
+
+        Parameters:
+            x: Array of input x values.
+            y: Array of input y values.
+            data_mask: A mask to filter out only parts of the data for the fitting.
+            truncate: Whether to truncate the distribution at the virial radius, and solve for it as a parameter as well.
+            distribution_kwargs: Additional keyword arguments passed on to the distribution.
+            kwargs: Additional keyword arguments passed on to the solver (utils.curve_fit()).
+
+        Returns:
+            A dict with the solved parameters: `{'rho_s':rho_s,'r_s':r_s,'r_vir:r_vir}`, or `{'rho_s':rho_s,'r_s':r_s}`.
+        """
         popt = utils.fit_curve(
             f=lambda *x: partial(cls.calculate_density, truncate=truncate, **distribution_kwargs)(*x),
             x=x,
@@ -350,6 +364,7 @@ class Distribution:
             p0=(1, 1, 1) if truncate else (1, 1),
             data_mask=data_mask,
             output_scheme=['y', 'x', 'x'],
+            **kwargs,
         )
         return {key: cast(Quantity, value) for key, value in zip(['rho_s', 'r_s', 'r_vir'], popt)}
 
