@@ -3,7 +3,7 @@
 import warnings
 from typing import Any, Literal, cast
 from pathlib import Path
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator, Collection
 
 import numpy as np
 import scipy
@@ -28,7 +28,7 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 
 from distribution.distribution import Distribution
 
-from . import utils, physics, run_units
+from . import types, utils, physics, run_units
 from .tqdm import tqdm
 
 Scale = Literal['linear', 'log', 'guess']
@@ -55,7 +55,7 @@ def pretty_ax_text(
         bbox_boxstyle: Box style of the text. Gets added to `bbox` with lower priority.
         bbox_facecolor: Face color of the text. Gets added to `bbox` with lower priority.
         bbox_alpha: Alpha of the text. Gets added to `bbox` with lower priority.
-        bbox: Additional bounding box properties. Supercedes all other `bbox_` arguments.
+        bbox: Additional bounding box properties. Supersedes all other `bbox_` arguments.
         **kwargs: Additional keyword arguments.
 
     Returns:
@@ -103,8 +103,8 @@ def setup(
         ax: Axes to plot on. If `None` a new axes is created.
         grid: Whether to add a grid to the plot (major ticks).
         minorticks: Whether to add the grid for the minor ticks.
-        xscale: The scale of the x-axis. Superceded by `ax_set['xscale']` if provided.
-        yscale: The scale of the y-axis. Superceded by `ax_set['yscale']` if provided.
+        xscale: The scale of the x-axis. Superseded by `ax_set['xscale']` if provided.
+        yscale: The scale of the y-axis. Superseded by `ax_set['yscale']` if provided.
         ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
         x_axis_percent_formatter: Format the x-axis as a percentage and pass the arguments to the formatter (`matplotlib.ticker.PercentFormatter(**x_axis_percent_formatter)`). If `None` ignores.
         y_axis_percent_formatter: Format the y-axis as a percentage and pass the arguments to the formatter (`matplotlib.ticker.PercentFormatter(**y_axis_percent_formatter)`). If `None` ignores.
@@ -211,6 +211,13 @@ def default_unit_type(key: str, plot_unit: UnitLike | None = None) -> UnitLike:
     elif key in ['vr', 'vx', 'vy', 'vp', 'v_norm']:
         return 'km/second'
     return ''
+
+
+def color_palette(
+    iterator: Collection[types.T], *args: Any, **kwargs: Any
+) -> Iterator[tuple[tuple[float, float, float], types.T]]:
+    """Wrap an iterator with a `sns.color_palette` instance to generate colors alongside it. All arguments are passed on to `sns.color_palette()`, note not to pass n_colors as it's taken directly from the length of the iterator."""
+    return zip(sns.color_palette(*args, **kwargs, n_colors=len(iterator)), iterator)
 
 
 def format_ax_ticks(
