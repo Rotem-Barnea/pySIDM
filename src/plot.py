@@ -26,7 +26,7 @@ from matplotlib.collections import QuadMesh
 from numba.misc.coverage_support import Callable
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-from distribution.distribution import Distribution
+from src.distribution.distribution import Distribution
 
 from . import types, utils, physics, run_units
 from .tqdm import tqdm
