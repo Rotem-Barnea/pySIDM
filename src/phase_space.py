@@ -520,8 +520,8 @@ class PhaseSpace:
 
         r_indices, v_indices = r_indices[index_sort := np.argsort(r_indices)], v_indices[index_sort]
 
-        v_interp = scipy.interpolate.interp1d(np.arange(self.shape[0]), self.v_array.value)
-        r_interp = scipy.interpolate.interp1d(np.arange(self.shape[1]), self.r_array.value)
+        v_interp = scipy.interpolate.interp1d(np.arange(self.shape[0]), self.v_array.value, fill_value='extrapolate')
+        r_interp = scipy.interpolate.interp1d(np.arange(self.shape[1]), self.r_array.value, fill_value='extrapolate')
 
         radius, velocity = (
             Quantity(r_interp(r_indices), self.r_array.unit),
