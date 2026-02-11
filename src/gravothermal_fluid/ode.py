@@ -59,10 +59,6 @@ class GravothermalFluid:
         _density, _velocity_dispersion = self.scale(density), self.scale(velocity_dispersion)
 
         self._pressure = self.scale(self.distribution.calculate_pressure(cell_center))
-        # self._pressure[0] = utils.to_edge(self.scale(initial_density))[0] * utils.to_edge(_velocity_dispersion)[0] ** 2
-        # _velocity_dispersion[0] = np.sqrt(
-        #     (utils.to_edge(_density)[0] * utils.to_edge(_velocity_dispersion)[0] ** 2) / _density[0]
-        # )
         self._internal_energy = self.scale(self.distribution.calculate_internal_energy(cell_center))
 
         self.base_dt: float
