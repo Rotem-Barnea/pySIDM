@@ -57,7 +57,7 @@ class OptimizeDtParams(TypedDict, total=False):
         include_scatters (False): Include scatters in the optimization, otherwise optimize only over the leapfrog integrator.
         verbose (True): Use a tqdm-style progress bar for the optimization process.
         tqdm_leave (False): Leave the progress bar after the optimization is complete.
-        reoptimize_rate: How often should the iteration loop be paused to reoptimize the time step. Split the evolution loop into chunks of this duration and reoptimize the time step (`dt`) at the start of each chunk.
+        reoptimize_rate: How often should the iteration loop be paused to re-optimize the timestep. Split the evolution loop into chunks of this duration and reoptimize the time step (`dt`) at the start of each chunk.
     """
 
     min_factor: int
