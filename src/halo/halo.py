@@ -1028,6 +1028,20 @@ class Halo:
         self.runtime_track_simulation_time += [self.time.to(run_units.time).value]
         self.runtime_track_full_step += [time.perf_counter() - t_start]
 
+    def bootstrap(
+        self,
+        tqdm_kwargs: dict[str, Any] = {},
+        save_kwargs: types.SaveParams = {},
+        optimize_dt_kwargs: types.OptimizeDtParams | None = None,
+    ):
+        """Run bootstraping phase if applicable. Only runs gravitational dynamics for the specified number of steps (i.e. no SIDM) to ensure relaxation into a steady state for the initial conditions."""
+        if self.steps == 0 and self.bootstrap_steps > 0:
+            if optimize_dt_kwargs is not None:
+                self.dt = run_optimization.optimize_dt(self, **optimize_dt_kwargs)
+            for _ in tqdm(range(self.bootstrap_steps), desc='Bootstrap phase', **tqdm_kwargs):
+                self.step(in_bootstrap=True)
+            self.save_snapshot(**save_kwargs)
+
     def evolve(
         self,
         n_steps: int | None = None,
@@ -1035,7 +1049,6 @@ class Halo:
         until_t: Quantity['time'] | None = None,
         tqdm_kwargs: dict[str, Any] = {},
         save_kwargs: types.SaveParams = {},
-        optimize_dt: bool = False,
         optimize_dt_kwargs: types.OptimizeDtParams | None = None,
         early_quit_kwargs: types.EarlyQuitParams | None = None,
     ) -> None:
@@ -1053,6 +1066,8 @@ class Halo:
         Returns:
             None
         """
+        self.bootstrap(tqdm_kwargs=tqdm_kwargs, save_kwargs=save_kwargs, optimize_dt_kwargs=optimize_dt_kwargs)
+
         if early_quit_kwargs is not None:
             self.reached_core_collapse = None
         if n_steps is None:
@@ -1071,14 +1086,8 @@ class Halo:
         for _ in tqdm(start_points, disable=len(start_points) == 1):
             if optimize_dt_kwargs is not None:
                 self.dt = run_optimization.optimize_dt(self, **optimize_dt_kwargs)
-            chunk_n_steps = self.to_step(reoptimize_rate)
-            if self.bootstrap_steps > 0 and self.steps == 0:
-                start_time = self.time - self.bootstrap_steps * self.dt
-                chunk_n_steps += self.bootstrap_steps
-            else:
-                start_time = self.time
-            for step in tqdm(range(chunk_n_steps), start_time=cast(Quantity, start_time), dt=self.dt, **tqdm_kwargs):
-                self.step(in_bootstrap=(step < self.bootstrap_steps and self.steps == 0), save_kwargs=save_kwargs)
+            for _ in tqdm(range(self.to_step(reoptimize_rate)), start_time=self.time, dt=self.dt, **tqdm_kwargs):
+                self.step(save_kwargs=save_kwargs)
                 if self.early_quit(early_quit_kwargs=early_quit_kwargs, save_kwargs=save_kwargs):
                     return
             if self.early_quit(early_quit_kwargs=early_quit_kwargs, save_kwargs=save_kwargs):
