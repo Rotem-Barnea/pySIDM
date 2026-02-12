@@ -238,6 +238,7 @@ class Halos:
         self,
         time_unit: TimeUnitLike = 'Gyr',
         path_condition: dict[str, dict[str, Any]] | Literal['default'] = 'default',
+        palette: str | None = None,
         lineplot_kwargs: dict[str, Any] = {},
         plot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
@@ -249,6 +250,7 @@ class Halos:
         Parameters
             time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use its own value for its plot.
             path_condition: A dictionary of conditions to apply to the plot of each halo. If 'default', use the default set in `Halos.default_path_condition()`.
+            palette: The color palette to use for the plot. If None, use the default palette.
             lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`
             plot_kwargs: Additional keyword arguments to pass to the plot function (`Halo.plot_cumulative_scattering_amount_over_time()`).
             save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
@@ -265,7 +267,7 @@ class Halos:
 
         used_labels = []
 
-        for halo in tqdm(self.halos):
+        for color, halo in plot.color_palette(tqdm(self.halos), palette=palette):
             assert halo.save_path is not None
             plot_kwargs.pop('save_kwargs', None)
             plot_kwargs.pop('lineplot_kwargs', None)
@@ -273,7 +275,7 @@ class Halos:
             _lineplot_kwargs = lineplot_kwargs.copy()
             for key, value in path_condition.items():
                 if key in halo.save_path.name:
-                    _lineplot_kwargs = {**_lineplot_kwargs, **value}
+                    _lineplot_kwargs = {'color': color, **_lineplot_kwargs, **value}
                     if 'label' in _lineplot_kwargs:
                         if _lineplot_kwargs['label'] in used_labels:
                             _lineplot_kwargs.pop('label')
@@ -294,6 +296,7 @@ class Halos:
         self,
         time_unit: TimeUnitLike = 'Gyr',
         path_condition: dict[str, dict[str, Any]] | Literal['default'] = 'default',
+        palette: str | None = None,
         lineplot_kwargs: dict[str, Any] = {},
         plot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
@@ -305,6 +308,7 @@ class Halos:
         Parameters
             time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use its own value for its plot.
             path_condition: A dictionary of conditions to apply to the plot of each halo. If 'default', use the default set in `Halos.default_path_condition()`.
+            palette: The color palette to use for the plot. If None, use the default palette.
             lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`
             plot_kwargs: Additional keyword arguments to pass to the plot function (`Halo.plot_cumulative_scattering_amount_over_time()`).
             save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
@@ -322,7 +326,7 @@ class Halos:
 
         used_labels = []
 
-        for halo in tqdm(self.halos):
+        for color, halo in plot.color_palette(tqdm(self.halos), palette=palette):
             assert halo.save_path is not None
             plot_kwargs.pop('save_kwargs', None)
             plot_kwargs.pop('lineplot_kwargs', None)
@@ -330,7 +334,7 @@ class Halos:
             _lineplot_kwargs = lineplot_kwargs.copy()
             for key, value in path_condition.items():
                 if key in halo.save_path.name:
-                    _lineplot_kwargs = {**_lineplot_kwargs, **value}
+                    _lineplot_kwargs = {'color': color, **_lineplot_kwargs, **value}
                     if 'label' in _lineplot_kwargs:
                         if _lineplot_kwargs['label'] in used_labels:
                             _lineplot_kwargs.pop('label')
