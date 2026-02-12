@@ -51,6 +51,10 @@ class QuantitySpline(scipy.interpolate.UnivariateSpline):
         """Evaluate the derivative of the spline at a given point"""
         return Quantity(super().derivative()(x.to(self.in_unit).value), self.out_unit / self.in_unit)
 
+    def roots(self) -> Quantity:
+        "Return the zeros of the spline"
+        return Quantity(super().roots(), self.in_unit)
+
     def to_scipy(self) -> scipy.interpolate.UnivariateSpline:
         """Returns the regular `scipy` object"""
         return scipy.interpolate.UnivariateSpline(*self.input_args, **self.input_kwargs)

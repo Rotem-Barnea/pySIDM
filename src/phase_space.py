@@ -137,8 +137,8 @@ class PhaseSpace:
             vr: The particles' radial velocity. Mandatory if `data=None`, otherwise ignored.
             m: The particles' mass. Mandatory if `data=None`, otherwise ignored.
             t: The current time.
-            r_range: Passed on to the `PhaseSpace` constructor to define the integration grid. If an `int`, create a logarithmic grid from the minimum to maximum radiuses with the provided number of posts. If `None` use the default constructor value.
-            v_range: Passed on to the `PhaseSpace` constructor to define the integration grid. If an `int` create a logarithmic grid from the minimum to maximum velocity norms with with the provided number of posts. If `None` use the default constructor value.
+            r_range: Passed on to the `PhaseSpace` constructor to define the integration grid. If an `int`, create a logarithmic grid from the minimum to maximum radii with the provided number of posts. If `None` use the default constructor value.
+            v_range: Passed on to the `PhaseSpace` constructor to define the integration grid. If an `int` create a logarithmic grid from the minimum to maximum velocity norms with the provided number of posts. If `None` use the default constructor value.
             verbose: Whether to print progress information when loading snapshots.
             **kwargs: Additional keyword arguments passed to the `PhaseSpace` constructor.
         """
@@ -453,7 +453,7 @@ class PhaseSpace:
             vy: The second perpendicular velocities of the sampled particles.
             vr: The radial velocities of the sampled particles.
             m: The masses of the sampled particles.
-            M: The cumulative masses enclosed by the radiuses of the sampled particles.
+            M: The cumulative masses enclosed by the radii of the sampled particles.
             unused_mass: The mass_grid with the cells that were not sampled (and zero elsewhere).
         """
         if mass_cutoff is None:
@@ -552,7 +552,7 @@ class PhaseSpace:
             vy: The second perpendicular velocities of the sampled particles.
             vr: The radial velocities of the sampled particles.
             m: The masses of the sampled particles.
-            M: The cumulative masses enclosed by the radiuses of the sampled particles.
+            M: The cumulative masses enclosed by the radii of the sampled particles.
             max_minirounds: Maximum number of mini-rounds to perform.
             raise_warning: Raise a warning if a particle fails to converge.
             kwargs: Additional keyword arguments to pass to the leapfrog step function.

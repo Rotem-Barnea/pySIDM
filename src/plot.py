@@ -170,6 +170,23 @@ def setup(
     return fig, ax
 
 
+def update_units(
+    ax: Axes,
+    x_unit: UnitLike | Literal['ignore'] | None = 'ignore',
+    y_unit: UnitLike | Literal['ignore'] | None = 'ignore',
+) -> Axes:
+    """Update the units of a plot"""
+    if x_unit != 'ignore':
+        xlabel = utils.replace_label_unit(ax.get_xlabel(), x_unit)
+        if xlabel is not None:
+            ax.set_xlabel(xlabel)
+    if y_unit != 'ignore':
+        ylabel = utils.replace_label_unit(ax.get_ylabel(), y_unit)
+        if ylabel is not None:
+            ax.set_ylabel(ylabel)
+    return ax
+
+
 def default_plot_text(
     key: str,
     xlabel: str | None = None,

@@ -1,12 +1,14 @@
 """Wrapper for the tqdm module with time-tracking capabilities"""
 
 import os
-from typing import TYPE_CHECKING, Any, cast
-from collections.abc import Iterable, Generator
+from typing import TYPE_CHECKING, Any, Generic, cast
+from collections.abc import Iterable, Iterator
 
 # from tqdm.auto import tqdm as tqdm_base
 from astropy.units import Quantity
 from astropy.units.typing import UnitLike
+
+from src import types
 
 if TYPE_CHECKING:
     from tqdm.auto import tqdm as tqdm_base
@@ -17,12 +19,12 @@ else:
         from tqdm.auto import tqdm as tqdm_base
 
 
-class tqdm(tqdm_base):
+class tqdm(tqdm_base, Generic[types.T]):
     """tqdm subclass that also displays the simulation time."""
 
     def __init__(
         self,
-        iterable: Iterable[Any],
+        iterable: Iterable[types.T],
         start_time: Quantity['time'] | None = None,
         dt: Quantity['time'] | None = None,
         time_unit: UnitLike = 'Gyr',
@@ -51,7 +53,7 @@ class tqdm(tqdm_base):
 
         super().__init__(iterable, **kwargs)
 
-    def __iter__(self) -> Generator[Any, None, None]:
+    def __iter__(self) -> Iterator[types.T]:
         for i, obj in enumerate(super().__iter__()):
             if self.time_mode:
                 current_time = cast(Quantity, i * self.dt + self.start_time)

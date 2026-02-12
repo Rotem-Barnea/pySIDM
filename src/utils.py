@@ -1,5 +1,6 @@
 """General purpose utility functions"""
 
+import re
 import datetime
 from typing import Any, Literal, Callable, cast
 from collections.abc import Sequence
@@ -70,7 +71,7 @@ def split_2d(
     acos: bool,
     generator: np.random.Generator | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Split an array of radiuses to x,y coordinates using a random angle. See `random_angle()` for details on the angle calculation."""
+    """Split an array of radii to x,y coordinates using a random angle. See `random_angle()` for details on the angle calculation."""
     return from_radial(r, theta=random_angle(r, acos, generator=generator))
 
 
@@ -78,7 +79,7 @@ def split_3d(
     r: NDArray[np.float64],
     generator: np.random.Generator | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
-    """Split an array of radiuses to `x`,`y`,`z` coordinates using a `random acos angle` for the `z` coordinate (i.e. radial in the halo), and a `random uniform angle` for the `x-y` plane (i.e. tangential plane in the halo)."""
+    """Split an array of radii to `x`,`y`,`z` coordinates using a `random acos angle` for the `z` coordinate (i.e. radial in the halo), and a `random uniform angle` for the `x-y` plane (i.e. tangential plane in the halo)."""
     radial, perp = from_radial(r, theta=random_angle(r, acos=True, generator=generator))
     x, y = from_radial(perp, theta=random_angle(perp, acos=False, generator=generator))
     return x, y, radial
@@ -306,13 +307,20 @@ def aggregate_QTable(
 
 
 def add_label_unit(label: str | None, plot_unit: UnitLike | None = None) -> str | None:
-    """Add the units to the `label` in a latex formatted string and enclosed in brackets. Ignore if label is `None`."""
+    """Add the units to the `label` in a LaTeX formatted string and enclosed in brackets. Ignore if label is `None` or '' (unit-less)."""
     if label is None:
         return None
     if plot_unit is None or plot_unit == '':
         return label
     string_unit = f'{Unit(cast(str, plot_unit)):latex}'
     return rf'{label} $\left[{string_unit.strip("$")}\right]$'
+
+
+def replace_label_unit(label: str | None, plot_unit: UnitLike | None = None) -> str | None:
+    """Replace the label unit with another unit."""
+    if label is None:
+        return None
+    return add_label_unit(label=re.sub(r' \$\\left\[.*\\right\]\$$', '', label), plot_unit=plot_unit)
 
 
 @njit(parallel=True)
