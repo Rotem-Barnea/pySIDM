@@ -24,9 +24,9 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, report, physics, units
+from src import plot, units, report, physics
 from src.tqdm import tqdm
-from src.types import ParticleType
+from src.types import ParticleType, TimeUnitLike
 from src.utils import utils
 from src.physics import sidm, leapfrog
 from src.background import BackgroundDistribution
@@ -35,7 +35,6 @@ from src.distribution.distribution import Backends, Distribution
 
 from . import io, types, run_optimization
 from .plot import HaloPlotter
-from .types import TimeUnitLike
 from .units import HaloUnits
 
 

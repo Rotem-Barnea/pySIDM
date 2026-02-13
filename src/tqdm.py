@@ -4,7 +4,6 @@ import os
 from typing import TYPE_CHECKING, Any, Generic, cast
 from collections.abc import Iterable, Iterator
 
-# from tqdm.auto import tqdm as tqdm_base
 from astropy.units import Quantity
 from astropy.units.typing import UnitLike
 

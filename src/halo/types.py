@@ -1,16 +1,13 @@
 """Helper types for the halo object"""
 
-from typing import Literal, TypedDict
+from typing import TypedDict
 from pathlib import Path
 
 from astropy.units import Quantity
-from astropy.units.typing import UnitLike
 
 from src.types import regulate_arguments
 
 __all__ = ['regulate_arguments']
-
-TimeUnitLike = UnitLike | Literal['time step', 'dynamical time', 'core collapse time']  ##TODO - deprecate
 
 
 class EarlyQuitParams(TypedDict, total=False):

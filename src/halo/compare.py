@@ -13,15 +13,13 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, units
+from src import plot, types, units
 from src.tqdm import tqdm
-from src.types import ParticleType
 from src.utils import utils
 from src.phase_space import PhaseSpace
 from src.distribution import PhysicalProperty
 
 from .halo import Halo
-from .types import TimeUnitLike
 
 PlotProperty = PhysicalProperty | Literal['baryon mass ratio']
 
@@ -92,7 +90,7 @@ class Halos:
         self,
         y: PlotProperty,
         time: Quantity['time'] | float,
-        filter_particle_type: ParticleType = 'dm',
+        filter_particle_type: types.ParticleType = 'dm',
         initial_particles: bool = False,
         final_particles: bool = True,
         x_unit: UnitLike | None = None,
@@ -243,7 +241,7 @@ class Halos:
 
     def plot_cumulative_scattering(
         self,
-        time_unit: TimeUnitLike = 'Gyr',
+        time_unit: types.TimeUnitLike = 'Gyr',
         path_condition: dict[str, dict[str, Any]] | Literal['default'] = 'default',
         palette: str | None = None,
         lineplot_kwargs: dict[str, Any] = {},
@@ -301,7 +299,7 @@ class Halos:
 
     def plot_core_density(
         self,
-        time_unit: TimeUnitLike = 'Gyr',
+        time_unit: types.TimeUnitLike = 'Gyr',
         path_condition: dict[str, dict[str, Any]] | Literal['default'] = 'default',
         palette: str | None = None,
         plot_kwargs: dict[str, Any] = {},
@@ -360,7 +358,7 @@ class Halos:
 
     def print_core_collapse_time(
         self,
-        time_unit: TimeUnitLike = 'Gyr',
+        time_unit: types.TimeUnitLike = 'Gyr',
         time_format: str = '.1f',
         path_condition: dict[str, dict[str, Any]] | Literal['default'] = 'default',
     ) -> None:
