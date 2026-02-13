@@ -41,7 +41,7 @@ class SaveParams(TypedDict, total=False):
 
 
 class OptimizeDtParams(TypedDict, total=False):
-    """Parameter dictionary for optimizing the time step `dt`.
+    """Parameter dictionary for optimizing the time-step `dt`.
 
     Attributes:
         max_factor (20): Maximum factor to divide the initial `dt` by.
@@ -54,7 +54,7 @@ class OptimizeDtParams(TypedDict, total=False):
         include_scatters (False): Include scatters in the optimization, otherwise optimize only over the leapfrog integrator.
         verbose (True): Use a tqdm-style progress bar for the optimization process.
         tqdm_leave (False): Leave the progress bar after the optimization is complete.
-        reoptimize_rate: How often should the iteration loop be paused to re-optimize the timestep. Split the evolution loop into chunks of this duration and reoptimize the time step (`dt`) at the start of each chunk.
+        reoptimize_rate: How often should the iteration loop be paused to re-optimize the timestep. Split the evolution loop into chunks of this duration and reoptimize the time-step (`dt`) at the start of each chunk.
     """
 
     min_factor: int

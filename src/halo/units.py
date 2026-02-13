@@ -18,7 +18,7 @@ class HaloUnits:
 
     @property
     def time_step(self) -> Unit:
-        """Time step size"""
+        """time-step size"""
         return def_unit(
             'time step',
             self.halo.dt.decompose(units.system),

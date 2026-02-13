@@ -221,7 +221,7 @@ class HaloPlotter:
         sns.lineplot(x=t.value, y=ratio.value, ax=ax, **lineplot_kwargs)
         ax = plot.update_units(
             ax=ax, x_unit=str(t.unit), y_unit=str(ratio.unit)
-        )  # TODO - Decide if we want this sort of thing.
+        )  # to-do - Decide if we want this sort of thing.
         self.save(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
