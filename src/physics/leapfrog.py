@@ -20,11 +20,11 @@ class Params(TypedDict):
     """Parameter dictionary for the leapfrog integrator.
 
     Attributes:
-        max_minirounds: Maximum number of mini-rounds to perform.
+        max_minirounds: Maximum number of minirounds to perform.
         r_convergence_threshold: Convergence threshold for the radius.
         vr_convergence_threshold: Convergence threshold for the radial velocity.
         richardson_extrapolation: Whether to use Richardson extrapolation.
-        adaptive: Whether to use adaptive mini-rounds.
+        adaptive: Whether to use adaptive minirounds.
         grid_window_radius: Radius of the grid window for updating the enclosed mass during the run.
         raise_warning: Whether to raise a warning if the integrator fails to converge.
         levi_civita_mode: Mode for the Levi-Civita correction.
@@ -210,7 +210,7 @@ def particle_levi_civita_step(
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
         dt: The time-step.
-        N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
+        N: The number of ministeps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
 
     Returns:
         The new position and velocity of the particle.
@@ -270,9 +270,9 @@ def particle_normal_step(
 ) -> tuple[float, float, float, float]:
     """Perform a simple leapfrog step in the radius (1D).
 
-    Splits the step into `N` mini-steps, each over a time interval of `dt/N`, and then integrates the velocity and position using a leapfrog algorithm:
+    Splits the step into `N` ministeps, each over a time interval of `dt/N`, and then integrates the velocity and position using a leapfrog algorithm:
         `velocity half step` -> [`position step` -> `velocity step` -> ...] -> `velocity half step`
-    The acceleration is re-calculated every time the position changes. Angular momentum is explicitly conserved by recalculating the velocity in the non-radial directions at the end to conform the same angular momentum with the new position.
+    The acceleration is recalculated every time the position changes. Angular momentum is explicitly conserved by recalculating the velocity in the non-radial directions at the end to conform the same angular momentum with the new position.
 
     Parameters:
         r: The position of the particle.
@@ -284,7 +284,7 @@ def particle_normal_step(
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
         dt: The time-step.
-        N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
+        N: The number of ministeps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
 
     Returns:
         The new position and velocity of the particle.
@@ -337,7 +337,7 @@ def particle_step(
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
         dt: The time-step.
-        N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
+        N: The number of ministeps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
         levi_civita_override_always: If `True`, particle is always in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=infinity`.
         levi_civita_override_never: If `True`, the particle is never in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=0`.
         levi_civita_condition_coefficient: Threshold parameter for the Levi-Civita condition.
@@ -390,7 +390,7 @@ def particle_adaptive_step(
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
         dt: Time-step.
-        max_minirounds: Maximum number of mini-rounds to perform.
+        max_minirounds: Maximum number of minirounds to perform.
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
         first_mini_round: The first mini-round to perform.
@@ -498,7 +498,7 @@ def particle_step_wrapper(
         dt: Time-step.
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
-        max_minirounds: Maximum number of mini-rounds to perform.
+        max_minirounds: Maximum number of minirounds to perform.
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
         first_mini_round: The first mini-round to perform for each particle.
@@ -506,8 +506,8 @@ def particle_step_wrapper(
         levi_civita_override_always: If `True`, particle is always in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=infinity`.
         levi_civita_override_never: If `True`, the particle is never in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=0`.
         levi_civita_condition_coefficient: Threshold parameter for the Levi-Civita condition.
-        adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If `False` performs a single mini-round at `first_mini_round`.
-        grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (`M(<=r)`) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (`M(<=r)`) during the step (use the value pre-step for all acceleration calculations).
+        adaptive: Use adaptive step size - iterate over minirounds until convergence. If `False` performs a single mini-round at `first_mini_round`.
+        grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (`M(<=r)`) during the step to account for the particle's motion, by changing position with up to grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (`M(<=r)`) during the step (use the value pre-step for all acceleration calculations).
 
     Returns:
         Updated position and velocity. final two arrays are the convergence status and the number of rounds to convergence for each particle.
@@ -645,7 +645,7 @@ def guess_factor(
 
     The factor is calculated based on the `scale * (v * dt) / r`, i.e. the ratio of the movement distance scale in a single  and the current radius, scaled by some factor.
     This gives large factors for orbits where the radius is likely to change rapidly, and thus the acceleration will be sensitive to the  and require many iterations to converge.
-    To simplify the calculation, the factor is rounded to give full divisors (to allow using simple for loops over all the steps without needing "partial" steps).
+    To simplify the calculation, the factor is rounded to give full divisors (to allow using simple for loops overall the steps without needing "partial" steps).
 
     If `base` is provided, the factor is further grouped into powers by taking a log10 and rounding up (i.e. the number of decimal digits required + 1), and then returning `base` to the power of that value.
 
@@ -657,7 +657,7 @@ def guess_factor(
         vy: The second perpendicular component (to the radial direction) of the velocity.
         vr: The radial velocity.
         dt: Time-step.
-        scale: The scaling factor parameter, controls the spacing of the factors between different inputs (see explanation above). If `mean`, instead set `factor` to be `(r/v)/(r/v).mean()`.
+        scale: The scaling factor parameter, controls the spacing of the factors between different inputs (see the explanation above). If `mean`, instead set `factor` to be `(r/v)/(r/v).mean()`.
         rounding: When performing the np.ceil operation, first divide by `rounding` and then multiply by it after the rounding. This changes the rounding from rounding to the nearest full integer to rounding to the nearest multiple of `rounding`.
         base: The base factor for scaling. If `None` return the base factor as is, otherwise must be an integer and the returned factor will be `base**np.ceil(np.log10(factor))`.
 
@@ -716,7 +716,7 @@ def step(
         m: The mass of the particles.
         M: The mass cdf (`M(<=r)`) of the particles at the start of the step. Used only if `M_grid` is empty.
         dt: Time-step.
-        max_minirounds: Maximum number of mini-rounds to perform.
+        max_minirounds: Maximum number of minirounds to perform.
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
         first_mini_round: The first mini-round to perform for each particle.
@@ -724,8 +724,8 @@ def step(
         richardson_extrapolation: Use Richardson extrapolation.
         levi_civita_mode: Operation mode for controlling when to use Levi-Civita regularization and when to use a normal leapfrog step.
         alpha: Threshold parameter for the Levi-Civita condition.
-        adaptive: Use adaptive step size - iterate over mini-rounds until convergence. If `False` performs a single mini-round at `first_mini_round`.
-        grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (`M(<=r)`) during the step to account for the particle's motion, by changing position with upto grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (`M(<=r)`) during the step (use the value pre-step for all acceleration calculations).
+        adaptive: Use adaptive step size - iterate over minirounds until convergence. If `False` performs a single mini-round at `first_mini_round`.
+        grid_window_radius: Radius of the grid window. Allows recalculating the mass cdf (`M(<=r)`) during the step to account for the particle's motion, by changing position with up to grid_window_radius places in either direction. Assumes the rest of the particles are static. If 0, avoids recalculating the mass cdf (`M(<=r)`) during the step (use the value pre-step for all acceleration calculations).
         raise_warning: Raise a warning if a particle fails to converge.
         guess_dt_factor: Guess the value of `factor` for each particle based on `r/v`. Only relevant if `factor` is not `None`.
         guess_dt_factor_kwargs: Keyword arguments for the `guess_factor` function.
@@ -762,6 +762,6 @@ def step(
     if raise_warning and not converged.all():
         for index in np.where(~converged)[0]:
             warnings.warn(
-                f'Maximum number of mini-rounds reached for particle {index}, starting with r={r[index]}, vx={vx[index]}, vy={vy[index]}, vr={vr[index]}, M={M[index]}'
+                f'Maximum number of minirounds reached for particle {index}, starting with r={r[index]}, vx={vx[index]}, vy={vy[index]}, vr={vr[index]}, M={M[index]}'
             )
     return _r, _vx, _vy, _vr, convergence_rounds

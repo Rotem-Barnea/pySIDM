@@ -13,7 +13,7 @@ from astropy.units.typing import UnitLike
 if TYPE_CHECKING:
     from src.plot import Scale
 
-from src import plot, report, units
+from src import plot, units, report
 
 from .nfw import NFW
 from .hernquist import Hernquist
@@ -188,7 +188,7 @@ class HaloBaryonBundle(Bundle):
         b_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> Self:
-        """Construct a bundle of a NFW dark matter halo and Hernquist baryonic matter on a consistent grid with merged potentials.
+        """Construct a bundle of an NFW dark matter halo and Hernquist baryonic matter on a consistent grid with merged potentials.
 
         Parameters:
             r_min: Minimum radius of the distribution. Set for all distributions to match internal grids.

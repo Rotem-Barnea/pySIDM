@@ -72,7 +72,7 @@ class HeavyPayload(TypedDict, total=False):
     """Heavy payload metadata for a simulation.
 
     Attributes:
-        ministep_size: The size of the mini-step used for each mini-step (to track changes in them).
+        ministep_size: The size of the ministep used for each ministep (to track changes in them).
         scatter_track_time: The time for each scatter track round, must match `scatter_track_index` and `scatter_track_radius` in shape.
         scatter_track_index: The interacting particles (particle index) at every timestep.
         scatter_track_radius: The location of the interacting particles at every timestep.
@@ -190,7 +190,7 @@ def save(
     Parameters:
         path: Save path.
         static_tables: Static tables to save (cannot be split).
-        splitable_table: Splitable tables to save (if `split_tables` is True).
+        splitable_table: Split-able tables to save (if `split_tables` is True).
         metadata_payload: Metadata payload to save.
         heavy_payload: Heavy payload to save.
         distributions: Distributions to save.

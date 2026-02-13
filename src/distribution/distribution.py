@@ -712,7 +712,7 @@ class Distribution:
 
     @cached_property
     def quantile_function(self) -> QuantityInterpolate:
-        """Mass quantile function (inversed cdf) interpolated at a given radius `r`."""
+        """Mass quantile function (inverted cdf) interpolated at a given radius `r`."""
         cdf, rs = utils.joint_clean(arrays=[self.mass_cdf(self.geomspace_grid), self.geomspace_grid.value])
         return QuantityInterpolate(
             x=cdf, y=rs, kind='cubic', bounds_error=False, fill_value=(self.r_min.value, self.r_max.value)
@@ -742,7 +742,7 @@ class Distribution:
 
     @cached_property
     def integral_f(self) -> QuantitySpline:
-        """Calculate the spline function for the antiderivative (`F`) of the distribution function (`f`)"""
+        """Calculate the spline function for the antiderivative (`F`) of the distribution function (`df`)"""
         return physics.eddington.make_integral_f_spline(
             potential_grid=self.potential_grid,
             density_potential_spline=physics.eddington.make_density_potential_spline(
@@ -759,7 +759,7 @@ class Distribution:
         v: Quantity | None = None,
         reject_negative: bool = True,
     ) -> Quantity:
-        """Calculate the distribution function (`f`) for the given energy."""
+        """Calculate the distribution function (`df`) for the given energy."""
         if self.backend == 'agama':
             assert r is not None and v is not None, 'Radius and velocity must be provided for Agama backend'
             assert self.agama_df is not None, 'Agama distribution function not initialized'
@@ -928,7 +928,7 @@ class Distribution:
         num: int = 1000,
         generator: np.random.Generator | None = None,
     ) -> Quantity['velocity']:
-        """Sample particle velocity (3d vectors) from the distribution function. Shape `(num_particles, 3)` with `(vx,vy,vr)`.
+        """Sample particle velocity (3d vectors) from the distribution function. Shape `(num_particles, 3)` with `(vx, vy, vr)`.
 
         The velocity is split into radial and perpendicular components by a uniform cosine distributed angle, and then the perpendicular component is split into x and y components by a uniform angle.
         See `roll_v()` for parameter details.
@@ -945,7 +945,7 @@ class Distribution:
         generator: np.random.Generator | None = None,
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
         """Sample particles In two steps:
-            - Sample radius from the inversed CDF.
+            - Sample radius from the inverted CDF.
             - Calculate the velocity CDF for every particle's sampled radius, and sample from it's inverse.
 
         Parameters:
@@ -980,7 +980,7 @@ class Distribution:
         generator: np.random.Generator | None = None,
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
         """Sample particles from the joint phase space distribution:
-            - The distribution function `f` is transformed into a joint pdf proportional to `r^2*v^2*f(r,v)*drdv`.
+            - The distribution function `df` is transformed into a joint pdf proportional to `r^2*v^2*df(r, v)*drdv`.
             - The joint pdf is discretized on a grid of radius and velocity bins. If not provided directly (`radius_range`, `velocity_range`), a linear grid is constructed based on the rest of the parameters. The final row and column is dropped to facilitate the calculation of the `drdv` term.
             - The discretized distribution is flattened and sampled from using `generator.choice` with probability weights set by the bin value.
             - The sampled radius and velocity are perturbed by a uniform noise term to provide sub-pixel results.
@@ -1025,7 +1025,6 @@ class Distribution:
             radius_range = Quantity(np.linspace(radius_min_value, radius_max_value, int(radius_resolution)))
         if velocity_range is None:
             if velocity_max_value is None:
-                # velocity_max_value = 1.5 * Quantity(np.sqrt(self.E_grid.max()))
                 velocity_max_value = 1.5 * Quantity(np.sqrt(self.potential_grid.max())).to(velocity_min_value.unit)
             velocity_range = Quantity(np.linspace(velocity_min_value, velocity_max_value, int(velocity_resolution)))
 
@@ -1369,7 +1368,7 @@ class Distribution:
         fig: Figure | None = None,
         ax: Axes | None = None,
     ) -> tuple[Figure, Axes]:
-        """Plot the distribution function `f(E)`.
+        """Plot the distribution function `df(E)`.
 
         Parameters:
             E: Energy values to plot.

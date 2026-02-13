@@ -980,7 +980,7 @@ class Halo:
             `True` if the simulation should be terminated early, `False` otherwise.
         """
         return run_optimization.check_early_quit(
-            core_collape_kwargs={
+            core_collapse_kwargs={
                 'r': self.r,
                 'initial_r': utils.get_columns(self.initial_particles, ['r'])[0],
                 'inner_core_radius': inner_core_radius if inner_core_radius is not None else self.inner_core_radius,

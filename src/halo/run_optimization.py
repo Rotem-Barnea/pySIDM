@@ -1,4 +1,4 @@
-"""Manage the optimizations made  mid-run, such as time-step (`dt`) optimization and early quiting on core collapse"""
+"""Manage the optimizations made  mid-run, such as time-step (`dt`) optimization and early quitting on core collapse"""
 
 import time
 from typing import TYPE_CHECKING, Any, Literal
@@ -94,17 +94,17 @@ def split_to_chunks(
     return start_points, reoptimize_rate
 
 
-def check_early_quit(core_collape_kwargs: types.CoreCollapseDensityEstimateParams | None = None) -> bool:
+def check_early_quit(core_collapse_kwargs: types.CoreCollapseDensityEstimateParams | None = None) -> bool:
     """Check if the simulation should be terminated early.
 
     Parameters:
-        core_collape_kwargs: Keyword arguments passed on to `core_is_collapsing()` to determine an early quit. If None ignores this check.
+        core_collapse_kwargs: Keyword arguments passed on to `core_is_collapsing()` to determine an early quit. If None ignores this check.
 
     Returns:
         `True` if the simulation should be terminated early, `False` otherwise.
     """
-    if core_collape_kwargs is not None:
-        return core_is_collapsing(**core_collape_kwargs)
+    if core_collapse_kwargs is not None:
+        return core_is_collapsing(**core_collapse_kwargs)
     return False
 
 

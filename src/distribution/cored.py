@@ -41,11 +41,6 @@ class Cored(Distribution):
         truncate: bool = False,
         **kwargs: Any,
     ):
-        # r_s: core radius rc
-        # c: cutoff parameter (r_max = c × rc)
-        # total_mass: total halo mass
-        # rho_s: central density ρ₀ (normalized from M_total)
-
         if rc is not None:
             r_s = rc
         if r_max_factor is not None:

@@ -32,7 +32,7 @@ def parse_from_args(
     blacklist_prefix: list[str] | None = None,
     **kwargs: Any,
 ) -> dict[str, Any]:
-    """Cleanup keyword arguments read through `parser.parse_args()`."""
+    """Clean up keyword arguments read through `parser.parse_args()`."""
     params = utils.drop_None(**kwargs)
     if blacklist_prefix is not None:
         for prefix in blacklist_prefix:

@@ -165,14 +165,6 @@ class NFW(Distribution):
                 name=name,
                 **kwargs,
             )
-        # elif name == 'Fornax dSph':  # Numbers taken from doi:10.1093/mnrasl/sls031
-        #     return cls(
-        #         total_mass=Quantity((9 * 2 - 1) * (1e8 / 1.5) + 1e8, 'Msun'),
-        #         r_s=Quantity(2, 'kpc'),
-        #         c=9,
-        #         name=name,
-        #         **kwargs,
-        #     )
         elif name == 'Fornax dSph':  # Calculation. Defaults to `c=18` if not provided.
             assert c != 'From mass', 'cannot use `From mass` to calculate c when calculating from the db'
             return cls(

@@ -18,7 +18,6 @@ def integral_f(
     E: float,
     spline: UnivariateSpline,
     limit: int = 200,
-    # epsrel: float = 1e-8,
     **kwargs: Any,
 ) -> float:
     """Calculate the antiderivative of the distribution function `df`. Internal function that intentionally doesn't support units.
@@ -39,7 +38,6 @@ def integral_f(
         a=0,
         b=E,
         limit=limit,
-        # epsrel=epsrel,
         weight='alg',
         wvar=(0, -0.5),  # (t, s) where weight = (x-a)^t * (b-x)^s. t=-0.5 gives (E-x)^(-0.5) = 1/√(E-x)
         **kwargs,
@@ -114,7 +112,7 @@ def make_f_spline(
     out_unit: UnitLike = units.f_unit,
     **kwargs: Any,
 ) -> QuantitySpline:
-    """Calculate a spline for the distribution function `f`."""
+    """Calculate a spline for the distribution function `df`."""
     f_grid = integral_f_spline.derivative_at(potential_grid)
     return QuantitySpline(
         x=potential_grid[indices := np.argsort(potential_grid)].value,
@@ -130,7 +128,7 @@ def f(
     integral_f_spline: QuantitySpline,
     reject_negative: bool = True,
 ) -> Quantity:
-    """Calculate the distribution function `f` from the antiderivative `F`."""
+    """Calculate the distribution function `df` from the antiderivative `F`."""
     value = integral_f_spline.derivative_at(E) * units.mass
     if reject_negative:
         return cast(Quantity, value.clip(min=0))
