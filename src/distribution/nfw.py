@@ -9,7 +9,7 @@ from numba import njit
 from astropy import cosmology
 from astropy.units import Quantity
 
-from src import run_units, agama_wrappers
+from src import units, agama_wrappers
 from src.types import FloatOrArray
 
 from . import example_db
@@ -73,7 +73,7 @@ class NFW(Distribution):
     @staticmethod
     def calculate_theoretical_r_vir(M: Quantity['mass']) -> Quantity['length']:
         """Calculate the virial radius based on the theoretical density profile (without truncation)."""
-        return ((3 * M / (4 * np.pi * 200 * cosmology.Planck18.critical_density0)) ** (1 / 3)).to(run_units.length)
+        return ((3 * M / (4 * np.pi * 200 * cosmology.Planck18.critical_density0)) ** (1 / 3)).to(units.length)
 
     @staticmethod
     def calculate_from_half_light(
@@ -120,17 +120,17 @@ class NFW(Distribution):
         Mvir, rs = scipy.optimize.fsolve(
             partial(
                 equations,
-                M_half_light=(m0 := mass_half_light.decompose(run_units.system).value),
-                r_half_light=(r0 := r_half_light.decompose(run_units.system).value),
+                M_half_light=(m0 := mass_half_light.decompose(units.system).value),
+                r_half_light=(r0 := r_half_light.decompose(units.system).value),
                 c=c,
-                rho_crit=rho_crit.decompose(run_units.system).value,
-                H0=H0.decompose(run_units.system).value,
+                rho_crit=rho_crit.decompose(units.system).value,
+                H0=H0.decompose(units.system).value,
             ),
             [np.log(m0), np.log(r0)],
         )
         return {
-            'r_s': Quantity(np.exp(rs), run_units.length),
-            'total_mass': Quantity(np.exp(Mvir), run_units.mass),
+            'r_s': Quantity(np.exp(rs), units.length),
+            'total_mass': Quantity(np.exp(Mvir), units.mass),
             'c': c,
         }
 

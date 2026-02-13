@@ -10,7 +10,7 @@ from astropy.units import Quantity
 
 from tqdm import tqdm
 
-from . import nsphere, run_units
+from . import units, nsphere
 from .spatial_approximation import Lattice
 from .distribution.distribution import Distribution
 
@@ -108,9 +108,7 @@ class BackgroundDistribution:
         return cast(
             Quantity,
             self.at_time(time)[
-                self.lattice(r.decompose(run_units.system).value)
-                .clip(min=0, max=len(self.lattice) - 1)
-                .astype(np.int64)
+                self.lattice(r.decompose(units.system).value).clip(min=0, max=len(self.lattice) - 1).astype(np.int64)
             ],
         )
 

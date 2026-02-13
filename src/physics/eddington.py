@@ -8,7 +8,7 @@ from astropy.units import Quantity
 from scipy.interpolate import UnivariateSpline
 from astropy.units.typing import UnitLike
 
-from src import run_units
+from src import units
 from src.types import QuantitySpline
 
 from ..tqdm import tqdm
@@ -103,7 +103,7 @@ def make_integral_f_spline(
         y=integral_f_grid[indices],
         ext=ext,
         in_unit=str(potential_grid.unit),
-        out_unit=run_units.integral_f_unit,
+        out_unit=units.integral_f_unit,
         **kwargs,
     )
 
@@ -111,7 +111,7 @@ def make_integral_f_spline(
 def make_f_spline(
     potential_grid: Quantity['specific energy'],
     integral_f_spline: QuantitySpline,
-    out_unit: UnitLike = run_units.f_unit,
+    out_unit: UnitLike = units.f_unit,
     **kwargs: Any,
 ) -> QuantitySpline:
     """Calculate a spline for the distribution function `f`."""
@@ -131,7 +131,7 @@ def f(
     reject_negative: bool = True,
 ) -> Quantity:
     """Calculate the distribution function `f` from the antiderivative `F`."""
-    value = integral_f_spline.derivative_at(E) * run_units.mass
+    value = integral_f_spline.derivative_at(E) * units.mass
     if reject_negative:
         return cast(Quantity, value.clip(min=0))
     return value

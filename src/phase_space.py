@@ -18,7 +18,7 @@ from astropy.units.typing import UnitLike
 
 from src.utils import utils
 
-from . import rng, plot, physics, run_units
+from . import rng, plot, physics, units
 from .tqdm import tqdm
 from .types import ParticleType
 from .distribution import Distribution, PhysicalProperty
@@ -38,10 +38,10 @@ class PhaseSpace:
         self,
         distribution: Distribution | None = None,
         mass_grid: Quantity['mass'] | None = None,
-        f_grid: Quantity[run_units.f_unit] | None = None,
+        f_grid: Quantity[units.f_unit] | None = None,
         r_range: Quantity['length'] = Quantity(np.geomspace(1e-5, 1e3, 500), 'kpc'),
         v_range: Quantity['velocity'] = Quantity(np.linspace(1e-5, 1e2, 500), 'km/second'),
-        t: Quantity['time'] = Quantity(0, run_units.time),
+        t: Quantity['time'] = Quantity(0, units.time),
         dt: Quantity['time'] | float = 1,
         gravitation_subdivision: int = 5,
         gravitation_mass_cutoff: Quantity['mass'] = Quantity(1e-1, 'Msun'),
@@ -58,8 +58,8 @@ class PhaseSpace:
         )
 
         self.distribution = distribution
-        self.r_array: Quantity = r_range.to(run_units.length)
-        self.v_array: Quantity = v_range.to(run_units.velocity)
+        self.r_array: Quantity = r_range.to(units.length)
+        self.v_array: Quantity = v_range.to(units.velocity)
         self.gravitation_subdivision = gravitation_subdivision
         self.gravitation_mass_cutoff = gravitation_mass_cutoff
         self.scatter_factor = scatter_factor
@@ -100,7 +100,7 @@ class PhaseSpace:
         else:
             self.dynamical_time = self.calculate_dynamical_time()
         self.time: Quantity = t.copy()
-        self.dt: Quantity = (dt if isinstance(dt, Quantity) else self.dynamical_time * dt).to(run_units.time)
+        self.dt: Quantity = (dt if isinstance(dt, Quantity) else self.dynamical_time * dt).to(units.time)
         self.save_every_t = save_every_t
         self.label = label or (self.distribution.label if self.distribution is not None else '')
         self.particle_type = particle_type or (self.distribution.particle_type if self.distribution is not None else '')
@@ -163,14 +163,14 @@ class PhaseSpace:
                     t = cast(Quantity, utils.get_columns(data, ['time'])[0][0])
             else:
                 r, vx, vy, vr, m = (
-                    Quantity(data['r'], run_units.length),
-                    Quantity(data['vx'], run_units.velocity),
-                    Quantity(data['vy'], run_units.velocity),
-                    Quantity(data['vr'], run_units.velocity),
-                    Quantity(data['m'], run_units.mass),
+                    Quantity(data['r'], units.length),
+                    Quantity(data['vx'], units.velocity),
+                    Quantity(data['vy'], units.velocity),
+                    Quantity(data['vr'], units.velocity),
+                    Quantity(data['m'], units.mass),
                 )
                 if 'time' in data.columns:
-                    t = Quantity(data['time'].iloc[0], run_units.time)
+                    t = Quantity(data['time'].iloc[0], units.time)
         assert r is not None, 'Failed to parse `r`'
         assert vx is not None, 'Failed to parse `vx`'
         assert vy is not None, 'Failed to parse `vy`'
@@ -214,7 +214,7 @@ class PhaseSpace:
     @property
     def mass_grid(self) -> Quantity['mass']:
         """Mass grid of the distribution function"""
-        return (self.grid * self.volume_element).to(run_units.mass)
+        return (self.grid * self.volume_element).to(units.mass)
 
     @mass_grid.setter
     def mass_grid(self, grid: Quantity['mass']) -> None:
@@ -239,12 +239,12 @@ class PhaseSpace:
     def grid(self) -> Quantity:
         """Grid of the distribution function with the Jacobian included"""
         return (self.jacobian_rv * self.f_grid).to(
-            run_units.f_unit * run_units.length**2 * run_units.velocity**2 * run_units.mass
+            units.f_unit * units.length**2 * units.velocity**2 * units.mass
         )
 
     @grid.setter
     def grid(self, grid: Quantity) -> None:
-        self.f_grid = (grid / self.jacobian_rv).to(run_units.f_unit * run_units.mass)
+        self.f_grid = (grid / self.jacobian_rv).to(units.f_unit * units.mass)
 
     @property
     def total_mass(self) -> Quantity['mass']:
@@ -267,13 +267,13 @@ class PhaseSpace:
         # Should it have the factor of 2*pi at the start? the paper drops it.
         return def_unit(
             'dynamical_time',
-            2 * np.pi * np.sqrt(r_m**3 / (constants.G * M_m)).decompose(run_units.system),
+            2 * np.pi * np.sqrt(r_m**3 / (constants.G * M_m)).decompose(units.system),
             doc='phase space dynamic time',
         )
 
-    def to_f_grid(self, mass_grid: Quantity['mass']) -> Quantity[run_units.f_unit]:
+    def to_f_grid(self, mass_grid: Quantity['mass']) -> Quantity[units.f_unit]:
         """calculate the f grid from the provided mass grid"""
-        return (mass_grid / (self.jacobian_rv * self.volume_element)).decompose(run_units.system)
+        return (mass_grid / (self.jacobian_rv * self.volume_element)).decompose(units.system)
 
     def integrate(
         self,
@@ -302,7 +302,7 @@ class PhaseSpace:
 
     def calculate_density(self, mass_grid: Quantity['mass']) -> Quantity['mass density']:
         """calculate the density as a function of radius (without the Jacobian) for the provided mass grid"""
-        return self.integrate(full_grid=self.to_f_grid(mass_grid), axis='v').to(run_units.density)
+        return self.integrate(full_grid=self.to_f_grid(mass_grid), axis='v').to(units.density)
 
     def calculate_temperature(self, mass_grid: Quantity['mass']) -> Quantity['specific energy']:
         """calculate the temperature as a function of radius for the provided mass grid"""
@@ -310,7 +310,7 @@ class PhaseSpace:
         den = self.calculate_density(mass_grid)
         temperature = Quantity(np.full(num.shape, np.nan), cast(Unit, num.unit) / cast(Unit, den.unit))
         temperature[den != 0] = num[den != 0] / den[den != 0]
-        return temperature.to(run_units.specific_energy)
+        return temperature.to(units.specific_energy)
 
     def calculate_velocity_dispersion(self, mass_grid: Quantity['mass']) -> Quantity['velocity']:
         """Calculate the velocity dispersion as a function of radius for the provided mass grid"""
@@ -329,7 +329,7 @@ class PhaseSpace:
         return Quantity(
             np.log(
                 (self.calculate_velocity_dispersion(mass_grid) ** 3 / self.calculate_density(mass_grid))
-                .decompose(run_units.system)
+                .decompose(units.system)
                 .value
             )
         )

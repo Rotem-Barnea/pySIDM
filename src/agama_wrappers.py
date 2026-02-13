@@ -8,7 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 
-from src import run_units
+from src import units
 from src.types import QuantityOrArray
 from src.utils import utils
 
@@ -23,7 +23,7 @@ class _AgamaMissing:
 if importlib.util.find_spec('agama') is not None:
     import agama
 
-    run_units.initialize_units()
+    units.initialize_units()
 else:
     agama = _AgamaMissing()
 __all__ = ['agama']
@@ -209,5 +209,5 @@ class GalaxyModel:
     def velocity_dispersion(self, r: Quantity['length']) -> Quantity['velocity']:
         """Calculate the velocity dispersion of the distribution function assuming isotropy."""
         return Quantity(np.sqrt(np.mean(self.model.moments(to_3d(r), dens=False)[..., :3], axis=-1)), velocity()).to(
-            run_units.velocity
+            units.velocity
         )

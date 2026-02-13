@@ -3,7 +3,7 @@
 import time
 import itertools
 from copy import deepcopy
-from typing import Any, Self, Unpack, Literal, cast
+from typing import Any, Self, Unpack, Literal, cast, overload
 from pathlib import Path
 from datetime import datetime
 from functools import cached_property
@@ -24,7 +24,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, report, physics, run_units
+from src import plot, report, physics, units
 from src.tqdm import tqdm
 from src.types import ParticleType
 from src.utils import utils
@@ -34,7 +34,9 @@ from src.phase_space import PhaseSpace
 from src.distribution.distribution import Backends, Distribution
 
 from . import io, types, run_optimization
+from .plot import HaloPlotter
 from .types import TimeUnitLike
+from .units import HaloUnits
 
 
 class Halo:
@@ -50,7 +52,6 @@ class Halo:
         particle_type: list[ParticleType] | NDArray[np.str_] | None = None,
         distribution_id: list[int] | NDArray[np.int64] | None = None,
         leapfrog_convergence_rounds: NDArray[np.int64] | None = None,
-        dynamical_time: Quantity['time'] | Unit | None = None,
         potential_reference: Quantity['energy'] | None = None,
         distributions: list[Distribution] | None = None,
         scatter_rounds: deque[int] | None = None,
@@ -59,10 +60,10 @@ class Halo:
         scatter_track_time: deque[float] | None = None,
         scatter_track_index: deque[NDArray[np.int64]] | None = None,
         scatter_track_radius: deque[NDArray[np.float64]] | None = None,
-        time: Quantity['time'] = 0 * run_units.time,
+        time: Quantity['time'] = 0 * units.time,
         steps: int | float = 0,
         background: BackgroundDistribution | Distribution | None = None,
-        last_saved_time: Quantity['time'] = 0 * run_units.time,
+        last_saved_time: Quantity['time'] = 0 * units.time,
         save_every_time: Quantity['time'] | float | None = 10,
         save_every_n_steps: int | None = None,
         dynamics_params: leapfrog.Params | dict[str, Any] | None = None,
@@ -100,7 +101,6 @@ class Halo:
             particle_type: Type of the halo particles. Should comply with ParticleType (i.e. `dm` or `baryon`).
             distribution_id: ID of the relevant distribution that sourced the particles.
             leapfrog_convergence_rounds: Number of rounds each particle needs to converge the leapfrog integrator. Used to jumpstart the next step for difficult particles.
-            dynamical_time: Dynamical time of the halo. If `None` calculates from the first density.
             potential_reference: Potential at infinity of the halo. If `None` calculates from the first density.
             distributions: List of distributions of the halo.
             n_interactions: Number of interactions the halo had.
@@ -146,22 +146,13 @@ class Halo:
             leapfrog_convergence_rounds=leapfrog_convergence_rounds,
         )
         self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
-        self.time: Quantity['time'] = time.to(run_units.time)
+        self.time: Quantity['time'] = time.to(units.time)
         self.steps: int = int(steps)
         self.distributions: list[Distribution] = utils.handle_default(distributions, [])
-        self.dt: Quantity['time'] = (dt if isinstance(dt, Quantity) else self.distributions[0].dynamical_time * dt).to(
-            run_units.time
+        self.dt: Quantity['time'] = (dt if isinstance(dt, Quantity) else Quantity(dt, self.units.dynamical_time)).to(
+            units.time
         )
         self.unoptimized_dt: Quantity['time'] = utils.handle_default(unoptimized_dt, self.dt)
-        self.dynamical_time_unit: Quantity['time']
-        if dynamical_time is not None:
-            self.dynamical_time_unit = (
-                dynamical_time if isinstance(dynamical_time, Quantity) else Quantity(1, dynamical_time)
-            )
-        elif len(self.distributions) > 0:
-            self.dynamical_time_unit = self.distributions[0].dynamical_time
-        elif len(self.distributions) == 0:
-            self.dynamical_time_unit = run_units.time
         if isinstance(background, Distribution):
             self.background: BackgroundDistribution | None = BackgroundDistribution(distribution=background)
         else:
@@ -177,9 +168,9 @@ class Halo:
         if save_every_time is None:
             self.save_every_time = None
         elif isinstance(save_every_time, Quantity):
-            self.save_every_time = save_every_time.to(run_units.time)
+            self.save_every_time = save_every_time.to(units.time)
         else:
-            self.save_every_time = (self.distributions[0].dynamical_time * save_every_time).to(run_units.time)
+            self.save_every_time = Quantity(save_every_time, self.units.dynamical_time).to(units.time)
         self._dynamics_params = leapfrog.normalize_params(cast(leapfrog.Params | None, dynamics_params))
         self._scatter_params = sidm.normalize_params(cast(sidm.Params | None, scatter_params))
         self.ministep_size: deque[float] = utils.handle_default(ministep_size, deque())
@@ -193,9 +184,9 @@ class Halo:
         self.scatter_rounds_underestimated: deque[int] = utils.handle_default(scatter_rounds_underestimated, deque())
         self.hard_save: bool = hard_save
         self.save_path: Path | str | None = Path(save_path) if isinstance(save_path, str) else save_path
-        self.r_max: Quantity['length'] = r_max.to(run_units.length)
+        self.r_max: Quantity['length'] = r_max.to(units.length)
         if isinstance(inner_core_radius, Quantity):
-            self.inner_core_radius: Quantity['length'] = inner_core_radius.to(run_units.length)
+            self.inner_core_radius: Quantity['length'] = inner_core_radius.to(units.length)
         else:
             self.inner_core_radius = self.distributions[0].r_s * inner_core_radius
         self.critical_ratio = critical_ratio
@@ -363,14 +354,14 @@ class Halo:
                 ),
             )
         assert r is not None and v is not None and m is not None
-        vx, vy, vr = v.to(run_units.velocity).T
+        vx, vy, vr = v.to(units.velocity).T
         data = pd.DataFrame(
             {
-                'r': r.to(run_units.length),
+                'r': r.to(units.length),
                 'vx': vx,
                 'vy': vy,
                 'vr': vr,
-                'm': m.to(run_units.mass),
+                'm': m.to(units.mass),
                 'particle_type': particle_type if particle_type is not None else np.full(len(r), 'dm'),
                 'particle_index': particle_index if particle_index is not None else np.arange(len(r)),
                 'distribution_id': distribution_id if distribution_id is not None else np.full(len(r), 0),
@@ -389,9 +380,9 @@ class Halo:
 
     def reset(self) -> None:
         """Resets the halo to its initial state (no interactions, `time`=0, cleared snapshots, particles at initial positions)."""
-        self.time = Quantity(0, run_units.time)
+        self.time = Quantity(0, units.time)
         self.steps = 0
-        self.last_saved_time = Quantity(0, run_units.time)
+        self.last_saved_time = Quantity(0, units.time)
         self._particles = self._initial_particles.copy()
         self.scatter_rounds = deque()
         self.scatter_rounds_underestimated = deque()
@@ -509,7 +500,7 @@ class Halo:
         self,
         now: bool = True,
         snapshots: bool = True,
-        initial: bool = True,
+        initial: bool = False,
         filter_particle_type: ParticleType | None = None,
     ) -> table.QTable:
         """Return a table of particle snapshots, potentially including the initial and current states."""
@@ -565,6 +556,54 @@ class Halo:
                 data = utils.slice_closest(data, value=time)
         return data
 
+    @overload
+    def inner_core_density(
+        self,
+        inner_core_radius: Quantity['length'] | None = None,
+        filter_particle_type: ParticleType | None = 'dm',
+        stat: Literal['density'] = 'density',
+    ) -> tuple[Quantity['length'], Quantity['mass density']]: ...
+
+    @overload
+    def inner_core_density(
+        self,
+        inner_core_radius: Quantity['length'] | None = None,
+        filter_particle_type: ParticleType | None = 'dm',
+        stat: Literal['count', 'density ratio', 'fraction'] = 'density ratio',
+    ) -> tuple[Quantity['length'], NDArray[np.float64]]: ...
+
+    def inner_core_density(
+        self,
+        inner_core_radius: Quantity['length'] | None = None,
+        filter_particle_type: ParticleType | None = 'dm',
+        stat: Literal['count', 'density', 'density ratio', 'fraction'] = 'density ratio',
+    ) -> tuple[Quantity['length'], Quantity['mass density'] | NDArray[np.float64]]:
+        """Calculate statistics on the inner core density.
+
+        Parameters:
+            inner_core_radius: The radius of the inner core. If `None` use the internal value.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
+            stat: The type of statistic to calculate. `ratio` returns the density divided by the initial density (post bootstrap).
+
+        Returns:
+            (time, core density ratio)
+        """
+        data = self.get_particle_states(filter_particle_type=filter_particle_type, now=False)
+        inner_core_radius = inner_core_radius if inner_core_radius is not None else self.inner_core_radius
+        agg = 'sum' if stat == 'density' else 'count'
+        time, counts = (
+            data[data['r'] < inner_core_radius].to_pandas().groupby('time')['m'].agg(agg).reset_index().to_numpy().T
+        )
+        if stat == 'density':
+            counts = cast(Quantity, Quantity(counts, data['m'].unit) / (4 / 3 * np.pi * inner_core_radius**3))
+        else:
+            counts = np.array(counts)
+        if stat == 'density ratio':
+            counts /= counts[0]
+        elif stat == 'fraction':
+            counts /= data.to_pandas().groupby('time')['m'].agg('count').to_numpy()
+        return Quantity(time, data['time'].unit), counts
+
     @property
     def dynamics_params(self) -> leapfrog.Params:
         """Dynamics parameters of the halo, sent to the leapfrog integrator."""
@@ -608,44 +647,59 @@ class Halo:
     #####################
 
     @property
+    def _plot(self) -> HaloPlotter:
+        """Plotting object for the halo."""
+        return HaloPlotter(self)
+
+    @property
+    def units(self) -> HaloUnits:
+        """Units derived from the halo."""
+        return HaloUnits(self)
+
+    @property
     def r(self) -> Quantity['length']:
         """Particle radius."""
-        return Quantity(self._particles['r'], run_units.length)
+        return Quantity(self._particles['r'], units.length)
 
     @property
     def vx(self) -> Quantity['velocity']:
         """The first perpendicular component (to the radial direction) of the particle velocity."""
-        return Quantity(self._particles['vx'], run_units.velocity)
+        return Quantity(self._particles['vx'], units.velocity)
 
     @property
     def vy(self) -> Quantity['velocity']:
         """The second perpendicular component (to the radial direction) of the particle velocity."""
-        return Quantity(self._particles['vy'], run_units.velocity)
+        return Quantity(self._particles['vy'], units.velocity)
 
     @property
     def vr(self) -> Quantity['velocity']:
         """The radial component of the particle velocity."""
-        return Quantity(self._particles['vr'], run_units.velocity)
+        return Quantity(self._particles['vr'], units.velocity)
 
     @property
     def v(self) -> Quantity['velocity']:
         """The velocity of the particle, as a 3-vector `(vx, vy, vr)`."""
-        return Quantity(self._particles[['vx', 'vy', 'vr']], run_units.velocity)
-
-    @property
-    def time_step_unit(self) -> Unit:
-        """Calculate the time step size, returning it as a `Unit` object"""
-        return def_unit('time step', self.dt.to(run_units.time), format={'latex': r'time\ step'})
+        return Quantity(self._particles[['vx', 'vy', 'vr']], units.velocity)
 
     @property
     def time_step(self) -> Quantity['time']:
-        """Calculate the time step size, returning it as a `Quantity` object"""
-        return Quantity(1, self.time_step_unit)
+        """The time step size"""
+        return Quantity(1, self.units.time_step).decompose(units.system)
 
     @property
     def dynamical_time(self) -> Quantity['time']:
-        """Calculate the time step size, returning it as a `Quantity` object"""
-        return Quantity(1, self.dynamical_time_unit)
+        """The dynamical time of the system"""
+        return Quantity(1, self.units.dynamical_time).decompose(units.system)
+
+    @property
+    def t_c(self) -> Quantity['time']:
+        """The collapse time estimate of the system"""
+        return Quantity(1, self.units.t_c).decompose(units.system)
+
+    @property
+    def collapse_time(self) -> Quantity['time']:
+        """Real core collapse time of the halo. Only calculated after the halo reached core collapse during its run."""
+        return Quantity(1, self.units.core_collapse).decompose(units.system)
 
     @property
     def M(self) -> Quantity['mass']:
@@ -669,7 +723,7 @@ class Halo:
     @property
     def m(self) -> Quantity['mass']:
         """The mass of the particle."""
-        return Quantity(self._particles['m'], run_units.mass)
+        return Quantity(self._particles['m'], units.mass)
 
     @property
     def internal_energy(self) -> Quantity['energy']:
@@ -684,13 +738,13 @@ class Halo:
     @property
     def potential(self) -> Quantity['specific energy']:
         """The relative gravitational potential energy of the particle."""
-        return cast(Quantity, physics.utils.potential(self.r, self.M, self.m)).to(run_units.energy)
+        return cast(Quantity, physics.utils.potential(self.r, self.M, self.m)).to(units.energy)
         # return (self.potential_reference - self.poisson_potential).to(run_units.energy)
 
     @property
     def E(self) -> Quantity['specific energy']:
         """The energy of the particle."""
-        return (self.potential - self.internal_energy).to(run_units.energy)
+        return (self.potential - self.internal_energy).to(units.energy)
 
     @property
     def local_density(self) -> Quantity['mass density']:
@@ -758,14 +812,14 @@ class Halo:
     @property
     def scatter_times(self) -> Quantity['time']:
         """Wrap `self.scatter_track_time` as a Quantity."""
-        return Quantity(np.hstack(self.scatter_track_time), run_units.time)
+        return Quantity(np.hstack(self.scatter_track_time), units.time)
 
     @property
     def scatter_track_time_raveled(self) -> Quantity['time']:
         """Get a raveled array with the scatter time matching each particle in the hstack-ed `self.scatter_track_index`."""
         return Quantity(
             np.hstack([[t.value] * len(i) for i, t in zip(self.scatter_track_index, self.scatter_times)]),
-            run_units.time,
+            units.time,
         )
 
     @cached_property
@@ -1026,7 +1080,7 @@ class Halo:
             self.time += self.dt
             self.ministep_size += [self.dt.value]
             self.steps += 1
-        self.runtime_track_simulation_time += [self.time.to(run_units.time).value]
+        self.runtime_track_simulation_time += [self.time.to(units.time).value]
         self.runtime_track_full_step += [time.perf_counter() - t_start]
 
     def bootstrap(
@@ -1226,6 +1280,7 @@ class Halo:
     #####################
 
     def save_plot(self, fig: Figure, save_kwargs: dict[str, Any] | None = None, **kwargs: Any) -> None:
+        # DEPRECATE
         """Saves the plot."""
         if save_kwargs is None:
             return
@@ -1234,13 +1289,14 @@ class Halo:
         plot.save(fig=fig, **save_kwargs)
 
     def fill_time_unit(self, unit: TimeUnitLike) -> UnitLike:
-        """If `unit` is a halo-related time parameter return it's unit, otherwise return `unit`."""
+        # DEPRECATE
+        """If `unit` is a halo-related time parameter return its unit, otherwise return `unit`."""
         if unit == 'dynamical time':
-            return self.dynamical_time_unit
+            return self.units.dynamical_time
         elif unit == 'core collapse time':
-            return self.core_collapse_time_unit
+            return self.units.core_collapse
         elif unit == 'time step':
-            return self.time_step_unit
+            return self.units.time_step
         return unit
 
     def energy_change_summary(self, filter_particle_type: ParticleType | None = None, **kwargs: Any) -> report.Report:
@@ -1387,7 +1443,7 @@ class Halo:
     def plot_r_kde_over_time(
         self,
         include_start: bool = True,
-        include_now: bool = True,
+        include_now: bool = False,
         filter_particle_type: ParticleType | None = None,
         x_range: Quantity['length'] | None = None,
         x_clip: Quantity['length'] | None = None,
@@ -2197,7 +2253,7 @@ class Halo:
     def plot_heat_flux_evolution(
         self,
         include_start: bool = True,
-        include_now: bool = True,
+        include_now: bool = False,
         filter_particle_type: ParticleType | None = None,
         radius_bins: Quantity = Quantity(np.linspace(1e-3, 5, 100), 'kpc'),
         time_range: Quantity | None = None,
@@ -2330,7 +2386,7 @@ class Halo:
         data = table.QTable(
             {
                 'time': time_array,
-                'r': Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_unit),
+                'r': Quantity(np.hstack(self.scatter_track_radius), units.length).to(length_unit),
             }
         )
         grid, extent, (x_range, y_range) = plot.aggregate_evolution_data(
@@ -2379,62 +2435,6 @@ class Halo:
         self.save_plot(fig=fig, **kwargs)
         return fig, ax
 
-    def plot_start_end_distribution(
-        self,
-        key: str = 'r',
-        time_unit: TimeUnitLike = 'dynamical time',
-        time_format: str = '.1f',
-        label_start: str = 'start',
-        label_end: str = 'after {t}',
-        fig: Figure | None = None,
-        ax: Axes | None = None,
-        start_kwargs: dict[str, Any] = {},
-        end_kwargs: dict[str, Any] = {},
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the distribution comparison between the current state and the initial state.
-
-        Parameters:
-            key: The key to plot.
-            time_unit: The time units to use in the plot.
-            time_format: Format string for time.
-            label_start: Label for the start distribution.
-            label_end: Label for the end distribution.
-            fig: Figure to use for the plot.
-            ax: Axes to use for the plot.
-            start_kwargs: Additional keyword arguments to pass to the distribution plotting function (`self.plot_distribution()`), for the start distribution only.
-            end_kwargs: Additional keyword arguments to pass to the distribution plotting function (`self.plot_distribution()`), for the end distribution only.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            **kwargs: Additional keyword arguments to pass to the distribution plotting function (`self.plot_distribution()`), for *both* distributions. Overwritten by start_kwargs/end_kwargs as needed.
-
-        Returns:
-            fig, ax.
-        """
-        time_unit = self.fill_time_unit(time_unit)
-        fig, ax = self.plot_distribution(
-            key=key,
-            data=self.initial_particles,
-            fig=fig,
-            ax=ax,
-            label=label_start,
-            **{**kwargs, **start_kwargs},
-        )
-        fig, ax = self.plot_distribution(
-            key=key,
-            data=self.particles,
-            fig=fig,
-            ax=ax,
-            label=label_end.format(t=self.time.to(time_unit).to_string(format='latex', formatter=time_format)),
-            **{
-                **kwargs,
-                **end_kwargs,
-            },
-        )
-        ax.legend()
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
     def plot_scattering_location(
         self,
         title: str | None = 'Scattering location distribution within the first {time}, total of {n_scatters} events',
@@ -2476,7 +2476,7 @@ class Halo:
             fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel), x_unit=length_unit
         )
         sns.histplot(
-            Quantity(np.hstack(self.scatter_track_radius), run_units.length).to(length_unit),
+            Quantity(np.hstack(self.scatter_track_radius), units.length).to(length_unit),
             ax=ax,
             log=True,
         )
@@ -2651,310 +2651,6 @@ class Halo:
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
-    def plot_local_density_by_range(
-        self,
-        x_range: Quantity['length'] | None = None,
-        xlabel: str | None = 'Radius',
-        ylabel: str | None = 'local density',
-        title: str | None = 'Local density ({nn} nearest neighbors) after t={time}',
-        x_unit: UnitLike = 'kpc',
-        density_unit: UnitLike = 'Msun/kpc**3',
-        time_unit: TimeUnitLike = 'Gyr',
-        time_format: str = '.1f',
-        smooth_sigma: float = 50,
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the local density profile of the halo as a function of the radius.
-
-        Parameters:
-            radius_range: Range of radius to consider (filters the data).
-            xlabel: Label for the x-axis.
-            ylabel: Label for the y-axis.
-            title: Title for the plot.
-            x_unit: Units to use for the x-axis.
-            density_unit: Units to use for the y-axis.
-            time_unit: Units to use for time.
-            time_format: Format string for time.
-            smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
-
-        Returns:
-            fig, ax.
-        """
-        x = self.r
-        time_unit = self.fill_time_unit(time_unit)
-        local_density = self.local_density.to(density_unit)
-        smoothed_local_density = (
-            scipy.ndimage.gaussian_filter1d(local_density, sigma=smooth_sigma) if smooth_sigma > 0 else local_density
-        )
-        if x_range is not None:
-            smoothed_local_density = smoothed_local_density[(x > x_range[0]) * (x < x_range[1])]
-            x = x[(x > x_range[0]) * (x < x_range[1])]
-        if title is not None:
-            title = title.format(
-                nn=self.scatter_params['max_radius_j'],
-                time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
-            )
-        fig, ax = plot.setup(
-            **kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel), x_unit=x_unit, y_unit=density_unit
-        )
-        sns.lineplot(x=x, y=smoothed_local_density, ax=ax)
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
-    def plot_local_density_distribution(
-        self,
-        xlabel: str | None = 'local density',
-        title: str | None = 'Local density ({nn} nearest neighbors) after t={time}',
-        density_unit: UnitLike = 'Msun/kpc**3',
-        time_unit: TimeUnitLike = 'Gyr',
-        time_format: str = '.1f',
-        log_scale: bool = True,
-        stat: str = 'density',
-        cumulative: bool = False,
-        hist_kwargs: Any = {},
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the local density distribution of the halo (histogram).
-
-        Parameters:
-            xlabel: Label for the x-axis.
-            title: Title for the plot.
-            density_unit: Units to use for the x-axis.
-            time_unit: Units to use for time.
-            time_format: Format string for time.
-            log_scale: Whether to use a logarithmic scale for the x-axis.
-            stat: The type of statistic to plot. Gets passed to sns.histplot.
-            cumulative: Whether to plot the cumulative distribution.
-            hist_kwargs: Additional keyword arguments to pass to `sns.histogram()`.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
-
-        Returns:
-            fig, ax.
-        """
-        time_unit = self.fill_time_unit(time_unit)
-        if title is not None:
-            title = title.format(
-                nn=self.scatter_params['max_radius_j'],
-                time=self.time.to(time_unit).to_string(format='latex', formatter=time_format),
-            )
-        fig, ax = plot.setup(**kwargs, **utils.drop_None(title=title, xlabel=xlabel), x_unit=density_unit)
-        sns.histplot(
-            self.local_density.to(density_unit),
-            log_scale=log_scale,
-            stat=stat,
-            cumulative=cumulative,
-            **hist_kwargs,
-        )
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
-    def plot_trace(
-        self,
-        particle_index: int,
-        key: str,
-        data: table.QTable | None = None,
-        relative: Literal['relative change', 'change', 'absolute'] = 'absolute',
-        xlabel: str | None = 'Time',
-        ylabel: str | None = None,
-        title: str | None = 'Trace of particle id={particle_index}, initial position={r}',
-        label: str | None = 'particle id={particle_index}, initial position={r}',
-        time_unit: TimeUnitLike = 'dynamical time',
-        y_unit: UnitLike | None = None,
-        length_unit: UnitLike = 'kpc',
-        length_format: str = '.1f',
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the trace of a particle's property over time.
-
-        Parameters:
-            key: The property to plot. Must be a valid column name in the data table.
-            data: The data table to plot (i.e. halo.snapshots, or an external table from an NSphere run). If `None` use the halo's snapshots + initial and current states.
-            particle_index: The index of the particle to trace.
-            relative: If `absolute` plot the property as is. If `relative` plot the change in the property relative to the initial value. If `relative change` plot the change in the property relative to the initial value divided by the initial value.
-            xlabel: Label for the x-axis.
-            ylabel: Label for the y-axis.
-            title: Title for the plot.
-            label: Label for the plot (legend).
-            time_unit: Units for the x-axis.
-            y_unit: Units for the y-axis.
-            length_unit: Units for the length.
-            length_format: Format string for length.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
-
-        Returns:
-            fig, ax.
-        """
-        return plot.trace(
-            key=key,
-            data=data
-            if data is not None
-            else table.QTable(table.vstack([self.initial_particles, self.snapshots, self.particles])).copy(),
-            particle_index=particle_index,
-            relative=relative,
-            xlabel=xlabel,
-            ylabel=ylabel,
-            title=title,
-            label=label,
-            time_unit=self.fill_time_unit(time_unit),
-            y_unit=y_unit,
-            length_unit=length_unit,
-            length_format=length_format,
-            **kwargs,
-        )
-
-    def plot_cumulative_scattering_amount_over_time(
-        self,
-        time_unit: TimeUnitLike = 'Gyr',
-        undersample: int | None = None,
-        xlabel: str | None = 'Time',
-        ylabel: str | None = 'Cumulative number of scattering events',
-        title: str | None = 'Cumulative number of scattering events',
-        yscale: plot.Scale = 'log',
-        lineplot_kwargs: dict[str, Any] = {},
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the cumulative number of scattering events over time.
-
-        Parameters:
-            time_unit: Units for the x-axis.
-            undersample: Downsample the data by this factor.
-            xlabel: Label for the x-axis.
-            ylabel: Label for the y-axis.
-            title: The title of the plot.
-            yscale: The scale of the y-axis.
-            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
-            save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
-
-        Returns:
-            fig, ax.
-        """
-        time_unit = self.fill_time_unit(time_unit)
-        fig, ax = plot.setup(
-            xlabel=xlabel,
-            ylabel=ylabel,
-            x_unit=time_unit,
-            title=title,
-            yscale=yscale,
-            **kwargs,
-        )
-        x = self.scatter_times.to(time_unit)
-        y = self.n_scatters.cumsum()
-        if undersample is not None:
-            x = x[::undersample]
-            y = y[::undersample]
-        sns.lineplot(x=x, y=y, ax=ax, **lineplot_kwargs)
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
-    def plot_cumulative_scattering_amount_per_particle_over_time(
-        self,
-        time_unit: TimeUnitLike = 'Gyr',
-        undersample: int | None = None,
-        xlabel: str | None = 'Time',
-        ylabel: str | None = 'Cumulative number of scattering events',
-        title: str | None = 'Mean cumulative number of scattering events per particle',
-        lineplot_kwargs: dict[str, Any] = {},
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the cumulative number of scattering events over time.
-
-        Parameters:
-            time_unit: Units for the x-axis.
-            undersample: Downsample the data by this factor.
-            xlabel: Label for the x-axis.
-            ylabel: Label for the y-axis.
-            title: The title of the plot.
-            label: Label for the plot (legend).
-            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
-
-        Returns:
-            fig, ax.
-        """
-        time_unit = self.fill_time_unit(time_unit)
-        fig, ax = plot.setup(xlabel=xlabel, ylabel=ylabel, x_unit=time_unit, title=title, **kwargs)
-        x = self.scatter_times.to(time_unit)
-        y = self.n_scatters.cumsum() / self.n_particles['dm']
-        if undersample is not None:
-            x = x[::undersample]
-            y = y[::undersample]
-
-        sns.lineplot(x=x, y=y, ax=ax, **lineplot_kwargs)
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
-    def plot_binned_scattering_amount_over_time(
-        self,
-        time_binning: Quantity = Quantity(100, 'Myr'),
-        time_unit: TimeUnitLike = 'Gyr',
-        xlabel: str | None = 'Time',
-        ylabel: str | None = 'Number of scattering events',
-        title: str | None = 'Number of scattering events over time per {time}',
-        time_format: str | None = None,
-        title_time_unit: str | None = 'Myr',
-        yscale: plot.Scale = 'log',
-        lineplot_kwargs: dict[str, Any] = {},
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the number of scattering events over time, binned.
-
-        Parameters:
-            time_binning: Binning for the x-axis.
-            time_unit: Units for the x-axis.
-            xlabel: Label for the x-axis.
-            ylabel: Label for the y-axis.
-            title: Title for the plot.
-            time_format: Format for the time in the title.
-            title_time_unit: Units for the time displayed in the title.
-            yscale: The scale of the y-axis.
-            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
-
-        Returns:
-            fig, ax.
-        """
-        time_unit = self.fill_time_unit(time_unit)
-        scatters, t = (
-            np.bincount(
-                np.digitize(
-                    self.scatter_times,
-                    bin := Quantity(np.arange(0, self.time.value, 10), self.time.unit),
-                )
-                - 1,
-                weights=self.n_scatters,
-                minlength=len(bin) - 1,
-            ),
-            bin.to(time_unit),
-        )
-
-        if title is not None:
-            title = title.format(time=time_binning.to(title_time_unit).to_string(format='latex', formatter=time_format))
-
-        fig, ax = plot.setup(
-            xlabel=xlabel,
-            ylabel=ylabel,
-            x_unit=time_unit,
-            title=title,
-            yscale=yscale,
-            **kwargs,
-        )
-        sns.lineplot(x=t[:-1], y=scatters[:-1], ax=ax, **lineplot_kwargs)
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
     def plot_scatter_rounds_over_time(
         self,
         rounds: bool = True,
@@ -3058,176 +2754,6 @@ class Halo:
         assert fig is not None and ax is not None
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
-
-    def plot_distributions_over_time(
-        self,
-        data: table.QTable | None = None,
-        include_start: bool = True,
-        include_now: bool = False,
-        automatic_times: bool = True,
-        times: Quantity['time'] = Quantity([], 'Gyr'),
-        labels: list[str] = [],
-        radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
-        limit_radius_by_r_vir: bool = True,
-        distributions: list[Distribution] | list[int] | None = None,
-        xscale: plot.Scale = 'log',
-        yscale: plot.Scale = 'log',
-        fig: Figure | None = None,
-        ax: Axes | None = None,
-        setup_kwargs: dict[str, Any] = {},
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the density profiles of the halo over time.
-
-        Parameters:
-            data: The data to plot. If `None` the data will be loaded from the halo snapshots.
-            include_start: Whether to include the initial particle distribution in the data. Ignored if `data` is provided.
-            include_now: Whether to include the current particle distribution in the data. Ignored if `data` is provided.
-            automatic_times: Whether to automatically determine the times at which to plot the density profiles.
-            times: The times at which to plot the density profiles.
-            labels: The labels for the density profiles.
-            radius_bins: The radius bins for the density profile calculations.
-            limit_radius_by_r_vir: Whether to limit the radius bins by the virial radius.
-            distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions. If a list of distribution objects, filter the particles by the distribution ID.
-            xscale: The scale of the x-axis.
-            yscale: The scale of the y-axis.
-            fig: The figure to plot on.
-            ax: The axes to plot on.
-            setup_kwargs: Additional keyword arguments to pass to `plot.setup()`.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments are passed to every call to the plotting function.
-
-        Returns:
-            fig, ax.
-        """
-        if data is None:
-            data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
-        fig, ax = plot.setup(fig=fig, ax=ax, xscale=xscale, yscale=yscale, **setup_kwargs)
-        add_distribution_label = distributions is None or len(distributions) > 1
-
-        if automatic_times:
-            times, labels = self.add_automatic_guidelines(times, labels, time_unit=cast(Unit, times.unit))
-
-        if distributions is None:
-            index_blacklist = []
-        else:
-            distribution_ids = [d.id for d in distributions if isinstance(d, Distribution)]
-            index_blacklist = [
-                i for i, d in enumerate(self.distributions) if i not in distributions and d.id not in distribution_ids
-            ]
-
-        for i, distribution in enumerate(self.distributions):
-            if i in index_blacklist:
-                continue
-            for label, t in zip(labels, times):
-                sub = utils.slice_closest(
-                    utils.slice_closest(data, value=t),
-                    value=distribution.particle_type,
-                    key='particle_type',
-                )
-                fig, ax = plot.density(
-                    cast(Quantity, sub['r']),
-                    unit_mass=self.unit_mass(distribution),
-                    bins=radius_bins
-                    if not limit_radius_by_r_vir
-                    else cast(Quantity, radius_bins[radius_bins <= distribution.r_vir]),
-                    label=f'{distribution.label} {label}' if add_distribution_label else label,
-                    fig=fig,
-                    ax=ax,
-                    early_quit=False,
-                    **kwargs,
-                )
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
-    def plot_distributions_over_time_animation(
-        self,
-        radius_bins: Quantity['length'] = Quantity(np.geomspace(3e-2, 5e2, 100), 'kpc'),
-        limit_radius_by_r_vir: bool = True,
-        distributions: list[int] | None = None,
-        xlim: list[Quantity['length'] | None | Literal['bins']] = ['bins', 'bins'],
-        ylim: list[Quantity['mass density'] | None] = [
-            Quantity([1e3, 1e11], 'Msun/kpc^3'),
-            Quantity([1e-1, 1e7], 'Msun/kpc^3'),
-        ],
-        label_unit: UnitLike = 'Gyr',
-        label_format: str = '.1f',
-        density_guidelines_kwargs: dict[str, Any] | None = {
-            'lineplot_kwargs': {'linestyle': '--'},
-        },
-        multiplicity_guidelines: int | None = 10,
-        save_kwargs: dict[str, Any] = {},
-    ) -> None:
-        """Plot the density profiles of the halo as animations over time.
-
-        Parameters:
-            radius_bins: The radius bins for the density profile calculations.
-            limit_radius_by_r_vir: Whether to limit the radius bins by the virial radius.
-            distributions: The distributions to plot (indices from `self.distributions`). If `None` plot all distributions.
-            xlim: List matching `distributions`. Consistent limits of the x-axis throughout the animation. If `None` ignores. If 'bins', uses the radius bins as the x-axis limits.
-            ylim: List matching `distributions`. Consistent limits of the y-axis throughout the animation. If `None` ignores.
-            label_unit: Units for the time label.
-            label_format: String format for the time label.
-            density_guidelines_kwargs: Keyword arguments to pass to `plot.plot_distributions_over_time()` for plotting the density at fixed timestamps throughout the animation, serving as guidelines (i.e. initial distribution, max core, final distribution, etc.). If `None` doesn't plot the guidelines.
-            multiplicity_guidelines: Number of frames to print for when the animation reaches the guidelines. If `None` ignores.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. If it doesn't include `save_path`, it will use the default path (`self.results_path`).
-
-        Returns:
-            fig, ax.
-        """
-
-        data = self.get_particle_states()
-        if 'save_path' in save_kwargs:
-            save_path = Path(save_kwargs.pop('save_path'))
-        else:
-            save_path = self.results_path
-        if 'name' in save_kwargs:
-            save_path = save_path / save_kwargs.pop('name')
-
-        for i, (distribution, xlim_, ylim_) in enumerate(zip(self.distributions, xlim, ylim)):
-            bins = cast(
-                Quantity,
-                radius_bins if not limit_radius_by_r_vir else radius_bins[radius_bins <= distribution.r_vir],
-            )
-            if isinstance(xlim_, str) and xlim_ == 'bins':
-                xlim_ = bins
-            if xlim_ is not None:
-                xlim_ = np.array(utils.to_extent(xlim_, force_array=True))
-            if ylim_ is not None:
-                ylim_ = np.array(utils.to_extent(ylim_, force_array=True))
-            if distributions is not None and i not in distributions:
-                continue
-
-            plot.save_images(
-                images=plot.to_images(
-                    iterator=data[data['particle_type'] == distribution.particle_type].group_by('time').groups,
-                    plot_fn=lambda x: plot.density(
-                        x['r'],
-                        unit_mass=self.unit_mass(distribution),
-                        bins=bins,
-                        label=f'{distribution.label} at {x["time"][0].to(label_unit):{label_format}}',
-                        xlim=xlim_,
-                        ylim=ylim_,
-                        fig=(
-                            guidelines := self.plot_distributions_over_time(
-                                radius_bins=radius_bins,
-                                limit_radius_by_r_vir=limit_radius_by_r_vir,
-                                distributions=[i],
-                                **density_guidelines_kwargs,
-                                xlim=xlim_,
-                                ylim=ylim_,
-                            )
-                            if density_guidelines_kwargs is not None
-                            else [None, None]
-                        )[0],
-                        ax=guidelines[1],
-                    ),
-                    tqdm_kwargs={'desc': distribution.label},
-                ),
-                save_path=save_path.with_stem(f'{save_path.stem} {distribution.label}'),
-                **save_kwargs,
-            )
 
     def plot_scatter_distribution_at_time(
         self,
@@ -3488,55 +3014,4 @@ class Halo:
             alpha=0.2,
         )
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
-    def plot_core_density_ratio(
-        self,
-        inner_core_radius: Quantity['length'] | None = None,
-        include_start: bool = False,
-        include_now: bool = False,
-        time_unit: TimeUnitLike = 'Gyr',
-        xlabel: str | None = 'Time',
-        ylabel: str | None = r'$\rho_c$/$\rho_{c,0}$',
-        title: str | None = 'Inner core density ratio over time',
-        lineplot_kwargs: dict[str, Any] = {},
-        save_kwargs: dict[str, Any] = {},
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the inner core density ratio over time.
-
-        Parameters:
-            inner_core_radius: The inner core radius. If None, use the current inner core radius.
-            include_start: Whether to include the initial particle distribution in the data.
-            include_now: Whether to include the current particle distribution in the data.
-            time_unit: Units to use for x-axis.
-            xlabel: Label for the x-axis.
-            ylabel: Label for the y-axis.
-            title: The title of the plot.
-            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments passed to `plot.setup()`.
-
-        Returns:
-            fig, ax.
-
-        """
-
-        time_unit = self.fill_time_unit(time_unit)
-        fig, ax = plot.setup(xlabel=xlabel, ylabel=ylabel, title=title, x_unit=time_unit, **kwargs)
-        t, ratio = [], []
-        for group in (
-            self.get_particle_states(filter_particle_type='dm', initial=include_start, now=include_now)
-            .group_by('time')
-            .groups
-        ):
-            t += [group['time'][0]]
-            ratio += [
-                run_optimization.core_density_ratio(
-                    r=utils.get_columns(group, ['r'])[0],
-                    initial_r=utils.get_columns(self.initial_particles_by_type['dm'], ['r'])[0],
-                    inner_core_radius=inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
-                )
-            ]
-        sns.lineplot(x=Quantity(t).to(time_unit).value, y=ratio, ax=ax, **lineplot_kwargs)
         return fig, ax

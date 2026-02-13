@@ -8,7 +8,7 @@ from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 from astropy.units.typing import UnitLike
 
-from src import run_units
+from src import units
 from src.types import QuantityOrArray
 from src.distribution.distribution import Distribution
 
@@ -35,7 +35,7 @@ class Scale:
         self,
         r_s: Quantity['length'],
         rho_s: Quantity['mass density'],
-        sigma: Quantity[run_units.cross_section],
+        sigma: Quantity[units.cross_section],
         a: float = 4 / np.sqrt(np.pi),
     ):
         """Initialize a Scale object.
@@ -46,9 +46,9 @@ class Scale:
             sigma: Scale cross-section
             a: Scale factor
         """
-        self.r_s = r_s.decompose(run_units.system)
-        self.rho_s = rho_s.decompose(run_units.system)
-        self.sigma = sigma.decompose(run_units.system)
+        self.r_s = r_s.decompose(units.system)
+        self.rho_s = rho_s.decompose(units.system)
+        self.sigma = sigma.decompose(units.system)
         self.a = a
 
     @classmethod
@@ -116,44 +116,44 @@ class Scale:
     @property
     def mass(self) -> Quantity['mass']:
         """Mass scale"""
-        return (4 * np.pi * self.volume * self.density).decompose(run_units.system)
+        return (4 * np.pi * self.volume * self.density).decompose(units.system)
 
     @property
     def velocity(self) -> Quantity['velocity']:
         """Velocity scale"""
-        return np.sqrt(constants.G * self.mass / self.length).decompose(run_units.system)
+        return np.sqrt(constants.G * self.mass / self.length).decompose(units.system)
 
     @property
     def time(self) -> Quantity['time']:
         """Time scale"""
-        return 1 / (self.a * self.sigma * self.velocity * self.density).decompose(run_units.system)
+        return 1 / (self.a * self.sigma * self.velocity * self.density).decompose(units.system)
 
     @property
-    def cross_section(self) -> Quantity[run_units.cross_section]:
+    def cross_section(self) -> Quantity[units.cross_section]:
         """Cross section scale"""
-        return 1 / (self.length * self.density).decompose(run_units.system)
+        return 1 / (self.length * self.density).decompose(units.system)
 
     @property
     def luminosity(self) -> Quantity['radiant flux']:
         """Luminosity scale"""
-        return (constants.G * self.mass**2 / (self.length * self.time)).decompose(run_units.system)
+        return (constants.G * self.mass**2 / (self.length * self.time)).decompose(units.system)
 
     @property
     def luminosity_gradient(self) -> Quantity:
         """Luminosity gradient (dL/dm) scale"""
-        return (self.luminosity / self.mass).decompose(run_units.system)
+        return (self.luminosity / self.mass).decompose(units.system)
 
     @property
     def internal_energy(self) -> Quantity['specific energy']:
         """Energy scale"""
-        return (self.velocity**2).decompose(run_units.system)
+        return (self.velocity**2).decompose(units.system)
 
     @property
     def internal_energy_gradient(self) -> Quantity:
         """Energy gradient (du/dM) scale"""
-        return (self.internal_energy / self.mass).decompose(run_units.system)
+        return (self.internal_energy / self.mass).decompose(units.system)
 
     @property
     def pressure(self) -> Quantity['pressure']:
         """Pressure scale"""
-        return (self.density * self.velocity**2).decompose(run_units.system)
+        return (self.density * self.velocity**2).decompose(units.system)

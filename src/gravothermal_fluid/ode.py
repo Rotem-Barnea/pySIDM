@@ -11,7 +11,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, run_units
+from src import plot, units
 from src.tqdm import tqdm
 from src.utils import utils
 from src.distribution.distribution import Distribution
@@ -29,10 +29,10 @@ class GravothermalFluid:
     def __init__(
         self,
         distribution: Distribution,
-        sigma: Quantity[run_units.cross_section],
+        sigma: Quantity[units.cross_section],
         dt: Quantity['time'],
         radius: Quantity['length'] | None = None,
-        time: Quantity['time'] = Quantity(0, run_units.time),
+        time: Quantity['time'] = Quantity(0, units.time),
         gamma: float = 5 / 3,
         a: float = 4 / np.sqrt(np.pi),
         b: float = 25 * np.sqrt(np.pi) / 32,
@@ -366,7 +366,7 @@ class GravothermalFluid:
         ylabel: str | None | Literal['auto'] = 'auto',
         x_unit: UnitLike | None | Literal['auto'] = 'auto',
         y_unit: UnitLike | None | Literal['auto'] = 'auto',
-        time_unit: UnitLike = run_units.time,
+        time_unit: UnitLike = units.time,
         time_format: str | None = '.1f',
         xscale: plot.Scale = 'log',
         yscale: plot.Scale | None = None,

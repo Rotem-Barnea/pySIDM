@@ -8,7 +8,7 @@ from numba import njit, prange
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
-from src import physics, run_units
+from src import physics, units
 from src.tqdm import tqdm
 from src.utils import utils
 
@@ -35,7 +35,7 @@ class Params(TypedDict):
     max_allowed_scatters: int | None
     max_allowed_probability: float | None
     kappa: float
-    sigma: Quantity[run_units.cross_section]
+    sigma: Quantity[units.cross_section]
     disable_tqdm: bool
     tqdm_cutoff: int | None
     tqdm_cutoff_ratio: float | None
@@ -47,7 +47,7 @@ default_params: Params = {
     'max_allowed_scatters': None,
     'max_allowed_probability': 1e-1,
     'kappa': 0.002,
-    'sigma': Quantity(0, run_units.cross_section),
+    'sigma': Quantity(0, units.cross_section),
     'disable_tqdm': False,
     'tqdm_cutoff': None,
     'tqdm_cutoff_ratio': 2,
@@ -64,7 +64,7 @@ def normalize_params(params: Params | None) -> Params:
         Normalized parameters.
     """
     params = Params({**default_params, **cast(Params, utils.handle_default(params, {}))})
-    params['sigma'] = params['sigma'].to(run_units.cross_section)
+    params['sigma'] = params['sigma'].to(units.cross_section)
     return params
 
 
@@ -273,7 +273,7 @@ def scatter_chance_shortcut(
     vr: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
     dt: Quantity['time'],
     m: Quantity['mass'] | NDArray[np.float64] | pd.Series,
-    sigma: Quantity[run_units.cross_section],
+    sigma: Quantity[units.cross_section],
     max_radius_j: int = default_params['max_radius_j'],
 ) -> NDArray[np.float64]:
     """Calculate the scattering change of particles. A shortcut calculation used for calculating the number of underestimated scattering events.
@@ -309,7 +309,7 @@ def scatter_underestimate_shortcut(
     vr: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
     dt: Quantity['time'],
     m: Quantity['mass'] | NDArray[np.float64] | pd.Series,
-    sigma: Quantity[run_units.cross_section],
+    sigma: Quantity[units.cross_section],
     max_radius_j: int = default_params['max_radius_j'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],
@@ -348,7 +348,7 @@ def scatter(
     vr: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
     dt: Quantity['time'],
     m: Quantity['mass'] | NDArray[np.float64] | pd.Series,
-    sigma: Quantity[run_units.cross_section],
+    sigma: Quantity[units.cross_section],
     max_radius_j: int = default_params['max_radius_j'],
     kappa: float = default_params['kappa'],
     max_allowed_rounds: int | None = default_params['max_allowed_rounds'],

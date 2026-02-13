@@ -11,16 +11,17 @@ import seaborn as sns
 from numba import njit, prange
 from astropy import constants, cosmology
 from numpy.typing import NDArray
-from astropy.units import Unit, Quantity, def_unit
+from astropy.units import Quantity
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import rng, plot, report, physics, run_units, agama_wrappers
+from src import rng, plot, report, physics, units, agama_wrappers
 from src.types import FloatOrArray, ParticleType, QuantitySpline, QuantityInterpolate
 from src.utils import utils
 
 from . import io
+from .units import DistributionUnits
 
 if TYPE_CHECKING:
     from ..phase_space import PhaseSpace
@@ -108,26 +109,26 @@ class Distribution:
             r_s = self.r_half_light_to_r_s(r_half_light)
 
         if r_s is not None:
-            self.r_s = r_s.to(run_units.length)
+            self.r_s = r_s.to(units.length)
         if r_vir is not None:
-            self.r_vir = r_vir.to(run_units.length)
+            self.r_vir = r_vir.to(units.length)
         if c is not None and c != 'From mass':
             self.c = float(c)
         if total_mass is not None:
-            self.total_mass = total_mass.to(run_units.mass)
+            self.total_mass = total_mass.to(units.mass)
         if rho_s is not None:
-            self.rho_s = rho_s.to(run_units.density)
+            self.rho_s = rho_s.to(units.density)
 
         if c == 'From mass':
             assert total_mass is not None, 'total_mass must be provided when using Dutton14'
             self.c = self.calculate_c()
 
         if self._r_s is not None and self._r_vir is not None:
-            self.c = (self.r_vir / self.r_s).decompose(run_units.system).value
+            self.c = (self.r_vir / self.r_s).decompose(units.system).value
         elif self._r_s is not None and self._c is not None:
-            self.r_vir = self.c * self.r_s.to(run_units.length)
+            self.r_vir = self.c * self.r_s.to(units.length)
         elif self._r_vir is not None and self._c is not None:
-            self.r_s = self.r_vir.to(run_units.length) / self.c
+            self.r_s = self.r_vir.to(units.length) / self.c
 
         if (self._r_s is not None and self._rho_s is not None) and (self._c is None and self._r_vir is None):
             params = self.calculate_virial_from_scales()
@@ -139,8 +140,8 @@ class Distribution:
         assert self._r_vir is not None, 'Failed to evaluate r_vir'
         assert self._c is not None, 'Failed to evaluate c'
 
-        self.r_min = cast(Quantity, r_min.to(run_units.length))
-        self.r_max = cast(Quantity, (r_max if r_max is not None else 85 * self.r_s).to(run_units.length))
+        self.r_min = cast(Quantity, r_min.to(units.length))
+        self.r_max = cast(Quantity, (r_max if r_max is not None else 85 * self.r_s).to(units.length))
 
         assert self._total_mass is not None or self._rho_s is not None, 'Either total_mass or rho_s must be specified'
 
@@ -180,7 +181,12 @@ class Distribution:
         if current_value is None:
             return
         if np.abs((current_value - value) / ((value + current_value) / 2)) > cutoff:
-            warnings.warn(f'overdefined c, c={current_value} vs. c={value}')
+            warnings.warn(f'overdefined {key}, {key}={current_value} vs. {key}={value}')
+
+    @cached_property
+    def units(self) -> DistributionUnits:
+        """Units derived from the distribution."""
+        return DistributionUnits(self)
 
     @property
     def report(self) -> report.Report:
@@ -195,7 +201,7 @@ class Distribution:
                 report.Line(title='r_vir', value=self.r_vir, format='.4f'),
                 report.Line(title='total_mass', value=self.total_mass, format='.3e'),
                 report.Line(title='rho_s', value=self.rho_s, format='.3e'),
-                report.Line(title='dynamical_time', value=(1 * self.dynamical_time).to(run_units.time), format='.4f'),
+                report.Line(title='dynamical_time', value=self.dynamical_time, format='.4f'),
                 report.Line(title='r_min', value=self.r_min, format='.4f'),
                 report.Line(title='r_max', value=self.r_max, format='.4f'),
                 report.Line(title='space steps', value=self.space_steps, format='.0e'),
@@ -311,7 +317,7 @@ class Distribution:
         """
 
         def m_crit(r_vir: Quantity['length'], delta: float) -> Quantity['mass']:
-            return 4 / 3 * np.pi * r_vir**3 * delta * cosmology.Planck18.critical_density0.decompose(run_units.system)
+            return 4 / 3 * np.pi * r_vir**3 * delta * cosmology.Planck18.critical_density0.decompose(units.system)
 
         def equation(params: tuple[float, float]) -> tuple[float, float]:
             """Helper function for the optimizer"""
@@ -325,7 +331,7 @@ class Distribution:
             )
 
         results = scipy.optimize.least_squares(equation, (self.r_s.value, 200), **kwargs).x
-        r_vir = Quantity(results[0], run_units.length)
+        r_vir = Quantity(results[0], units.length)
         delta: float = results[1]
         if kwargs.get('verbose', 0) > 0:
             print(f'Optimization reached with Delta={delta}')
@@ -394,18 +400,14 @@ class Distribution:
         return True
 
     @cached_property
-    def dynamical_time(self) -> Unit:
-        """Calculate the dynamic time of the profile, returning it as a `Unit` object."""
-        return def_unit(
-            'dynamical_time',
-            np.sqrt(self.r_s**3 / (constants.G * self.total_mass)).to(run_units.time),
-            doc=f'{self.title} dynamic time',
-        )
+    def dynamical_time(self) -> Quantity['time']:
+        """The dynamic time of the profile."""
+        return Quantity(1, self.units.dynamical_time).decompose(units.system)
 
-    def scatter_time_scale(self, sigma: Quantity[run_units.cross_section]) -> Quantity['time']:
+    def scatter_time_scale(self, sigma: Quantity[units.cross_section]) -> Quantity['time']:
         """Time scale between scatter events"""
         return 1 / np.sqrt((4 * np.pi * constants.G * self.r_s**2 * self.rho_s**3 * sigma**2)).decompose(
-            run_units.system
+            units.system
         )
 
     def to_agama_potential(
@@ -455,18 +457,12 @@ class Distribution:
         return self.to_scale(cast(Quantity, r_prime)).value
 
     def tc0(
-        self, C: float = 0.9, sigma: Quantity[run_units.cross_section] = Quantity(50, 'cm^2/g')
+        self, C: float = 0.9, sigma: Quantity[units.cross_section] = Quantity(50, 'cm^2/g')
     ) -> Quantity['time']:
         """Base estimation for the core collapse time"""
         return (
             150 / C * 1 / (sigma * self.rho_s) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.r_s**2)
-        ).to(run_units.time)
-
-    def tc(self, J: float = 1, sigma: Quantity[run_units.cross_section] = Quantity(50, 'cm^2/g')) -> Quantity['time']:
-        """New estimation for the core collapse time"""
-        return (
-            1 / (4 * np.pi * self.rho_s * sigma) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.r_s**2) * J
-        ).to(run_units.time)
+        ).to(units.time)
 
     @cached_property
     def geomspace_grid(self) -> Quantity['length']:
@@ -507,14 +503,14 @@ class Distribution:
             return self.agama_potential.density(r)
         return Quantity(
             self.calculate_density(
-                r=r.to(run_units.length).value,
-                rho_s=self.rho_s.decompose(run_units.system).value,
-                r_s=self.r_s.decompose(run_units.system).value,
-                r_vir=self.r_vir.decompose(run_units.system).value,
+                r=r.to(units.length).value,
+                rho_s=self.rho_s.decompose(units.system).value,
+                r_s=self.r_s.decompose(units.system).value,
+                r_vir=self.r_vir.decompose(units.system).value,
                 truncate=self.truncate,
                 truncate_power=self.truncate_power,
             ),
-            run_units.density,
+            units.density,
         )
 
     def calculate_velocity_dispersion(self, r: Quantity['length']) -> Quantity['velocity']:
@@ -594,7 +590,7 @@ class Distribution:
         return Quantity(
             np.log(
                 (self.calculate_velocity_dispersion(r) ** 3 / self.calculate_temperature(r))
-                .decompose(run_units.system)
+                .decompose(units.system)
                 .value
             ),
         )
@@ -615,7 +611,7 @@ class Distribution:
 
     def density_r2(self, r: Quantity['length']) -> Quantity['linear density']:
         """Calculate the density (`rho`) times the jacobian (`r^2`) at a given radius."""
-        return self.density(r) * r.to(run_units.length) ** 2
+        return self.density(r) * r.to(units.length) ** 2
 
     @cached_property
     def density_r2_grid(self) -> Quantity['linear density']:
@@ -624,15 +620,15 @@ class Distribution:
 
     def spherical_density_integrate(self, r: Quantity['length'], use_rho_s: bool = True) -> Quantity['mass']:
         """Calculate the density (`rho`) integral in `[0,r]` assuming spherical symmetry. `use_rho_s` is used internally to calculate the density scale and shouldn't be used."""
-        rho_s = self.rho_s.decompose(run_units.system).value if use_rho_s else 1
+        rho_s = self.rho_s.decompose(units.system).value if use_rho_s else 1
         integral = utils.fast_spherical_density_integrate(
-            np.atleast_1d(r.to(run_units.length).value),
+            np.atleast_1d(r.to(units.length).value),
             self.calculate_density,
             rho_s,
-            self.r_s.decompose(run_units.system).value,
-            self.r_vir.decompose(run_units.system).value,
+            self.r_s.decompose(units.system).value,
+            self.r_vir.decompose(units.system).value,
         )
-        return Quantity(integral, run_units.mass)
+        return Quantity(integral, units.mass)
 
     def enclosed_mass(self, r: Quantity['length']) -> Quantity['mass']:
         """Calculate the enclosed mass (`M(<=r)`) at a given radius. Integrates the density function (`rho`)."""
@@ -642,7 +638,7 @@ class Distribution:
         else:
             enclosed_mass = self.spherical_density_integrate(r)
         if scalar_input:
-            return Quantity(np.array(enclosed_mass)[0], run_units.mass)
+            return Quantity(np.array(enclosed_mass)[0], units.mass)
         return enclosed_mass
 
     @cached_property
@@ -672,29 +668,29 @@ class Distribution:
         """Calculate the gravitational scale height of the distribution"""
         return np.sqrt(
             self.calculate_velocity_dispersion(r) ** 2 / (4 * np.pi * constants.G * self.density(r))
-        ).decompose(run_units.system)
+        ).decompose(units.system)
 
-    def mean_free_path_grid(self, sigma: Quantity[run_units.cross_section]) -> Quantity['length']:
+    def mean_free_path_grid(self, sigma: Quantity[units.cross_section]) -> Quantity['length']:
         """Calculate the mean free path at the `internal logarithmic grid`."""
         return self.mean_free_path(self.geomspace_grid, sigma)
 
-    def mean_free_path(self, r: Quantity['length'], sigma: Quantity[run_units.cross_section]) -> Quantity['length']:
+    def mean_free_path(self, r: Quantity['length'], sigma: Quantity[units.cross_section]) -> Quantity['length']:
         """Calculate the mean free path of the distribution"""
-        return 1 / (self.density(r) * sigma).decompose(run_units.system)
+        return 1 / (self.density(r) * sigma).decompose(units.system)
 
     def calculate_density_scale(self) -> Quantity['mass density']:
         """Calculate the density scale to set the integral over `[0, r_max]` to equal `total_mass`."""
-        return self.total_mass / self.spherical_density_integrate(self.r_max, False)[0] * run_units.density
+        return self.total_mass / self.spherical_density_integrate(self.r_max, False)[0] * units.density
 
     def mass_pdf(self, r: Quantity['length']) -> FloatOrArray:
         """Mass probability density function (pdf) at radius `r`. Normalized `rho*r^2`."""
         mass_pdf = self.density_r2(r).value
-        mass_pdf /= np.trapezoid(mass_pdf, r.decompose(run_units.system).value)
+        mass_pdf /= np.trapezoid(mass_pdf, r.decompose(units.system).value)
         return mass_pdf
 
     def mass_cdf(self, r: Quantity['length']) -> FloatOrArray:
         """Mass cumulative probability density function (cdf) at radius `r`. Normalized enclosed mass."""
-        return (self.enclosed_mass(r) / self.total_mass).decompose(run_units.system).value
+        return (self.enclosed_mass(r) / self.total_mass).decompose(units.system).value
 
     @cached_property
     def pdf(self) -> QuantityInterpolate:
@@ -730,9 +726,9 @@ class Distribution:
         """Calculate the gravitational potential energy (`poisson_potential`), at a given radius `r`."""
         if self.backend == 'agama':
             assert self.agama_total_potential is not None, 'Agama potential not initialized'
-            return self.agama_total_potential.poisson_potential(r).to(run_units.specific_energy)
+            return self.agama_total_potential.poisson_potential(r).to(units.specific_energy)
         xs = Quantity(np.geomspace(self.r_min, r, 1000), 'kpc').T
-        return np.trapezoid(y=constants.G * self.enclosed_mass(xs) / xs**2, x=xs).to(run_units.specific_energy)
+        return np.trapezoid(y=constants.G * self.enclosed_mass(xs) / xs**2, x=xs).to(units.specific_energy)
 
     @cached_property
     def potential_reference(self) -> Quantity['specific energy']:
@@ -771,7 +767,7 @@ class Distribution:
         if self.backend == 'agama':
             assert r is not None and v is not None, 'Radius and velocity must be provided for Agama backend'
             assert self.agama_df is not None, 'Agama distribution function not initialized'
-            return self.agama_df(r=r, v=v).decompose(run_units.system)
+            return self.agama_df(r=r, v=v).decompose(units.system)
         if E is None:
             assert r is not None and v is not None, 'Either energy or radius and velocity must be provided'
             E = self.E(r=r, v=v)
@@ -921,13 +917,13 @@ class Distribution:
             generator = rng.generator
         return Quantity(
             self.sample_v_norm_fast(
-                potential=self.potential(r).to(run_units.specific_energy),
+                potential=self.potential(r).to(units.specific_energy),
                 E_grid=(E := cast(Quantity, np.sort(self.potential_grid))),
                 f_grid=self.f(E=E),
                 rolls=generator.random(len(r)),
                 num=num,
             ),
-            run_units.velocity,
+            units.velocity,
         )
 
     def sample_v(
@@ -967,8 +963,8 @@ class Distribution:
                 Sampled radius values for each particle, shaped `(num_particles,)`
                 Corresponding 3d velocities for each particle, shaped `(num_particles,3)`.
         """
-        r = self.sample_r(n_particles, sampling_method=sampling_method, generator=generator).to(run_units.length)
-        v = self.sample_v(r, num=num, generator=generator).to(run_units.velocity)
+        r = self.sample_r(n_particles, sampling_method=sampling_method, generator=generator).to(units.length)
+        v = self.sample_v(r, num=num, generator=generator).to(units.velocity)
         return r, v
 
     def sample(
@@ -1020,7 +1016,7 @@ class Distribution:
             assert self.agama_df is not None, 'Agama distribution function not initialized'
             r, v, _ = self.agama_df.sample(n=n_particles)
             r, v = r[(i := np.argsort(r))], v[i]
-            return r.decompose(run_units.system), v.decompose(run_units.system)
+            return r.decompose(units.system), v.decompose(units.system)
         if generator is None:
             generator = rng.generator
         if radius_range is None:

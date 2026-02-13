@@ -1,5 +1,5 @@
-"""Halo managment modules"""
+"""Halo management modules"""
 
-from . import io, halo, types, compare, run_optimization
+from . import io, halo, plot, types, units, compare, run_optimization
 
-__all__ = ['halo', 'io', 'types', 'compare', 'run_optimization']
+__all__ = ['io', 'halo', 'plot', 'types', 'units', 'compare', 'run_optimization']

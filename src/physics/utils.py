@@ -7,10 +7,10 @@ import scipy
 from astropy import constants
 from astropy.units import Unit, Quantity
 
-from .. import run_units
+from .. import units
 from ..types import QuantityOrArray
 
-G = constants.G.decompose(run_units.system)
+G = constants.G.decompose(units.system)
 
 
 def enclosed_mass(
@@ -32,7 +32,7 @@ def enclosed_mass(
     Returns
         The cumulative mass of the particles.
     """
-    masses = m if m is not None else Quantity([1] * len(r), run_units.mass)
+    masses = m if m is not None else Quantity([1] * len(r), units.mass)
     enclosed_mass = masses.cumsum()
     if not count_self:
         enclosed_mass -= masses
@@ -107,10 +107,10 @@ def poisson_potential(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray
         The gravitational potential at the given radius.
     """
     integral = scipy.integrate.cumulative_trapezoid(
-        y=constants.G.decompose(run_units.system).value * M * m / r**2, x=r, initial=0
+        y=constants.G.decompose(units.system).value * M * m / r**2, x=r, initial=0
     )
     if isinstance(r, Quantity):
-        return Quantity(integral, run_units.energy)
+        return Quantity(integral, units.energy)
     return integral
 
 
@@ -122,11 +122,11 @@ def potential(r: QuantityOrArray, M: QuantityOrArray, m: QuantityOrArray) -> Qua
     See `poisson_potential()` for details.
     """
     integral = scipy.integrate.cumulative_trapezoid(
-        y=constants.G.decompose(run_units.system).value * M * m / r**2, x=r, initial=0
+        y=constants.G.decompose(units.system).value * M * m / r**2, x=r, initial=0
     )
     integral = integral[-1] - integral
     if isinstance(r, Quantity):
-        return Quantity(integral, run_units.energy)
+        return Quantity(integral, units.energy)
     return integral
 
 

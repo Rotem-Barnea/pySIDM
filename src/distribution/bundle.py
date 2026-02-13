@@ -13,7 +13,7 @@ from astropy.units.typing import UnitLike
 if TYPE_CHECKING:
     from src.plot import Scale
 
-from src import plot, report, run_units
+from src import plot, report, units
 
 from .nfw import NFW
 from .hernquist import Hernquist
@@ -218,9 +218,9 @@ class HaloBaryonBundle(Bundle):
 
     def describe(
         self,
-        length_unit: UnitLike = run_units.length,
-        mass_unit: UnitLike = run_units.mass,
-        density_unit: UnitLike = run_units.density,
+        length_unit: UnitLike = units.length,
+        mass_unit: UnitLike = units.mass,
+        density_unit: UnitLike = units.density,
     ) -> report.Report:
         """Print a description of a pair distribution."""
 

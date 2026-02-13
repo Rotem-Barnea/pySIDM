@@ -13,7 +13,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, run_units
+from src import plot, units
 from src.tqdm import tqdm
 from src.types import ParticleType
 from src.utils import utils
@@ -134,7 +134,7 @@ class Halos:
             x_unit = kwargs.pop('x_unit', x_unit)
             y_unit = kwargs.pop('y_unit', y_unit)
             time_unit = kwargs.pop('time_unit', time_unit)
-        time_unit = time_unit or run_units.time
+        time_unit = time_unit or units.time
         fig, ax = plot.setup(x_unit=x_unit, y_unit=y_unit, **kwargs)
         aboslute_time_mode = isinstance(time, Quantity)
         for halo, label in zip_longest(self.halos, labels):
@@ -299,13 +299,13 @@ class Halos:
         plot.save(fig=fig, **save_kwargs)
         return fig, ax
 
-    def plot_core_density_ratio(
+    def plot_core_density(
         self,
         time_unit: TimeUnitLike = 'Gyr',
         path_condition: dict[str, dict[str, Any]] | Literal['default'] = 'default',
         palette: str | None = None,
-        lineplot_kwargs: dict[str, Any] = {},
         plot_kwargs: dict[str, Any] = {},
+        lineplot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
         early_quit: bool = False,
         **kwargs: Any,
@@ -316,8 +316,8 @@ class Halos:
             time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use its own value for its plot.
             path_condition: A dictionary of conditions to apply to the plot of each halo. If 'default', use the default set in `Halos.default_path_condition()`.
             palette: The color palette to use for the plot. If None, use the default palette.
-            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`
-            plot_kwargs: Additional keyword arguments to pass to the plot function (`Halo.plot_cumulative_scattering_amount_over_time()`).
+            plot_kwargs: Additional keyword arguments to pass to the plot function (`Halo.plot_core_density()`).
+            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
             save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
             early_quit: If `True` force the plot on a predefined `fig` and `ax`. If `False` allows the plotting function (`phase_space.plot()`) to define axis parameters (title, axis labels, etc.).
             **kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
@@ -347,7 +347,7 @@ class Halos:
                             _lineplot_kwargs.pop('label')
                         else:
                             used_labels += [_lineplot_kwargs['label']]
-            fig, ax = halo.plot_core_density_ratio(
+            fig, ax = halo._plot.core_density(
                 lineplot_kwargs=_lineplot_kwargs,
                 fig=fig,
                 ax=ax,

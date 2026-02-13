@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 from src.utils import utils
 
-from . import types, physics, run_units
+from . import types, physics, units
 from .tqdm import tqdm
 
 Scale = Literal['linear', 'log', 'guess']
@@ -438,8 +438,8 @@ def heatmap(
     plot_method: Literal['imshow', 'pcolormesh', 'auto'] = 'auto',
     x_range: Quantity | None = None,
     y_range: Quantity | None = None,
-    x_unit: UnitLike = run_units.length,
-    y_unit: UnitLike = run_units.velocity,
+    x_unit: UnitLike = units.length,
+    y_unit: UnitLike = units.velocity,
     cbar_unit: UnitLike = '',
     transparent_value: float | None = None,
     transparent_range: tuple[float, float] | None = None,
@@ -564,7 +564,7 @@ def heatmap(
 
     if plot_method == 'imshow':
         im = ax.imshow(
-            grid.decompose(run_units.system).value, origin='lower', aspect='auto', extent=extent_value, **kwargs
+            grid.decompose(units.system).value, origin='lower', aspect='auto', extent=extent_value, **kwargs
         )
     else:
         assert x_range is not None and y_range is not None, (
@@ -572,7 +572,7 @@ def heatmap(
         )
         im = ax.pcolormesh(
             *np.meshgrid(x_range.to(x_unit).value, y_range.to(y_unit).value),
-            grid.decompose(run_units.system).value,
+            grid.decompose(units.system).value,
             **kwargs,
         )
 
@@ -601,8 +601,8 @@ def phase_space(
     grid: Quantity,
     r_range: Quantity['length'] | None = Quantity([1e-2, 50], 'kpc'),
     v_range: Quantity['velocity'] | None = Quantity([0, 100], 'km/second'),
-    length_unit: UnitLike = run_units.length,
-    velocity_unit: UnitLike = run_units.velocity,
+    length_unit: UnitLike = units.length,
+    velocity_unit: UnitLike = units.velocity,
     **kwargs: Any,
 ) -> tuple[Figure, Axes]:
     """Plot the phase space distribution. Wrapper for `heatmap()` to provide convenient defaults and variable names (i.e. `r` and `v`)."""
@@ -704,7 +704,7 @@ def aggregate_evolution_data(
     output_type: Literal['density', 'counts', 'temperature', 'specific heat flux'] = 'counts',
     row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
     v_axis: Literal['vx', 'vy', 'vr'] = 'vr',
-    density_unit: UnitLike = run_units.density,
+    density_unit: UnitLike = units.density,
     data_time_unit: UnitLike = 'Gyr',
     data_length_unit: UnitLike = 'kpc',
     data_specific_energy_unit: UnitLike = 'kpc^2/Myr^2',

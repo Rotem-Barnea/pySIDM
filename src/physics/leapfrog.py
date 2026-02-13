@@ -10,10 +10,10 @@ from astropy import constants
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
-from src import run_units
+from src import units
 from src.utils import utils
 
-G = constants.G.decompose(run_units.system).value
+G = constants.G.decompose(units.system).value
 
 
 class Params(TypedDict):
@@ -665,12 +665,12 @@ def guess_factor(
         The calculated factor.
     """
     if isinstance(r, Quantity):
-        r = r.to(run_units.length).value
+        r = r.to(units.length).value
     v = np.sqrt(vx**2 + vy**2 + vr**2)
     if isinstance(v, Quantity):
-        v = v.to(run_units.velocity).value
+        v = v.to(units.velocity).value
     if isinstance(dt, Quantity):
-        dt = dt.to(run_units.time).value
+        dt = dt.to(units.time).value
     if scale == 'mean':
         factor = (r / v) / (r / v).mean()
     else:
