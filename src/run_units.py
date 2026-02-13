@@ -4,10 +4,6 @@ from typing import cast
 
 from astropy.units import Unit, Quantity, UnitBase
 
-from src.agama_wrappers import agama
-
-agama.setUnits(mass=Quantity(1, 'Msun'), length=Quantity(1, 'kpc'), velocity=Quantity(1, 'km/second'))
-
 ## Base work units
 length: UnitBase = cast(UnitBase, Unit('kpc'))
 time: UnitBase = cast(UnitBase, Unit('Myr'))
@@ -25,3 +21,10 @@ number_density: UnitBase = cast(UnitBase, 1 / length**3)
 cross_section: UnitBase = cast(UnitBase, length**2 / mass)
 f_unit: UnitBase = cast(UnitBase, density / (mass * specific_energy ** (3 / 2)))
 integral_f_unit: UnitBase = cast(UnitBase, density / (mass * specific_energy ** (1 / 2)))
+
+
+def initialize_units() -> None:
+    """Initialize agama units."""
+    from src.agama_wrappers import agama
+
+    agama.setUnits(mass=Quantity(1, 'Msun'), length=Quantity(1, 'kpc'), velocity=Quantity(1, 'km/second'))

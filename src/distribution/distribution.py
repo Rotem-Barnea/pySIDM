@@ -16,8 +16,9 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import rng, plot, utils, report, physics, run_units, agama_wrappers
+from src import rng, plot, report, physics, run_units, agama_wrappers
 from src.types import FloatOrArray, ParticleType, QuantitySpline, QuantityInterpolate
+from src.utils import utils
 
 from . import io
 
@@ -174,7 +175,7 @@ class Distribution:
     def overdefined_warn(
         self, key: Literal['r_s', 'r_vir', 'c', 'total_mass', 'rho_s'], value: Any, cutoff: float = 0.1
     ) -> None:
-        """Warn if the value is overdefined in an inconsistent manner"""
+        """Warn if the value is over defined in an inconsistent manner"""
         current_value = getattr(self, f'_{key}')
         if current_value is None:
             return

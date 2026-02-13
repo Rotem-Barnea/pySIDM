@@ -10,7 +10,7 @@ from src.types import regulate_arguments
 
 __all__ = ['regulate_arguments']
 
-TimeUnitLike = UnitLike | Literal['time step', 'dynamical time', 'core collapse time']
+TimeUnitLike = UnitLike | Literal['time step', 'dynamical time', 'core collapse time']  ##TODO - deprecate
 
 
 class EarlyQuitParams(TypedDict, total=False):

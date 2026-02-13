@@ -24,9 +24,10 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, utils, report, physics, run_units
+from src import plot, report, physics, run_units
 from src.tqdm import tqdm
 from src.types import ParticleType
+from src.utils import utils
 from src.physics import sidm, leapfrog
 from src.background import BackgroundDistribution
 from src.phase_space import PhaseSpace

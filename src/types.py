@@ -13,6 +13,7 @@ FloatOrArray = TypeVar('FloatOrArray', float, NDArray[np.float64])
 QuantityOrArray = Quantity | NDArray[np.float64] | pd.Series
 QuantityLike = TypeVar('QuantityLike', Quantity, NDArray[np.float64])
 ParticleType = Literal['dm', 'baryon', 'cdm']
+TimeUnitLike = UnitLike | Literal['time step', 'dynamical time', 'core collapse', 't_c']
 
 T = TypeVar('T')
 
@@ -30,7 +31,7 @@ class QuantitySpline(scipy.interpolate.UnivariateSpline):
     def __init__(
         self, in_unit: UnitLike | None = None, out_unit: UnitLike | None = None, *args: Any, **kwargs: Any
     ) -> None:
-        from . import utils
+        from src.utils import utils
 
         kwargs = kwargs.copy()
         in_unit = utils.guess_unit(in_unit, kwargs.get('x', None))
@@ -66,7 +67,7 @@ class QuantityInterpolate(scipy.interpolate.interp1d):
     def __init__(
         self, in_unit: UnitLike | None = None, out_unit: UnitLike | None = None, *args: Any, **kwargs: Any
     ) -> None:
-        from . import utils
+        from src.utils import utils
 
         kwargs = kwargs.copy()
         in_unit = utils.guess_unit(in_unit, kwargs.get('x', None))

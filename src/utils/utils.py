@@ -14,10 +14,7 @@ from numpy.typing import NDArray, ArrayLike
 from astropy.units import Unit, Quantity
 from astropy.units.typing import UnitLike
 
-from src import run_units
-
-from . import rng
-from .types import FloatOrArray, QuantityLike, QuantityOrArray
+from src import rng, types, run_units
 
 
 def random_angle(
@@ -158,7 +155,9 @@ def rank_array(r: NDArray[Any]) -> NDArray[np.int64]:
     return r.argsort().argsort()
 
 
-def derivate(x: FloatOrArray, y_fn: Callable[[FloatOrArray], FloatOrArray], h: float = 1e-4) -> FloatOrArray:
+def derivate(
+    x: types.FloatOrArray, y_fn: Callable[[types.FloatOrArray], types.FloatOrArray], h: float = 1e-4
+) -> types.FloatOrArray:
     """Calculate the derivative of a function at a point.
 
     Calculates a forward numerical derivative: `(y_fn(x + h) - y_fn(x)) / h`
@@ -174,7 +173,9 @@ def derivate(x: FloatOrArray, y_fn: Callable[[FloatOrArray], FloatOrArray], h: f
     return (y_fn(x + h) - y_fn(x)) / h
 
 
-def derivate2(x: FloatOrArray, y_fn: Callable[[FloatOrArray], FloatOrArray], h: float = 1e-4) -> FloatOrArray:
+def derivate2(
+    x: types.FloatOrArray, y_fn: Callable[[types.FloatOrArray], types.FloatOrArray], h: float = 1e-4
+) -> types.FloatOrArray:
     """Calculate the second order derivative of a function at a point.
 
     Calculates a forward numerical derivative: `(y_fn(x + 2 * h) - 2 * y_fn(x + h) + y_fn(x)) / h**2`
@@ -452,8 +453,8 @@ def handle_default(value: Any, default: Any) -> Any:
 
 
 def smooth_holes_1d(
-    x: QuantityOrArray,
-    y: QuantityOrArray,
+    x: types.QuantityOrArray,
+    y: types.QuantityOrArray,
     mask: NDArray[np.bool_] | None = None,
     include_zero: bool = False,
     assume_sorted: bool = False,
@@ -464,7 +465,7 @@ def smooth_holes_1d(
     | NDArray[np.float64]
     | tuple[NDArray[np.float64], NDArray[np.float64]] = 'extrapolate',
     **kwargs: Any,
-) -> QuantityOrArray:
+) -> types.QuantityOrArray:
     """Smooths holes in a 1D array, defined by the provided mask.
 
     Smoothing is done by interpolating the values around the holes.
@@ -502,8 +503,8 @@ def smooth_holes_1d(
 
 
 def smooth_holes_2d(
-    data: QuantityOrArray, mask: NDArray[np.bool_] | None = None, include_zero: bool = False, **kwargs: Any
-) -> QuantityOrArray:
+    data: types.QuantityOrArray, mask: NDArray[np.bool_] | None = None, include_zero: bool = False, **kwargs: Any
+) -> types.QuantityOrArray:
     """Smooths holes in a 2D array, defined by the provided mask.
 
     Smoothing is done by interpolating the values around the holes.
@@ -603,7 +604,9 @@ def mask_edge_zeros(grid: NDArray[Any] | Quantity, axis: int | None = None) -> N
     return np.where((indices >= non_zero_indices[0]) * (indices <= non_zero_indices[-1]), True, False)
 
 
-def diff(x: QuantityOrArray, pad_width: ArrayLike = (0, 1), mode: str = 'edge', **kwargs: Any) -> QuantityOrArray:
+def diff(
+    x: types.QuantityOrArray, pad_width: ArrayLike = (0, 1), mode: str = 'edge', **kwargs: Any
+) -> types.QuantityOrArray:
     """Returns the difference between consecutive elements of an array.
 
     By default, extend the difference array to match the original shape by duplicating the final value.
@@ -655,13 +658,13 @@ def strip_kwargs_units(**kwargs: Any) -> dict[str, Any]:
 
 
 def differentiate_savgol(
-    x: QuantityLike,
-    y: QuantityLike,
+    x: types.QuantityLike,
+    y: types.QuantityLike,
     window_length: int = 11,
     polyorder: int = 3,
     deriv: int = 1,
     **kwargs: Any,
-) -> QuantityLike:
+) -> types.QuantityLike:
     """Calculate the derivative using a savgol filter to increase stability.
 
     Taking the derivative using a savgol filter on argument logspace (`dy/dln(x)`), and then recovering the desired `dy/dx` using the chain rule.
@@ -702,8 +705,8 @@ def differentiate_savgol(
 
 
 def to_center(
-    edges: QuantityLike, method: Literal['algebric', 'geometric'] = 'geometric', guard_geometric: bool = True
-) -> QuantityLike:
+    edges: types.QuantityLike, method: Literal['algebric', 'geometric'] = 'geometric', guard_geometric: bool = True
+) -> types.QuantityLike:
     """Calculates the center of each grid cell"""
     assert method in ['algebric', 'geometric'], ValueError(f"Invalid method '{method}'")
     if method == 'geometric':
@@ -714,10 +717,10 @@ def to_center(
 
 
 def to_edge(
-    center_value: QuantityLike,
+    center_value: types.QuantityLike,
     low_bound: Literal[0, 'constant', 'center'] = 'constant',
     upper_bound: Literal[0, 'constant', 'center'] = 'constant',
-) -> QuantityLike:
+) -> types.QuantityLike:
     """Interpolate the array to the shell edges from the center value"""
     if low_bound == 0:
         low = 0
@@ -762,8 +765,8 @@ def guess_unit(unit: UnitLike | None = None, array: NDArray[np.float64] | Quanti
 
 def fit_curve(
     f: Callable[Any, NDArray[np.float64]],
-    x: QuantityLike,
-    y: QuantityLike,
+    x: types.QuantityLike,
+    y: types.QuantityLike,
     data_mask: NDArray[np.bool_] | None = None,
     xlog: bool = False,
     ylog: bool = False,

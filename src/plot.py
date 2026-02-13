@@ -29,7 +29,9 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg
 if TYPE_CHECKING:
     from src.distribution.distribution import Distribution
 
-from . import types, utils, physics, run_units
+from src.utils import utils
+
+from . import types, physics, run_units
 from .tqdm import tqdm
 
 Scale = Literal['linear', 'log', 'guess']

@@ -16,7 +16,9 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from . import rng, plot, utils, physics, run_units
+from src.utils import utils
+
+from . import rng, plot, physics, run_units
 from .tqdm import tqdm
 from .types import ParticleType
 from .distribution import Distribution, PhysicalProperty

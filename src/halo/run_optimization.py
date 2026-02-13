@@ -9,8 +9,8 @@ from astropy import table
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
-from src import utils
 from src.tqdm import tqdm
+from src.utils import utils
 
 from . import types
 

@@ -10,7 +10,8 @@ from astropy import constants
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
-from .. import utils, run_units
+from src import run_units
+from src.utils import utils
 
 G = constants.G.decompose(run_units.system).value
 

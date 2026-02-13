@@ -8,7 +8,8 @@ from functools import partial
 import regex
 from astropy.units import Unit, Quantity
 
-from src import utils, distribution
+from src import distribution
+from src.utils import utils
 
 
 def parse_unit(x: str, whitelist: list[str] | None = None, required_physical_type: str | None = None) -> Unit | str:

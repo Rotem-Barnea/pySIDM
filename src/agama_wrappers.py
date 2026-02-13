@@ -8,8 +8,9 @@ import numpy as np
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 
-from src import utils, run_units
+from src import run_units
 from src.types import QuantityOrArray
+from src.utils import utils
 
 T = TypeVar('T')
 
@@ -21,6 +22,8 @@ class _AgamaMissing:
 
 if importlib.util.find_spec('agama') is not None:
     import agama
+
+    run_units.initialize_units()
 else:
     agama = _AgamaMissing()
 __all__ = ['agama']

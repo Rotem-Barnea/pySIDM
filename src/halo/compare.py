@@ -1,4 +1,4 @@
-"""Module for analysing and comparing multiple halos post run"""
+"""Module for analyzing and comparing multiple halos post run"""
 
 from typing import Any, Literal, cast
 from pathlib import Path
@@ -13,9 +13,10 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, utils, run_units
+from src import plot, run_units
 from src.tqdm import tqdm
 from src.types import ParticleType
+from src.utils import utils
 from src.phase_space import PhaseSpace
 from src.distribution import PhysicalProperty
 
@@ -31,6 +32,12 @@ class Halos:
     def __init__(self, halos: list[Halo] = []) -> None:
         """A collection of halos for comparison and analysis."""
         self.halos = halos
+
+    def __len__(self) -> int:
+        return len(self.halos)
+
+    def __iter__(self):
+        return iter(self.halos)
 
     def __getitem__(self, index: int) -> Halo:
         return self.halos[index]
@@ -99,7 +106,7 @@ class Halos:
         plot_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        """Plot a physical property of the system accross all halos at time `time`.
+        """Plot a physical property of the system across all halos at time `time`.
 
         Parameters:
             y: The property to plot (i.e. temperature, pressure, etc.).
@@ -111,10 +118,10 @@ class Halos:
             y_unit: The units for the y-axis.
             time_unit: The time units for labels.
             label: The labels to add to each halo's plot.
-            labels_suffix: Suffix to add to the labels. If `auto` uses the tempate `t={time}` where `time` in either `time_unit` (if `time` is a float), or in the collapse time units for each individual halo (if `time` is a Quantity).
+            labels_suffix: Suffix to add to the labels. If `auto` uses the template `t={time}` where `time` in either `time_unit` (if `time` is a float), or in the collapse time units for each individual halo (if `time` is a Quantity).
             title: Title for the plot. If `auto` uses the template `{filter_particle_type} {y} at time t={time}` where `time` in either `time_unit` (if `time` is a Quantity), or in the collapse time units (if `time` is a float).
             early_quit: If `True` force the plot on a predefined `fig` and `ax`. If `False` allows the plotting function (`phase_space.plot()`) to define axis parameters (title, axis labels, etc.).
-            use_default_params: Whether to use the default plot parameters defined in `Halos.defualt_plot_params()`.
+            use_default_params: Whether to use the default plot parameters defined in `Halos.default_plot_params()`.
             plot_kwargs: Keyword arguments to pass to `phase_space.plot()`.
             **kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
@@ -195,7 +202,7 @@ class Halos:
         save_path: str | Path,
         **kwargs: Any,
     ) -> None:
-        """Animate a physical property of the system accross all halos.
+        """Animate a physical property of the system across all halos.
 
         Parameters:
             y: The property to plot (i.e. temperature, pressure, etc.).

@@ -6,7 +6,8 @@ import numpy as np
 from numba import njit, prange
 from numpy.typing import NDArray
 
-from . import utils
+from src.utils import utils
+
 from .types import FloatOrArray
 from .distribution.distribution import Distribution
 

@@ -2,7 +2,7 @@
 
 from typing import Literal, TypeVar, TypedDict, cast
 
-from src import utils
+from src.utils import utils
 
 
 class RelaxationParams(TypedDict):

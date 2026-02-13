@@ -8,8 +8,9 @@ from numba import njit, prange
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
-from .. import utils, physics, run_units
-from ..tqdm import tqdm
+from src import physics, run_units
+from src.tqdm import tqdm
+from src.utils import utils
 
 no_sigma = Quantity(0, 'cm^2/g')
 

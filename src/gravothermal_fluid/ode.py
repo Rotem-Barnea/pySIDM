@@ -11,8 +11,9 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, utils, run_units
+from src import plot, run_units
 from src.tqdm import tqdm
+from src.utils import utils
 from src.distribution.distribution import Distribution
 
 # from src.distribution.distribution import PhysicalProperty as BasePhysicalProperty
