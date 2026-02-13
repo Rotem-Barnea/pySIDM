@@ -53,10 +53,10 @@ def from_radial(
     Parameters:
         r: Radius.
         theta: Angle.
-        quick_sin: If `True` use a faster `sin` calculation. Otherwise calculate `sin(theta)` explicitly.
+        quick_sin: If `True` use a faster `sin` calculation. Otherwise, calculate `sin(theta)` explicitly.
 
     Returns:
-        x,y coordinates.
+        x, y coordinates.
     """
     cos: NDArray[np.float64] = np.cos(theta)
     sin: NDArray[np.float64] = np.sqrt(1 - cos**2) * np.sign(np.pi - theta) if quick_sin else np.sin(theta)
@@ -68,7 +68,7 @@ def split_2d(
     arccos: bool,
     generator: np.random.Generator | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-    """Split an array of radii to x,y coordinates using a random angle. See `random_angle()` for details on the angle calculation."""
+    """Split an array of radii into x, y coordinates using a random angle. See `random_angle()` for details on the angle calculation."""
     return from_radial(r, theta=random_angle(r, arccos, generator=generator))
 
 
@@ -76,7 +76,7 @@ def split_3d(
     r: NDArray[np.float64],
     generator: np.random.Generator | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
-    """Split an array of radii to `x`,`y`,`z` coordinates using a `random acos angle` for the `z` coordinate (i.e. radial in the halo), and a `random uniform angle` for the `x-y` plane (i.e. tangential plane in the halo)."""
+    """Split an array of radii into x, y, z coordinates using a `random arccos angle` for the `z` coordinate (i.e. radial in the halo), and a `random uniform angle` for the `x-y` plane (i.e. tangential plane in the halo)."""
     radial, perp = from_radial(r, theta=random_angle(r, arccos=True, generator=generator))
     x, y = from_radial(perp, theta=random_angle(perp, arccos=False, generator=generator))
     return x, y, radial
@@ -96,8 +96,8 @@ def joint_clean(
 
     Parameters:
         arrays: The arrays to clean.
-        keys: Names for each array, to be used with `clean_by`. If `None` defaults to "column_{i}".
-        clean_by: The column to sort and drop duplicates by. If 'str' must match `keys`. If `int` must be smaller than the number of columns, and the value will be treated as the selected index. Defaults to 0 (the first column).
+        keys: Names for each array, to be used with `clean_by`. If `None` defaults to "column_{j}".
+        clean_by: The column to sort and drop duplicates by. If a string, must match `keys`. If `int` must be smaller than the number of columns, and the value will be treated as the selected index. Defaults to 0 (the first column).
 
     Returns:
         The cleaned arrays.
@@ -287,7 +287,7 @@ def aggregate_QTable(
         2. group by the specified columns `.groupby(groupby)`.
         3. slice by the desired keys `[keys]`.
         4. aggregate using the specified function `.agg(agg_fn)`.
-        5. transform the aggregated DataFrame back to a table.Table and set the right units `table.Table.from_pandas(...,index=True,units=final_units)`.
+        5. transform the aggregated DataFrame back to a table.Table and set the right units `table.Table.from_pandas(...,index=True, units=final_units)`.
         6. transform to a QTable `QTable(...)`.
 
     Parameters:
@@ -377,7 +377,7 @@ def to_extent(
 ) -> tuple[float, ...] | tuple[Quantity, ...]:
     """Convert the input arrays to a tuple extent of the shape (min, max, min, max, ...).
 
-    Args:
+    Parameters:
         *args: The input arrays to convert.
         force_array: Whether to force the output to be an array if Quantity.
 
@@ -764,7 +764,7 @@ def guess_unit(unit: UnitLike | None = None, array: NDArray[np.float64] | Quanti
 
 
 def fit_curve(
-    f: Callable[Any, NDArray[np.float64]],
+    fn: Callable[Any, NDArray[np.float64]],
     x: types.QuantityLike,
     y: types.QuantityLike,
     data_mask: NDArray[np.bool_] | None = None,
@@ -779,14 +779,14 @@ def fit_curve(
     """Fit data to a curve.
 
     Parameters:
-        f: Function to fit to.
+        fn: Function to fit to.
         x: Array of input x values.
         y: Array of input y values.
         data_mask: A mask to filter out only parts of the data for the fitting.
         xlog: If True, apply a log to the x-values whenever used during fitting.
         ylog: If True, apply a log to the y-values whenever used during fitting.
         output_scheme: A list of units to wrap the results in. `'x'` and `'y`' are interpreted as the units of `x` and `y` respectively (will raise an error if they are not a Quantity object). `None` will leave the parameter as a float.
-        p0: Initial guess, passed on to the solver (scipy.optimize.curve_fit()). Also defines the number of parameters to solve (positional from `f`).
+        p0: Initial guess, passed on to the solver (scipy.optimize.curve_fit()). Also defines the number of parameters to solve (positional from `fn`).
         bounds: Bounds for the parameters, passed on to the solver (scipy.optimize.curve_fit()).
         max_nfev: max number of iterations, passed on to the solver (scipy.optimize.curve_fit()).
         kwargs: Additional keyword arguments passed on to the solver (scipy.optimize.curve_fit()).
@@ -799,7 +799,7 @@ def fit_curve(
     if data_mask is not None:
         xdata, ydata = xdata[data_mask], ydata[data_mask]
     popt, _ = scipy.optimize.curve_fit(
-        f=(lambda *x: np.log(f(*x))) if ylog else f,
+        f=(lambda *x: np.log(fn(*x))) if ylog else fn,
         xdata=xdata,
         ydata=ydata,
         p0=p0,

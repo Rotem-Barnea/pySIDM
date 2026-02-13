@@ -108,8 +108,8 @@ def scatter_pair_kinematics(
     Calculates a random isotropic scattering direction from a uniform cosine distribution off of `v_rel`.
 
     Parameters:
-        v0: Velocity of the first particle. Array of shape `(3,)` representing the velocity in 3D space as `(vx,vy,vr)`.
-        v1: Velocity of the second particle. Array of shape `(3,)` representing the velocity in 3D space as `(vx,vy,vr)`.
+        v0: Velocity of the first particle. Array of shape `(3,)` representing the velocity in 3D space as `(vx, vy, vr)`.
+        v1: Velocity of the second particle. Array of shape `(3,)` representing the velocity in 3D space as `(vx, vy, vr)`.
         cos_theta: Pre-rolled cosine of the scattering angle in the center-of-mass frame. Should be rolled uniformly between -1 and 1.
         phi: Pre-rolled azimuthal angle in the center-of-mass frame. Should be rolled uniformly between 0 and 2*pi.
 
@@ -166,7 +166,7 @@ def update_v_rel(
     The result is an array of relative velocity norms `sqrt(sum((v[partner]-v[particle])^2))`, and the partners are taken from: `[particle + 1 : particle + 1 + max_radius_j]`
 
     Parameters:
-        v: Array of particle velocities, shape `(n_particles, 3)`, with components `(vx,vy,vr)`.
+        v: Array of particle velocities, shape `(n_particles, 3)`, with components `(vx, vy, vr)`.
         max_radius_j: Maximum index radius for partners for scattering.
         whitelist_mask: Mask for particles to consider in this round. Used to maintain constant input shape to utilize the njit cache.
 
@@ -192,7 +192,7 @@ def fast_scatter_chance(
         v_rel: relative velocities of neighboring particles. An array of shape `(n_particles, max_radius_j)`, where each row holds the norm of the relative velocity (the 3-vector difference). For particles too close to the edge (less than max_radius_j places from the end), the overflow cells hold 0.
         dt: Time-step for each particle, adjusted by `1/number_of_rounds` to allow parallelized calculation for particles with a different number of rounds.
         sigma: Scattering cross-section.
-        density_term: Density term of particles, in the form `m/(4s*pi*r^2*dr)`.
+        density_term: Density term of particles, in the form `m/(4*pi*r^2*dr)`.
 
     Returns:
         Scattering chance for each particle (shape `(n_particles,)`)
@@ -317,7 +317,7 @@ def scatter_underestimate_shortcut(
 ) -> int:
     """Calculate the number of particles with underestimated amount of scattering events.
 
-    The scattering probability is calculated for particle, and particles with `P/max_allowed_rounds > kappa` are considered to have underestimated amount of scattering events (because in the regular run these particles will not have the `dt` time step divided enough to reach a scattering chance below `kappa`).
+    The scattering probability is calculated for each particle. Particles with `P/max_allowed_rounds > kappa` are considered to have underestimated amount of scattering events. This accounts for the fact that in the regular run these particles will not have the `dt` time step divided enough to reach a scattering chance below `kappa`.
 
     Parameters:
         r: Particles position.
@@ -328,7 +328,7 @@ def scatter_underestimate_shortcut(
         m: The mass of the particles.
         sigma: Cross-section for scattering.
         max_radius_j: Maximum index radius for partners for scattering.
-        kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
+        kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a timestep `dt/N` to lower the rate in each round to match `kappa`.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
         overestimated_by_more_than: Only consider particles as "underestimated" if they are underestimated by more than this value.
 
@@ -368,8 +368,8 @@ def scatter(
     In every round, the relative velocity is recalculated for any particle that scattered in the previous round to re-estimate the scattering change.
     Scattering is allowed with the next max_radius_j particles (one sided to avoid double counting), with the probability:
         `p = dt/2 * m/(2*pi*r^2*dr) * sigma * sum(v_rel_j)`
-        With the sum over indices `i` to `i+max_radius_j`, and `dr` the distance between the `particle` (`i`) and the `i+max_radius_j` one.
-        `v_rel` is the norm of the relative velocity vector between the `particle` and the potential `partner` (from `i` to `i+max_radius_j`).
+        With the sum over indices `j` to `j+max_radius_j`, and `dr` the distance between the `particle` (`j`) and the `j+max_radius_j` one.
+        `v_rel` is the norm of the relative velocity vector between the `particle` and the potential `partner` (from `j` to `j+max_radius_j`).
     If a particle is rolled to have scattered, the partner is chosen randomly weighted by the relative velocity.
 
     Parameters:
@@ -381,7 +381,7 @@ def scatter(
         m: The mass of the particles.
         sigma: Cross-section for scattering. At the moment, it is assumed to be constant (to-do to make it velocity dependent).
         max_radius_j: Maximum index radius for partners for scattering.
-        kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`.
+        kappa: The maximum allowed scattering probability. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a timestep `dt/N` to lower the rate in each round to match `kappa`.
         max_allowed_rounds: Maximum number of allowed rounds for scattering, used to prevent stalling in case of high density.
         max_allowed_scatters: Maximum number of allowed scatter events per particle per time-step.
         max_allowed_probability: Maximum allowed probability for scattering per particle per subdivided time-step. If `max_allowed_rounds` is defined, the probability for some particles might be too high even after subdivision, leading to a discontinuity in the scattering profile.
@@ -456,7 +456,7 @@ def scatter(
         relevant_particles = scatter_rounds >= round
         scatter_chance[~relevant_particles] = 0
         if len(interacted_particles) > 0:
-            # Only update the relative velocities and scattering chance for particles that scattered in the past round or in the neighborhood of scattering particles (i.e. only particles that would have a change in their v_rel values, otherwise the probability is the same and we don't need to recalculate it)
+            # Only update the relative velocities and scattering chance for particles that scattered in the past round or in the neighborhood of scattering particles. I.e. only particles that would have a change in their v_rel values, otherwise the probability is the same and we don't need to recalculate it.
             mask = relevant_particles * utils.expand_mask_back(
                 utils.indices_to_mask(interacted_particles, len(v_output)), n=max_radius_j
             )
@@ -500,47 +500,3 @@ def scatter(
                 phi=utils.random_angle(len(pairs), arccos=False, generator=generator),
             )
     return *v_output.T, interacted, max_scatter_rounds, underestimation
-
-
-# def scatter_shortcut(
-#     scatter_chance: NDArray[np.float64],
-#     subdivisions: int,
-#     vx: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
-#     vy: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
-#     vr: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
-#     max_radius_j: int = default_params['max_radius_j'],
-# ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64], NDArray[np.int64], int, int]:
-#     """Perform SIDM scatter events.
-#     to-do
-#     """
-#     _vx, _vy, _vr = np.array(vx).copy(), np.array(vy).copy(), np.array(vr).copy()
-#     interacted: NDArray[np.int64] = np.empty(0, dtype=np.int64)
-#     v_output = np.vstack([_vx, _vy, _vr]).T
-
-#     rolls = rng.generator.random(len(v_output))
-#     events = (scatter_chance / subdivisions) >= rolls
-#     pair_rolls = np.zeros(len(v_output), dtype=np.float64)
-#     # Only roll for scattering events that actually took place this round
-#     pair_rolls[events] = rng.generator.random(events.sum())
-
-#     v_rel = np.zeros((len(v_output), max_radius_j), dtype=np.float64)
-#     update_v_rel(
-#         v_rel=v_rel,
-#         v=v_output,
-#         max_radius_j=max_radius_j,
-#         whitelist_mask=events,  # Only calculate for particles that scattered
-#     )
-
-#     pairs = utils.clean_pairs(
-#         pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=pair_rolls),
-#         shuffle=True,
-#     )
-#     interacted_particles = pairs.ravel()
-#     interacted = np.hstack([interacted, interacted_particles])
-#     scatter_unique_pairs(
-#         v=v_output,
-#         pairs=pairs,
-#         cos_theta=rng.generator.random(len(pairs)) * 2 - 1,
-#         phi=rng.generator.random(len(pairs)) * 2 * np.pi,
-#     )
-#     return *v_output.T, interacted, 1, 0
