@@ -35,7 +35,7 @@ class tqdm(tqdm_base, Generic[types.T]):
         Parameters:
             iterable: The iterable to iterate over.
             start_time: The start time of the loop. If `None` defaults to the regular tqdm behavior (not displaying the time).
-            dt: The time step of every element in the loop. If `None` defaults to the regular tqdm behavior (not displaying the time).
+            dt: The time-step of every element in the loop. If `None` defaults to the regular tqdm behavior (not displaying the time).
             time_unit: The display units for the time.
             time_format: The format string for the time.
             **kwargs: Additional keyword arguments for `tqdm.tqdm` (from the original `tqdm module`).
@@ -62,7 +62,7 @@ class tqdm(tqdm_base, Generic[types.T]):
             yield obj
 
     def cleanup_time(self, time: Quantity['time'], add_unit: bool = False) -> str:
-        """Cleanup the time string."""
+        """Clean-up the time string."""
         value = format(max(time.value, 0), self.time_format).rstrip('0').rstrip('.')
         if add_unit:
             return f'{value} {time.unit}'

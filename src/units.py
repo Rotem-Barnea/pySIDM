@@ -24,7 +24,7 @@ integral_f_unit: UnitBase = cast(UnitBase, density / (mass * specific_energy ** 
 
 
 def initialize_units() -> None:
-    """Initialize agama units."""
+    """Initialize AGAMA units."""
     from src.agama_wrappers import agama
 
     agama.setUnits(mass=Quantity(1, 'Msun'), length=Quantity(1, 'kpc'), velocity=Quantity(1, 'km/second'))

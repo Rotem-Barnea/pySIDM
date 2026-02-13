@@ -93,7 +93,7 @@ class Halo:
         """Initialize a Halo object.
 
         Parameters:
-            dt: Time step of the halo. If not a `Quantity`, assumed to be a factor multiplying the dynamical time of the first distribution in `distributions`.
+            dt: Time-step of the halo. If not a `Quantity`, assumed to be a factor multiplying the dynamical time of the first distribution in `distributions`.
             r: Radius of the halo particles.
             v: Velocity of the halo particles, of shape `(n_particles, 3)`, `(vx,vy,vr)` with `vx`,`vy` the two perpendicular components of the off-radial plane.
             m: Mass of the halo particles.
@@ -103,12 +103,12 @@ class Halo:
             potential_reference: Potential at infinity of the halo. If `None` calculates from the first density.
             distributions: List of distributions of the halo.
             n_interactions: Number of interactions the halo had.
-            scatter_rounds: Number of scatter rounds the halo had every time step.
-            scatter_rounds_underestimated: Number of underestimated scatter rounds the halo had every time step (due to `max_allowed_rounds` in `physics.sidm.scatter()`).
+            scatter_rounds: Number of scatter rounds the halo had every time-step.
+            scatter_rounds_underestimated: Number of underestimated scatter rounds the halo had every time-step (due to `max_allowed_rounds` in `physics.sidm.scatter()`).
             ministep_size: The size of the ministep used for each ministep (to track changes in them).
             scatter_track_time: The time for each scatter track round, must match `scatter_track_index` and `scatter_track_radius` in shape.
-            scatter_track_index: The interacting particles (particle index) at every time step.
-            scatter_track_radius: The location of the interacting particles at every time step.
+            scatter_track_index: The interacting particles (particle index) at every time-step.
+            scatter_track_radius: The location of the interacting particles at every time-step.
             time: Time of the halo.
             steps: number of steps made in the simulation (should match `self.time/self.dt` but left as a sanity check).
             background: Background mass distribution of the halo.
@@ -682,7 +682,7 @@ class Halo:
 
     @property
     def time_step(self) -> Quantity['time']:
-        """The time step size"""
+        """The time-step size"""
         return Quantity(1, self.units.time_step).decompose(units.system)
 
     @property
@@ -1002,7 +1002,7 @@ class Halo:
         return False
 
     def step(self, in_bootstrap: bool = False, save_kwargs: types.SaveParams = {}) -> None:
-        """Perform a single time step of the simulation.
+        """Perform a single time-step of the simulation.
 
         Every step:
             - Sort particles by radius.
@@ -2657,7 +2657,7 @@ class Halo:
         underestimations: bool = False,
         time_unit: TimeUnitLike = 'Gyr',
         xlabel: str | None = 'Time',
-        ylabel: str | None = 'Number of scattering subdivisions per time step',
+        ylabel: str | None = 'Number of scattering subdivisions per time-step',
         title: str | None = 'Scattering subdivisions and underestimation over time',
         label_rounds: str | None = 'Rounds performed',
         label_total_required: str | None = 'Total amount required',
@@ -2668,12 +2668,12 @@ class Halo:
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        """Plot the number of scattering rounds per `dt` time step, and the number of underestimations.
+        """Plot the number of scattering rounds per `dt` time-step, and the number of underestimations.
 
         Parameters:
-            rounds: Plot the number of scattering rounds performed per `dt` time step.
-            total_required: Plot the number of required scattering rounds per `dt` time step (regardless of what actually happened).
-            underestimations: Plot the scattering rounds underestimated per `dt` time step ([required] - [actually happened]).
+            rounds: Plot the number of scattering rounds performed per `dt` time-step.
+            total_required: Plot the number of required scattering rounds per `dt` time-step (regardless of what actually happened).
+            underestimations: Plot the scattering rounds underestimated per `dt` time-step ([required] - [actually happened]).
             time_unit: Units for the x-axis.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.

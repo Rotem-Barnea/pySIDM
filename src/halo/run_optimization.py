@@ -1,4 +1,4 @@
-"""Manage the optimizations made  mid-run, such as time step (`dt`) optimization and early quiting on core collapse"""
+"""Manage the optimizations made  mid-run, such as time-step (`dt`) optimization and early quiting on core collapse"""
 
 import time
 from typing import TYPE_CHECKING, Any, Literal

@@ -61,7 +61,7 @@ def local_density(
         r: The positions of the particles.
         m: The masses of the particles. If `None` all particles are assumed to have a mass of 1 `Msun` (`run_units.mass`).
         max_radius_j: Maximum index radius for partners for scattering.
-        volume_include_final_unit_cell: If `True` counts the volume from each particle to it's `max_radius_j+1` neighbor, effectively including the unit cell of the final particle as well (without including the mass at the end of that unit cell).
+        volume_include_final_unit_cell: If `True` counts the volume from each particle to it's `max_radius_j+1` neighbor. Effectively, this includes the unit cell of the final particle as well (without including the mass at the end of that unit cell).
         volume_kind: The kind of volume to calculate (thick shell or approximation using thin-shell).
         mass_kind: Either calculate the total mass enclosed, or count just a single mass (used for the scattering term).
 
@@ -86,7 +86,7 @@ def local_density(
     density = mass[:-1] / volume[:-1]
     # The final element has volume=0, this just circumvents this and uses the value from the second-to-last
     if (volume[:-1] == 0).any():
-        raise ValueError('Volume cannot be zero')  # TODO: Handle this case more gracefully
+        raise ValueError('Volume cannot be zero')  # to-do: Handle this case more gracefully
     density = np.hstack([density, density[-1]])
     if isinstance(m, Quantity) and isinstance(r, Quantity):
         return Quantity(density, m.unit / cast(Unit, r.unit) ** 3)

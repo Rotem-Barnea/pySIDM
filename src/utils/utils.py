@@ -19,14 +19,14 @@ from src import rng, types, units
 
 def random_angle(
     like: NDArray[np.float64] | int,
-    acos: bool,
+    arccos: bool,
     generator: np.random.Generator | None = None,
 ) -> NDArray[np.float64]:
     """Generate an array of random angles.
 
     Parameters:
         like: Array who's shape to mimic. if `int` treat it as the length of the array.
-        acos: If `False` generate a uniform random angle. If `True` generate a uniform random `cos(angle)`, and then applies arccos to retrieve the angle.
+        arccos: If `False` generate a uniform random angle. If `True` generate a uniform random `cos(angle)`, and then applies arccos to retrieve the angle.
         generator: If `None` use the default generator from `rng.generator`.
 
     Returns:
@@ -40,7 +40,7 @@ def random_angle(
         rolls = generator.random(len(like))
     else:
         rolls = generator.random(*like.shape)
-    if acos:
+    if arccos:
         return np.acos(rolls * 2 - 1)
     return rolls * 2 * np.pi
 
@@ -65,11 +65,11 @@ def from_radial(
 
 def split_2d(
     r: NDArray[np.float64],
-    acos: bool,
+    arccos: bool,
     generator: np.random.Generator | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
     """Split an array of radii to x,y coordinates using a random angle. See `random_angle()` for details on the angle calculation."""
-    return from_radial(r, theta=random_angle(r, acos, generator=generator))
+    return from_radial(r, theta=random_angle(r, arccos, generator=generator))
 
 
 def split_3d(
@@ -77,8 +77,8 @@ def split_3d(
     generator: np.random.Generator | None = None,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Split an array of radii to `x`,`y`,`z` coordinates using a `random acos angle` for the `z` coordinate (i.e. radial in the halo), and a `random uniform angle` for the `x-y` plane (i.e. tangential plane in the halo)."""
-    radial, perp = from_radial(r, theta=random_angle(r, acos=True, generator=generator))
-    x, y = from_radial(perp, theta=random_angle(perp, acos=False, generator=generator))
+    radial, perp = from_radial(r, theta=random_angle(r, arccos=True, generator=generator))
+    x, y = from_radial(perp, theta=random_angle(perp, arccos=False, generator=generator))
     return x, y, radial
 
 

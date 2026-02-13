@@ -197,7 +197,7 @@ class GalaxyModel:
 
         r = cast(Quantity, np.sqrt(x**2 + y**2 + z**2))
         vr = cast(Quantity, (x * vx + y * vy + z * vz) / r)
-        v = cast(Quantity, np.vstack([*utils.split_2d(np.sqrt(vx**2 + vy**2 + vz**2 - vr**2), acos=False), vr]).T)
+        v = cast(Quantity, np.vstack([*utils.split_2d(np.sqrt(vx**2 + vy**2 + vz**2 - vr**2), arccos=False), vr]).T)
         return r, v, m
 
     @vectorize

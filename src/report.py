@@ -66,7 +66,7 @@ class Line:
         return output
 
     def copy(self) -> Self:
-        """Deepcopy the object."""
+        """Copy the object."""
         return deepcopy(self)
 
 
@@ -108,7 +108,7 @@ class Report:
         return len(self.header)
 
     def copy(self) -> Self:
-        """Deepcopy the object."""
+        """Copy the object."""
         return deepcopy(self)
 
     @classmethod

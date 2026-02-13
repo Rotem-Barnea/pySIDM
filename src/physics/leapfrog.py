@@ -195,7 +195,7 @@ def particle_levi_civita_step(
     """Perform a simple leapfrog step in the radius (1D). See `particle_step()` for more details on the leapfrog implementation, this function will only detail the Levi Civita aspect.
 
     The integration is done in the Levi-Civita coordinates `r_ = sqrt(r)`, with physical velocity and a Sundman time reparameterization `dt/dτ = r = r_^2`.
-        The initial fictitious time step is given by `dτ = dt/r_^2`, and subdivided further by `N`.
+        The initial fictitious time-step is given by `dτ = dt/r_^2`, and subdivided further by `N`.
         Physical velocity equation of motion: `dv/dτ = -GM/r_^2 + L^2/r_^4`, with M selected using `adjust_M()`.
         Levi-Civita coordinate equation of motion: `dr_/dτ = 1/2 * r_* vr`.
         Integrate until the physical time overshoots, then take a step back and perform a fractional step forward to hit exactly `dt`.
@@ -209,7 +209,7 @@ def particle_levi_civita_step(
         m: The mass of the particle.
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
-        dt: The time step.
+        dt: The time-step.
         N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
 
     Returns:
@@ -283,7 +283,7 @@ def particle_normal_step(
         m: The mass of the particle.
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
-        dt: The time step.
+        dt: The time-step.
         N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
 
     Returns:
@@ -336,7 +336,7 @@ def particle_step(
         m: The mass of the particle.
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
-        dt: The time step.
+        dt: The time-step.
         N: The number of mini-steps to perform. Should be an odd number, where the actual step size is adjusted by `dt -> dt/(N-1)`.
         levi_civita_override_always: If `True`, particle is always in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=infinity`.
         levi_civita_override_never: If `True`, the particle is never in the Levi-Civita regime. Equivalent to `levi_civita_condition_coefficient=0`.
@@ -389,7 +389,7 @@ def particle_adaptive_step(
         M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
-        dt: Time step.
+        dt: Time-step.
         max_minirounds: Maximum number of mini-rounds to perform.
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.
@@ -495,7 +495,7 @@ def particle_step_wrapper(
         vr: The radial velocity of the particle.
         m: The mass of the particle.
         M: The mass cdf (`M(<=r)`) of the particle at the start of the step. Used only if `M_grid` is empty.
-        dt: Time step.
+        dt: Time-step.
         M_grid: Array of mass cdf values for the particles pre-step to re-estimate the mass cdf when the position changes.
         r_grid: Array of position values for the particles pre-step to re-estimate the mass cdf when the position changes.
         max_minirounds: Maximum number of mini-rounds to perform.
@@ -582,7 +582,7 @@ def fast_step(
     NDArray[np.bool_],
     NDArray[np.int64],
 ]:
-    """TODO"""
+    """to-do"""
     output_r, output_vx, output_vy, output_vr = (
         r.copy(),
         vx.copy(),
@@ -641,10 +641,10 @@ def guess_factor(
 ) -> NDArray[np.int64]:
     """Guess the factor for adaptive time stepping.
 
-    The factor is used to split a single time step into `factor` steps of size `dt/factor` prior to convergence consideration, to allow the system to more naturally converge without geometric blowouts.
+    The factor is used to split a single  into `factor` steps of size `dt/factor` prior to convergence consideration, to allow the system to more naturally converge without geometric blowouts.
 
-    The factor is calculated based on the `scale * (v * dt) / r`, i.e. the ratio of the movement distance scale in a single time step and the current radius, scaled by some factor.
-    This gives large factors for orbits where the radius is likely to change rapidly, and thus the acceleration will be sensitive to the time step and require many iterations to converge.
+    The factor is calculated based on the `scale * (v * dt) / r`, i.e. the ratio of the movement distance scale in a single  and the current radius, scaled by some factor.
+    This gives large factors for orbits where the radius is likely to change rapidly, and thus the acceleration will be sensitive to the  and require many iterations to converge.
     To simplify the calculation, the factor is rounded to give full divisors (to allow using simple for loops over all the steps without needing "partial" steps).
 
     If `base` is provided, the factor is further grouped into powers by taking a log10 and rounding up (i.e. the number of decimal digits required + 1), and then returning `base` to the power of that value.
@@ -656,7 +656,7 @@ def guess_factor(
         vx: The first perpendicular component (to the radial direction) of the velocity.
         vy: The second perpendicular component (to the radial direction) of the velocity.
         vr: The radial velocity.
-        dt: Time step.
+        dt: Time-step.
         scale: The scaling factor parameter, controls the spacing of the factors between different inputs (see explanation above). If `mean`, instead set `factor` to be `(r/v)/(r/v).mean()`.
         rounding: When performing the np.ceil operation, first divide by `rounding` and then multiply by it after the rounding. This changes the rounding from rounding to the nearest full integer to rounding to the nearest multiple of `rounding`.
         base: The base factor for scaling. If `None` return the base factor as is, otherwise must be an integer and the returned factor will be `base**np.ceil(np.log10(factor))`.
@@ -715,7 +715,7 @@ def step(
         vr: The radial velocity of the particles.
         m: The mass of the particles.
         M: The mass cdf (`M(<=r)`) of the particles at the start of the step. Used only if `M_grid` is empty.
-        dt: Time step.
+        dt: Time-step.
         max_minirounds: Maximum number of mini-rounds to perform.
         r_convergence_threshold: Convergence threshold for position.
         vr_convergence_threshold: Convergence threshold for radial velocity.

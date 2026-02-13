@@ -16,7 +16,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import rng, plot, report, physics, units, agama_wrappers
+from src import rng, plot, units, report, physics, agama_wrappers
 from src.types import FloatOrArray, ParticleType, QuantitySpline, QuantityInterpolate
 from src.utils import utils
 
@@ -406,9 +406,7 @@ class Distribution:
 
     def scatter_time_scale(self, sigma: Quantity[units.cross_section]) -> Quantity['time']:
         """Time scale between scatter events"""
-        return 1 / np.sqrt((4 * np.pi * constants.G * self.r_s**2 * self.rho_s**3 * sigma**2)).decompose(
-            units.system
-        )
+        return 1 / np.sqrt((4 * np.pi * constants.G * self.r_s**2 * self.rho_s**3 * sigma**2)).decompose(units.system)
 
     def to_agama_potential(
         self, type: str | None = None, gamma: int | None = None, beta: int | None = None, **kwargs: Any
@@ -456,9 +454,7 @@ class Distribution:
         ]
         return self.to_scale(cast(Quantity, r_prime)).value
 
-    def tc0(
-        self, C: float = 0.9, sigma: Quantity[units.cross_section] = Quantity(50, 'cm^2/g')
-    ) -> Quantity['time']:
+    def tc0(self, C: float = 0.9, sigma: Quantity[units.cross_section] = Quantity(50, 'cm^2/g')) -> Quantity['time']:
         """Base estimation for the core collapse time"""
         return (
             150 / C * 1 / (sigma * self.rho_s) * 1 / np.sqrt(4 * np.pi * constants.G * self.rho_s * self.r_s**2)
@@ -1102,7 +1098,7 @@ class Distribution:
     ]:
         """Samples particles from the distribution. Wraps the sample method and returns additional particle properties.
 
-        If the backend is 'agama', the prefered (and default) sampling method is 'distribution' which is the agama backend's native sampling method. Otherwise, the prefered (and default) is 'phase space'.
+        If the backend is 'agama', the preferred (and default) sampling method is 'distribution' which is the agama backend's native sampling method. Otherwise, the preferred (and default) is 'phase space'.
 
         Parameters:
             n_particles: Number of particles to sample.

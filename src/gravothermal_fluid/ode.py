@@ -237,7 +237,7 @@ class GravothermalFluid:
 
     @property  # @cached_property
     def dt(self) -> float:
-        """Calculate the size of the time step `dt` that conforms with the CFL condition."""
+        """Calculate the size of the time-step `dt` that conforms with the CFL condition."""
         return min(
             self.base_dt,
             self.CFL
@@ -245,7 +245,7 @@ class GravothermalFluid:
         )
 
     def transfer_heat(self) -> float:
-        """Transfer heat in the system. Returns the time step used (to account for the CFL condition)."""
+        """Transfer heat in the system. Returns the time-step used (to account for the CFL condition)."""
         dt = self.dt.copy()
         heat = -self.luminosity_gradient * dt
         self.internal_energy += heat

@@ -226,5 +226,5 @@ class Snapshot:
         elif undersample_snapshots is not None:
             if isinstance(undersample_snapshots, int):
                 return current_index % undersample_snapshots != 0
-            return current_time % undersample_snapshots != 0  # TODO - fix
+            return current_time % undersample_snapshots != 0  # to-do - fix
         return False

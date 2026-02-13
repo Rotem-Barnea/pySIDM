@@ -9,7 +9,7 @@ class RelaxationParams(TypedDict):
     """Parameter dictionary for the HSE relaxation.
 
     Attributes:
-        relaxation_dt_factor: The relaxation time step, as a multiplicant factor of the heat transfer time step `dt`.
+        relaxation_dt_factor: The relaxation time-step, as a multiplicant factor of the heat transfer time-step `dt`.
         max_relaxation_iterations: The maximum number of iterations attempts to make when relaxing the system.
         relaxation_threshold: The threshold for early stopping the iterations, compared with the maximum relative change in shell position before and after the current iteration.
         relaxation_core_fraction: The fraction of shells to consider for early quiting the relaxation, i.e. only consider the inner-most `relaxation_core_fraction`% of them when compared with `relaxation_threshold`.

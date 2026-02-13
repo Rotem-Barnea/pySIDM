@@ -31,7 +31,7 @@ if TYPE_CHECKING:
 
 from src.utils import utils
 
-from . import types, physics, units
+from . import types, units, physics
 from .tqdm import tqdm
 
 Scale = Literal['linear', 'log', 'guess']
@@ -108,7 +108,7 @@ def setup(
         minorticks: Whether to add the grid for the minor ticks.
         xscale: The scale of the x-axis. Superseded by `ax_set['xscale']` if provided.
         yscale: The scale of the y-axis. Superseded by `ax_set['yscale']` if provided.
-        ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g `{'xscale': 'log'}`.
+        ax_set: Additional keyword arguments to pass to `Axes.set()`. e.g. `{'xscale': 'log'}`.
         x_axis_percent_formatter: Format the x-axis as a percentage and pass the arguments to the formatter (`matplotlib.ticker.PercentFormatter(**x_axis_percent_formatter)`). If `None` ignores.
         y_axis_percent_formatter: Format the y-axis as a percentage and pass the arguments to the formatter (`matplotlib.ticker.PercentFormatter(**y_axis_percent_formatter)`). If `None` ignores.
         title: The title of the plot.
@@ -177,7 +177,7 @@ def update_units(
     x_unit: UnitLike | Literal['ignore'] | None = 'ignore',
     y_unit: UnitLike | Literal['ignore'] | None = 'ignore',
 ) -> Axes:
-    """Update the units of a plot"""
+    """Update the units of a plot."""
     if x_unit != 'ignore':
         xlabel = utils.replace_label_unit(ax.get_xlabel(), x_unit)
         if xlabel is not None:
@@ -297,15 +297,6 @@ def format_ax_ticks(
             lab.set_rotation(0)
             lab.set_horizontalalignment('center')
     return ax
-
-
-# class cbar_kwargs(TypedDict, total=False):
-#     label: str | None
-#     label_autosuffix: bool
-#     format: str | None
-#     log_numticks: int | None
-#     unit: UnitLike
-#     grid_row_normalization: Literal['max', 'sum', 'integral'] | float | None
 
 
 def format_cbar(
@@ -563,9 +554,7 @@ def heatmap(
         plot_method = 'imshow' if xscale == 'linear' and yscale == 'linear' else 'pcolormesh'
 
     if plot_method == 'imshow':
-        im = ax.imshow(
-            grid.decompose(units.system).value, origin='lower', aspect='auto', extent=extent_value, **kwargs
-        )
+        im = ax.imshow(grid.decompose(units.system).value, origin='lower', aspect='auto', extent=extent_value, **kwargs)
     else:
         assert x_range is not None and y_range is not None, (
             "x_range and y_range must be provided for `plot_method='pcolormesh'`"
@@ -652,9 +641,9 @@ def density(
         yscale: The scale of the y-axis.
         minorticks: Whether to add the grid for the minor ticks.
         label: label to add to the plot legend.
-        cleanup_nonpositive: drop non-positive values from the plot, to avoid "pits" in the log plot.
+        cleanup_nonpositive: drop negative values from the plot, to avoid "pits" in the log plot.
         smooth_sigma: sigma for smoothing the density distribution.
-        add_J: Multiply the density by the spherical jacobian (4*pi*r^2).
+        add_J: Multiply the density by the spherical jacobian (4*pi*radius^2).
         save_kwargs: Keyword arguments to pass to `save()`. Must include `save_path`. If `None` ignores saving.
         line_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
         kwargs: Additional keyword arguments to pass to `setup()`.
@@ -1047,7 +1036,10 @@ def save_images(
     Returns:
         None.
     """
+    save_path = Path(save_path)
     Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    if save_path.suffix == '':
+        save_path = save_path.with_suffix('.gif')
     images[0].save(save_path, save_all=True, append_images=images[1:], duration=duration, loop=loop, **kwargs)
 
 
@@ -1065,7 +1057,10 @@ def save(fig: Figure, save_path: str | Path | None = None, bbox_inches: str = 't
     """
     if save_path is None:
         return
-    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    save_path = Path(save_path)
+    save_path.parent.mkdir(parents=True, exist_ok=True)
+    if save_path.suffix == '':
+        save_path = save_path.with_suffix('.png')
     fig.savefig(save_path, bbox_inches=bbox_inches, **kwargs)
 
 
@@ -1178,7 +1173,7 @@ def animate_xy_presentation(snapshots: table.QTable, distribution: 'Distribution
     def g_(
         data: Any, x_bins: Quantity, y_bins: Quantity
     ) -> tuple[Quantity, tuple[Quantity, Quantity, Quantity, Quantity], Quantity, Quantity]:
-        x, y = utils.split_2d(data['r'], acos=False)
+        x, y = utils.split_2d(data['r'], arccos=False)
         grid, extent = aggregate_2d_data(
             table.QTable({'x': x, 'y': y}),
             x_key='x',

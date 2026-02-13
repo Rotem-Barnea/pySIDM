@@ -18,7 +18,7 @@ from astropy.units.typing import UnitLike
 
 from src.utils import utils
 
-from . import rng, plot, physics, units
+from . import rng, plot, units, physics
 from .tqdm import tqdm
 from .types import ParticleType
 from .distribution import Distribution, PhysicalProperty
@@ -131,8 +131,8 @@ class PhaseSpace:
 
         Parameters:
             distribution: The base distribution for the particles. Defines metadata and doesn't need to be exact.
-            data: The particles' data. If provided prefered over `r`, `vx`, `vy`, `vr`, and `m`. If provided as a `DataFrame`, assumes the default units, otherwise (`QTable`) draws directly from the table.
-            snapshots: The particles' data snapshots. If provided prefered over `data`. The latest time will be treated as "current", and other time snapshots will be saved to `mass_grids`.
+            data: The particles' data. If provided preferred over `r`, `vx`, `vy`, `vr`, and `m`. If provided as a `DataFrame`, assumes the default units, otherwise (`QTable`) draws directly from the table.
+            snapshots: The particles' data snapshots. If provided preferred over `data`. The latest time will be treated as "current", and other time snapshots will be saved to `mass_grids`.
             r: The particles' position. Mandatory if `data=None`, otherwise ignored.
             vx: The particles' first perpendicular component (to the radial direction) of the velocity. Mandatory if `data=None`, otherwise ignored.
             vy: The particles' second perpendicular component (to the radial direction) of the velocity. Mandatory if `data=None`, otherwise ignored.
@@ -238,9 +238,7 @@ class PhaseSpace:
     @property
     def grid(self) -> Quantity:
         """Grid of the distribution function with the Jacobian included"""
-        return (self.jacobian_rv * self.f_grid).to(
-            units.f_unit * units.length**2 * units.velocity**2 * units.mass
-        )
+        return (self.jacobian_rv * self.f_grid).to(units.f_unit * units.length**2 * units.velocity**2 * units.mass)
 
     @grid.setter
     def grid(self, grid: Quantity) -> None:
@@ -261,10 +259,6 @@ class PhaseSpace:
             )(r_m.value),
             M.unit,
         )
-
-        # https://galaxiesbook.org/chapters/I-01.-Gravitation_3-Circular-velocity-and-dynamical-time.html
-        # $ T = sqrt((3 pi)/(G dot expval(rho))) = sqrt((3 pi)/(G dot (M(<r_m))/(4/3 pi r_m^3))) = 2 pi sqrt(r^3/(G dot M)) $
-        # Should it have the factor of 2*pi at the start? the paper drops it.
         return def_unit(
             'dynamical_time',
             2 * np.pi * np.sqrt(r_m**3 / (constants.G * M_m)).decompose(units.system),
@@ -272,7 +266,7 @@ class PhaseSpace:
         )
 
     def to_f_grid(self, mass_grid: Quantity['mass']) -> Quantity[units.f_unit]:
-        """calculate the f grid from the provided mass grid"""
+        """calculate the distribution function grid from the provided mass grid"""
         return (mass_grid / (self.jacobian_rv * self.volume_element)).decompose(units.system)
 
     def integrate(
@@ -284,9 +278,9 @@ class PhaseSpace:
         """Integrate the grid over the provided axis.
 
         Parameters:
-            integrand: The integrand to integrate over the grid. Either `integrand` or `full_grid` must be provided. Will perform: `integral (integrand)*f*J dV`
+            integrand: The integrand to integrate over the grid. Either `integrand` or `full_grid` must be provided. Will perform: `integral (integrand) * df * J dV`
             full_grid: Same as `integrand` but assumes the distribution function (df) is already contained in the input, i.e. calculating `integral (full_grid)*J dV`. Either `integrand` or `full_grid` must be provided, and `full_grid` takes priority.
-            axis: The axis to integrate over. `r` gives `G(v) = integral g(r,v)*4*pi*r^2 dr`, `v` gives `G(r) = integral g(r,v)*4*pi*r^2 v^2 dv`, and `rv` gives `G = integral g(r,v)*8*pi^2*r^2*v^2 drdv`
+            axis: The axis to integrate over. `r` gives `G(v) = integral g(r, v)*4*pi*r^2 dr`, `v` gives `G(r) = integral g(r, v)*4*pi*r^2 v^2 dv`, and `rv` gives `G = integral g(r, v)*8*pi^2*r^2*v^2 drdv`
         """
         assert integrand is not None or full_grid is not None, 'Either `integrand` or `full_grid` must be provided'
         if full_grid is not None:
@@ -365,7 +359,7 @@ class PhaseSpace:
         return self.calculate_entropy(self.mass_grid)
 
     def fill_time_unit(self, unit: UnitLike) -> UnitLike:
-        """If the `unit` is `dynamical_time` return `self.dynamical_time`. Otherwise return `unit`."""
+        """If the `unit` is `dynamical_time` return `self.dynamical_time`. Otherwise, return `unit`."""
         if unit == 'dynamical_time' or unit == 'dynamical time':
             return self.dynamical_time
         return unit
@@ -403,7 +397,7 @@ class PhaseSpace:
         return list(zip(self.mass_grids[indices], self.grids_time[indices]))
 
     def match_1d_index(self, value: Quantity, axis: Literal['r', 'v']) -> NDArray[np.int64]:
-        """Match the value's index in the coordinate array (find it's position on the grid in that axis)"""
+        """Match the value's index in the coordinate array (find its position on the grid in that axis)"""
         array = self.r_array if axis == 'r' else self.v_array
         return (np.searchsorted(array, value, side='right') - 1).clip(min=0, max=len(array) - 2)
 
@@ -488,7 +482,7 @@ class PhaseSpace:
         self, n_particles: int | float, generator: np.random.Generator | None = None, velocity_d3: bool = True
     ) -> tuple[Quantity['length'], Quantity['velocity']]:
         """Samples a fixed number of particles from the phase space weighted by their probability (normalized phase space mass distribution):
-            - The mass distribution grid is normalized to sum to 1, each pixel is sampled weighted by it's value.
+            - The mass distribution grid is normalized to sum to 1, each pixel is sampled weighted by its value.
             - The sampled indices are jittered to provide a uniform random value from within the sampled pixel.
             - Depending on `velocity_d3`, the sampled velocities are split into 3d coordinates.
 
@@ -555,7 +549,7 @@ class PhaseSpace:
             vr: The radial velocities of the sampled particles.
             m: The masses of the sampled particles.
             M: The cumulative masses enclosed by the radii of the sampled particles.
-            max_minirounds: Maximum number of mini-rounds to perform.
+            max_minirounds: Maximum number of minirounds to perform.
             raise_warning: Raise a warning if a particle fails to converge.
             kwargs: Additional keyword arguments to pass to the leapfrog step function.
 
@@ -637,7 +631,6 @@ class PhaseSpace:
                 raise ValueError('Either `n_steps`, `t`, or `until_t` must be specified')
 
         for _ in tqdm(range(n_steps), start_time=self.time.copy(), dt=self.dt):
-            # mini_scattering(r_grid=r_grid,v_grid=v_grid,mass_grid=mass_grid,dr=dr,dv=dv,dt=dt,k=k)
             self.gravitational_step(**gravitational_step_kwargs)
             self.time += self.dt
             if self.is_save_round():

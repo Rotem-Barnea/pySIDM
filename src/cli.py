@@ -187,11 +187,11 @@ for i, default_distribution in enumerate(default_distributions):
 ##Simulation parameters
 #######################
 
-parser.add_argument('--dt', metavar='-dt', help='Time step for the simulation', default=1e-3, type=float)
+parser.add_argument('--dt', metavar='-dt', help='Time-step for the simulation', default=1e-3, type=float)
 parser.add_argument(
     '--dt_unit',
     metavar='-dt_u',
-    help="Units for the time step provided, defaults to the first distribution's dynamical time. Must be acceptable by astropy.units or 'dynamical_time'",
+    help="Units for the time-step provided, defaults to the first distribution's dynamical time. Must be acceptable by astropy.units or 'dynamical_time'",
     type=partial(parse_unit, whitelist=['dynamical_time'], required_physical_type='time'),
 )
 parser.add_argument(
@@ -389,13 +389,13 @@ parser.add_argument(
 parser.add_argument(
     '--sidm_max_allowed_scatters',
     metavar='-sidm_max_scatters',
-    help='Maximum number of allowed scatter events per particle per `dt` time step',
+    help='Maximum number of allowed scatter events per particle per `dt` time-step',
     type=int,
 )
 parser.add_argument(
     '--sidm_kappa',
     metavar='-sidm_k',
-    help='The maximum allowed scattering probability per particle in the `dt` time step. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time step `dt/N` to lower the rate in each round to match `kappa`',
+    help='The maximum allowed scattering probability per particle in the `dt` time-step. Particles with a higher scattering rate (due to high density mostly) will instead perform `N` scattering rounds over a time-step `dt/N` to lower the rate in each round to match `kappa`',
     type=float,
 )
 parser.add_argument(
