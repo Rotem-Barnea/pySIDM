@@ -52,7 +52,7 @@ class HaloAnimator:
         """A list of tables containing the particle states at each saved time.
 
         Parameters:
-            drop_last: Whether to drop the last time step.
+            drop_last: Whether to drop the last timestep.
             *args: Arguments passed on to `Halo.get_particle_states()`.
             **kwargs: Keyword arguments passed on to `Halo.get_particle_states()`.
 
@@ -80,7 +80,7 @@ class HaloAnimator:
             plot_fn: Plotting function, Must receive the data from `self.states_iterator` (individual groups), and return (fig, ax).
             include_start: Whether to include the initial state.
             include_now: Whether to include the current state.
-            drop_last: Whether to drop the last time step.
+            drop_last: Whether to drop the last timestep.
             image_kwargs: Additional keyword arguments for transforming the frames to images (`plot.to_images()`).
             save_kwargs: Additional keyword arguments to pass to `save()`. Must include `save_path`.
             kwargs: Additional keyword arguments passed to the plotting function `plot_fn()`.
@@ -100,7 +100,7 @@ class HaloAnimator:
 
         Parameters:
             particle_type: The particle type to calculate the fraction distribution for.
-            drop_last: Whether to drop the last time step.
+            drop_last: Whether to drop the last timestep.
             kwargs: Additional keyword arguments passed to the animating function `self.animate()` and from there to the plotting function `halo.plot.enclosed_mass_ratio()`.
         """
         self.animate(
@@ -113,7 +113,7 @@ class HaloAnimator:
         """Animate the local local density profile as a function of the radius.
 
         Parameters:
-            drop_last: Whether to drop the last time step.
+            drop_last: Whether to drop the last timestep.
             kwargs: Additional keyword arguments passed to the animating function `self.animate()` and from there to the plotting function `halo.plot.local_density()`.
         """
         self.animate(
