@@ -57,7 +57,7 @@ class HaloAnimator:
             **kwargs: Keyword arguments passed on to `Halo.get_particle_states()`.
 
         Returns:
-            A list of Qtables.
+            A list of QTables.
         """
         data = cast(list[table.QTable], list(self.halo.get_particle_states(*args, **kwargs).group_by('time').groups))
         if drop_last:
