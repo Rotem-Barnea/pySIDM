@@ -1284,15 +1284,6 @@ class Halo:
     ##Plots
     #####################
 
-    def save_plot(self, fig: Figure, save_kwargs: dict[str, Any] | None = None, **kwargs: Any) -> None:
-        # DEPRECATE
-        """Saves the plot."""
-        if save_kwargs is None:
-            return
-        if 'name' in save_kwargs:
-            save_kwargs['save_path'] = self.results_path / save_kwargs.pop('name')
-        plot.save(fig=fig, **save_kwargs)
-
     def fill_time_unit(self, unit: TimeUnitLike) -> UnitLike:
         # DEPRECATE
         """If `unit` is a halo-related time parameter return its unit, otherwise return `unit`."""
@@ -1421,154 +1412,6 @@ class Halo:
             **kwargs,
         )
 
-    def add_automatic_guidelines(
-        self,
-        manual_times: Quantity['time'] = Quantity([], 'Myr'),
-        manual_labels: list[str] = [],
-        time_unit: TimeUnitLike = 'Gyr',
-    ) -> tuple[Quantity['time'], list[str]]:
-        """Automatically pull max core and collapse times for use in plotting."""
-        time_unit = self.fill_time_unit(time_unit)
-        times = []
-        labels = []
-        for t, label in zip(
-            [Quantity(0, time_unit), self.max_core_time(), self.core_collapse_start_time(), self.time],
-            ['start', 'max core', 'core collapse (start)', 'core collapse (deep)'],
-        ):
-            if t == np.inf:
-                break
-            times += [t.to(time_unit)]
-            labels += [label]
-        output = pd.DataFrame(
-            {'time': np.hstack([manual_times.to(time_unit), *times]), 'label': manual_labels + labels}
-        )
-        times, labels = output.drop_duplicates().sort_values('time').to_numpy().T
-        return Quantity(times, time_unit), labels.tolist()
-
-    def plot_distribution(
-        self,
-        key: str,
-        data: table.QTable,
-        filter_particle_type: ParticleType | None = None,
-        cumulative: bool = False,
-        absolute: bool = False,
-        title: str | None = None,
-        xlabel: str | None = None,
-        x_range: Quantity | None = None,
-        x_plot_range: Quantity | None = None,
-        stat: str = 'density',
-        plot_type: Literal['hist', 'kde'] = 'hist',
-        x_unit: UnitLike | None = None,
-        ylabel: str | None = None,
-        label: str | None = None,
-        fig: Figure | None = None,
-        ax: Axes | None = None,
-        plt_kwargs: dict[str, Any] = {},
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the distribution of a given key in the data.
-
-        Parameters:
-            key: The key to plot.
-            data: The data to plot.
-            filter_particle_type: Whether to filter to only plot the specified particle type.
-            cumulative: Whether to plot the cumulative distribution.
-            absolute: Whether to plot the absolute values.
-            title: The title of the plot.
-            xlabel: The label for the x-axis.
-            x_range: The radius range to clip the data to. If `None` ignores.
-            x_plot_range: The range to plot on the x-axis. If `None` uses the data range.
-            stat: The type of statistic to plot. Gets passed to `sns.histplot()`. Only used if `plot_type` is `hist`.
-            plot_type: The type of plot to create.
-            x_unit: The x-axis units to use in the plot.
-            ylabel: The label for the y-axis.
-            label: The label for the histogram (legend).
-            fig: The figure to plot on.
-            ax: The axes to plot on.
-            plt_kwargs: Additional keyword arguments to pass to the sns plotting function (`sns.histplot()` or `sns.kdeplot()`).
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to `plot.setup()`.
-
-        Returns:
-            fig, ax.
-        """
-        x_unit = plot.default_unit_type(key, x_unit)
-        if filter_particle_type is not None:
-            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
-        x = data[key].to(x_unit)
-        if x_range is not None:
-            x = x[(x > x_range[0]) * (x < x_range[1])]
-        if absolute:
-            x = np.abs(x)
-        params = {
-            **plot.default_plot_text(key, x_unit=x_unit),
-            **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel),
-        }
-        fig, ax = plot.setup(fig, ax, **params, **kwargs)
-        if plot_type == 'kde':
-            sns.kdeplot(x, cumulative=cumulative, ax=ax, label=label, **plt_kwargs)
-        else:
-            sns.histplot(x, cumulative=cumulative, ax=ax, stat=stat, label=label, **plt_kwargs)
-        if x_plot_range is not None:
-            ax.set_xlim(*x_plot_range.to(x_unit).value)
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
-    def plot_r_distribution(
-        self,
-        data: table.QTable,
-        cumulative: bool = False,
-        add_density: int | None = 0,
-        x_unit: UnitLike = 'kpc',
-        x_range: Quantity | None = None,
-        hist_label: str | None = None,
-        density_label: str | None = None,
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the radial distribution of the halo. Wraps `plot_distribution()` with additional options.
-
-        Parameters:
-            data: The data to plot.
-            cumulative: Whether to plot the cumulative distribution.
-            add_density: Density distribution to plot on top of the plot (index from the distributions list). If `None` ignores.
-            x_unit: The units to plot the x-axis in.
-            x_range: The range of the x-axis.
-            hist_label: The label for the histogram (legend).
-            density_label: The label for the density distribution (legend).
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to `plot.setup()`.
-
-        Returns:
-            fig, ax.
-        """
-        fig, ax = self.plot_distribution(
-            key='r',
-            data=data,
-            cumulative=cumulative,
-            x_unit=x_unit,
-            x_range=x_range,
-            label=hist_label,
-            **kwargs,
-        )
-        if add_density is not None:
-            params: dict[str, Any] = (
-                {'r_start': cast(Quantity, x_range[0]), 'r_end': cast(Quantity, x_range[1])}
-                if x_range is not None
-                else {}
-            )
-            fig, ax = self.distributions[add_density].plot_radius_distribution(
-                cumulative=cumulative,
-                length_unit=x_unit,
-                fig=fig,
-                ax=ax,
-                label=density_label,
-                **params,
-            )
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
     def plot_particle_evolution(
         self,
         include_start: bool = True,
@@ -1632,7 +1475,7 @@ class Halo:
             cmap=cmap,
             **kwargs,
         )
-        self.save_plot(fig=fig, **kwargs)
+        self.plot.save(fig=fig, **kwargs)
         return fig, ax
 
     def plot_temperature_evolution(
@@ -1701,7 +1544,7 @@ class Halo:
             cmap=cmap,
             **kwargs,
         )
-        self.save_plot(fig=fig, **kwargs)
+        self.plot.save(fig=fig, **kwargs)
         return fig, ax
 
     def plot_heat_flux_evolution(
@@ -1776,7 +1619,7 @@ class Halo:
             setup_kwargs=setup_kwargs,
             **kwargs,
         )
-        self.save_plot(fig=fig, **kwargs)
+        self.plot.save(fig=fig, **kwargs)
         return fig, ax
 
     def plot_scattering_location_evolution(
@@ -1886,7 +1729,7 @@ class Halo:
             setup_kwargs=setup_kwargs,
             **kwargs,
         )
-        self.save_plot(fig=fig, **kwargs)
+        self.plot.save(fig=fig, **kwargs)
         return fig, ax
 
     def plot_scattering_location(
@@ -1934,46 +1777,7 @@ class Halo:
             ax=ax,
             log=True,
         )
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
-    def plot_scattering_distance(
-        self,
-        title: str | None = 'Interaction distance distribution',
-        xlabel: str | None = 'Interaction distance',
-        length_unit: UnitLike = 'pc',
-        log_scale: bool = True,
-        stat: str = 'density',
-        fig: Figure | None = None,
-        ax: Axes | None = None,
-        setup_kwargs: dict[str, Any] = {},
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the histogram of the distance between scattering particles during interaction.
-
-        Flattens all the events (ignores time), and tracks the location of the particles at each scattering event.
-
-        Parameters:
-            title: Title for the plot.
-            xlabel: Label for the x-axis.
-            length_unit: Units to use for the radius axis.
-            log_scale: Whether to use a logarithmic scale for the histogram.
-            stat: Statistical function to use for the histogram, must be a valid input for `sns.histplot`.
-            fig: Figure to use for the plot.
-            ax: Axes to use for the plot.
-            setup_kwargs: Additional keyword arguments to pass to `plot.setup()`.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments passed to `sns.histplot`.
-
-        Returns:
-            fig, ax.
-
-        """
-        fig, ax = plot.setup(fig, ax, **utils.drop_None(title=title, xlabel=xlabel, x_unit=length_unit), **setup_kwargs)
-        radius = np.diff(np.hstack(self.scatter_track_radius).reshape(-1, 2)).ravel().to(length_unit)
-        sns.histplot(radius, log_scale=log_scale, stat=stat, ax=ax, **kwargs)
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
+        self.plot.save(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_scattering_density(
@@ -2041,7 +1845,7 @@ class Halo:
             y_unit=density_unit,
         )
         sns.lineplot(x=r_bins, y=smoothed_density, ax=ax)
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
+        self.plot.save(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_scattering_amount_distribution(
@@ -2102,7 +1906,7 @@ class Halo:
                     **plot.pretty_ax_text(x=bin_center, y=height + 0.01, verticalalignment='bottom'),
                 )
 
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
+        self.plot.save(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
 
     def plot_scatter_rounds_over_time(
@@ -2177,295 +1981,5 @@ class Halo:
             or (underestimations and label_underestimations is not None)
         ):
             ax.legend()
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
-    def plot_distributions_density(
-        self,
-        markers_on_first_only: bool = False,
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the density profile (`rho`) of each of the provided distributions in the halo.
-
-        Parameters:
-            markers_on_first_only: If `True` only plot markers (`r_s` and `r_vir`) for the first density.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments are passed to every call to the plotting function.
-
-        Returns:
-            fig, ax.
-        """
-        fig, ax = None, None
-        for i, distribution in enumerate(self.distributions):
-            fig, ax = distribution.plot_density(
-                label=f'{distribution.label} ({distribution.title})',
-                fig=fig,
-                ax=ax,
-                add_markers=(i == 0 or not markers_on_first_only),
-                **kwargs,
-            )
-        assert fig is not None and ax is not None
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
-
-    def plot_scatter_distribution_at_time(
-        self,
-        time: Quantity,
-        data: table.QTable | None = None,
-        include_start: bool = True,
-        include_now: bool = False,
-        no_scatter_value: float = 0,
-        only_past_scatters: bool = True,
-        x_bins: Quantity = Quantity(np.geomspace(1e-3, 1e3, 100), 'kpc'),
-        scatter_bins: Quantity = Quantity(np.geomspace(1, 6000, 100), ''),
-        x_key: str = 'r',
-        x_unit: UnitLike = 'kpc',
-        cmap: str = 'jet',
-        cbar_log_scale: bool = True,
-        transparent_value: float | None = 0,
-        xlabel: str | None = 'Radius',
-        ylabel: str | None = 'Number of scattering events',
-        title: str | None = 'Distribution by number of scattering events at {time}',
-        title_suffix: str | None = None,
-        cbar_label: str | None = 'Number of particles',
-        time_unit: TimeUnitLike = 'Gyr',
-        time_format: str = '.1f',
-        xscale: plot.Scale = 'log',
-        yscale: plot.Scale = 'log',
-        plot_method: Literal['imshow', 'pcolormesh'] = 'pcolormesh',
-        fig: Figure | None = None,
-        ax: Axes | None = None,
-        aggregate_kwargs: dict[str, Any] = {},
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """
-        Plot the number of scattering events as a function of a tracked property at the closest snapshot to the specified time.
-
-        Parameters:
-            time: The time to slice the snapshots (nearest).
-            data: The data to plot. If `None` the data will be loaded from the halo snapshots.
-            include_start: Whether to include the initial particle distribution in the data. Ignored if `data` is provided.
-            include_now: Whether to include the current particle distribution in the data. Ignored if `data` is provided.
-            no_scatter_value: Value to use for particles with no scattering events.
-            only_past_scatters: Whether to only include past scattering events, or any event this particle will be a part of.
-            x_bins: Bins for the x-axis.
-            scatter_bins: Bins for the scatter axis.
-            x_key: The key to use for the x-axis.
-            x_unit: The units for the x-column in the data.
-            cmap: The colormap to use for the plot.
-            cbar_log_scale: Whether to plot the cbar in a log scale.
-            transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
-            xlabel: The label for the x-axis.
-            ylabel: The label for the y-axis.
-            title: The title of the plot.
-            cbar_label: Label for the colorbar.
-            time_unit: The time units to use in the plot's title.
-            time_format: Format string for time to use in the plot's title.
-            xscale: The scale for the x-axis.
-            yscale: The scale for the y-axis.
-            plot_method: Method to use for plotting.
-            fig: Figure to plot on.
-            ax: Axes to plot on.
-            aggregate_kwargs: Additional keyword arguments to pass to the aggregation function (`plot.aggregate_2d_data()`).
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
-
-        Returns:
-            fig, ax.
-        """
-        time_unit = self.fill_time_unit(time_unit)
-        if data is None:
-            data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
-            data = utils.slice_closest(utils.slice_closest(data, value=time), value='dm', key='particle_type')
-
-        if title is not None:
-            title = title.format(time=time.to(time_unit).to_string(format='latex', formatter=time_format))
-
-        if title_suffix is not None and title is not None:
-            title += f' ({title_suffix})'
-
-        index_track = (
-            list(self.scatter_track_index)[: np.argmin(self.scatter_times < time)]
-            if only_past_scatters
-            else self.scatter_track_index
-        )
-        if len(index_track) == 0:
-            data['n_scatters'] = Quantity(np.full(len(data), no_scatter_value))
-        else:
-            sub = pd.merge(
-                data.to_pandas(),
-                pd.DataFrame(
-                    np.vstack(np.unique(np.hstack(index_track), return_counts=True)).T,
-                    columns=['particle_index', 'n_scatters'],
-                ),
-                on='particle_index',
-                how='left',
-            )
-            sub['n_scatters'] = sub['n_scatters'].fillna(no_scatter_value)
-            data['n_scatters'] = Quantity(sub['n_scatters'])
-
-        fig, ax = plot.heatmap(
-            *plot.aggregate_2d_data(
-                data, x_key=x_key, y_key='n_scatters', x_bins=x_bins, y_bins=scatter_bins, **aggregate_kwargs
-            ),
-            plot_method=plot_method,
-            x_range=x_bins,
-            y_range=scatter_bins,
-            cmap=cmap,
-            x_unit=x_unit,
-            y_unit='',
-            log_scale=cbar_log_scale,
-            transparent_value=transparent_value,
-            xlabel=xlabel,
-            ylabel=ylabel,
-            title=title,
-            cbar_label=cbar_label,
-            xscale=xscale,
-            yscale=yscale,
-            **kwargs,
-        )
-        self.save_plot(fig=fig, **kwargs)
-        return fig, ax
-
-    def plot_scatter_distribution_at_time_animation(
-        self,
-        include_start: bool = False,
-        include_now: bool = False,
-        save_kwargs: dict[str, Any] = {},
-        **kwargs: Any,
-    ) -> None:
-        """
-        Plot the number of scattering events as a function of a tracked property at the closest snapshot to the specified time.
-
-        Parameters:
-            include_start: Whether to include the initial particle distribution in the data.
-            include_now: Whether to include the current particle distribution in the data.
-            save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
-            kwargs: Additional keyword arguments to pass to the plot function for each frame (`self.plot_scatter_distribution_at_time()`).
-
-        Returns:
-            fig, ax.
-        """
-        plot.save_images(
-            plot.to_images(
-                iterator=[
-                    t
-                    for t in np.unique(
-                        cast(Quantity, self.get_particle_states(initial=include_start, now=include_now)['time'])
-                    )
-                    if t <= self.scatter_track_time[-1]
-                ],
-                plot_fn=lambda x: self.plot_scatter_distribution_at_time(time=x, **kwargs),
-            ),
-            **save_kwargs,
-        )
-
-    def plot_mean_scattering_distance_over_time(
-        self,
-        bin_edges: Quantity['time'] = Quantity(np.linspace(0, 13.5, 20), 'Gyr'),
-        length_unit: UnitLike = 'pc',
-        time_unit: TimeUnitLike = 'Gyr',
-        xlabel: str | None = 'Time',
-        ylabel: str | None = 'Interaction distance',
-        title: str | None = 'Mean interaction distance over time',
-        accuracy_factor: int = 3,
-        plot_guidelines: dict[str, Any] | None = {
-            'times': Quantity([[0, 1], [12.5, 13]], 'Gyr'),
-            'labels': ['core\nexpanding', 'core\ncollapse'],
-        },
-        texts: list[dict[str, Any]] | None = None,
-        vlines: list[dict[str, Any]] | None = None,
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the mean and median interaction distance over time.
-
-        Parameters:
-            bin_edges: The edges of the time bins.
-            length_unit: Units to use for distance.
-            time_unit: Units to use for time.
-            xlabel: Label for the x-axis.
-            ylabel: Label for the y-axis.
-            title: The title of the plot.
-            accuracy_factor: The width of the error range (in units of standard deviations),
-            plot_guidelines: A dictionary of guidelines for plotting, with keys `times` and `labels`. Where `times` is an array of time Quantities shaped (n_guidelines, 2), and `labels` is a list of strings of length n_guidelines that will be plotted at the center of each guideline tuple (row).
-            texts: Overwrites the autogenerated text bubbles from `plot_guidelines`. If provided must be a list of dictionaries valid for `ax.text()`.
-            vlines: Overwrites the autogenerated vertical lines from `plot_guidelines`. If provided must be a list of dictionaries valid for `ax.axvline()`.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments passed to `plot.setup()`.
-
-        Returns:
-            fig, ax.
-        """
-        time_unit = self.fill_time_unit(time_unit)
-        time_array = self.scatter_times
-        values = []
-        time_bins = []
-        for time_range in tqdm(list(zip(bin_edges[:-1], bin_edges[1:]))):
-            mask = (time_array >= time_range[0]) * (time_array <= time_range[1])
-            if not mask.any():
-                continue
-            start, end = np.arange(len(mask))[mask][[0, -1]]
-            values += [
-                np.diff(np.hstack(list(self.scatter_track_radius)[start:end]).reshape(-1, 2)).ravel().to(length_unit)
-            ]
-            time_bins += [Quantity(time_range).mean()]
-
-        time_bins = Quantity(time_bins)
-        distance_mean = Quantity([v.mean() for v in values])
-        distance_median = Quantity([np.median(v) for v in values])
-        distance_std = Quantity([v.std() for v in values])
-        bin_count = np.array([len(v) for v in values])
-        distance_accuracy = accuracy_factor * distance_std / np.sqrt(bin_count)
-
-        if plot_guidelines is None:
-            vlines = [{}]
-            texts = [{}]
-        else:
-            if texts is None:
-                texts = [
-                    plot.pretty_ax_text(**cast(dict[str, Any], t))
-                    for t in pd.DataFrame(
-                        {
-                            's': plot_guidelines['labels'],
-                            'x': plot_guidelines['times'].to(time_unit).mean(1).value,
-                            'y': [0.07] * 2,
-                            'horizontalalignment': ['center'] * 2,
-                            'verticalalignment': ['bottom'] * 2,
-                        }
-                    ).to_dict('records')
-                ]
-            if vlines is None:
-                vlines = [
-                    {'x': t, 'color': 'red', 'linestyle': '--', 'linewidth': 0.5}
-                    for t in plot_guidelines['times'].to(time_unit).ravel().value
-                ]
-
-        fig, ax = plot.setup(
-            **utils.drop_None(
-                xlabel=xlabel,
-                ylabel=ylabel,
-                title=title,
-            ),
-            x_unit=time_unit,
-            y_unit=length_unit,
-            vlines=vlines,
-            texts=texts,
-            **kwargs,
-        )
-        sns.lineplot(x=time_bins.value, y=distance_mean.value, ax=ax, label='Mean')
-        ax.fill_between(
-            time_bins.value,
-            (distance_mean - distance_accuracy).value,
-            (distance_mean + distance_accuracy).value,
-            alpha=0.2,
-        )
-        sns.lineplot(x=time_bins.value, y=distance_median.value, ax=ax, label='Median')
-        ax.fill_between(
-            time_bins.value,
-            (distance_median - distance_accuracy).value,
-            (distance_median + distance_accuracy).value,
-            alpha=0.2,
-        )
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
+        self.plot.save(fig=fig, save_kwargs=save_kwargs)
         return fig, ax

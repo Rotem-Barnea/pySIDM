@@ -475,3 +475,40 @@ class HaloPlotter:
         )
         self.save(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
+
+    def scattering_distance(
+        self,
+        title: str | None = 'Interaction distance distribution',
+        xlabel: str | None = 'Interaction distance',
+        length_unit: UnitLike = 'pc',
+        log_scale: bool = True,
+        stat: str = 'density',
+        histplot_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] | None = None,
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the histogram of the distance between scattering particles during interaction.
+
+        Flattens all the events (ignores time), and tracks the location of the particles at each scattering event.
+
+        Parameters:
+            title: Title for the plot.
+            xlabel: Label for the x-axis.
+            length_unit: Units to use for the radius axis.
+            log_scale: Whether to use a logarithmic scale for the histogram.
+            stat: Statistical function to use for the histogram, must be a valid input for `sns.histplot`.
+            fig: Figure to use for the plot.
+            ax: Axes to use for the plot.
+            histplot_kwargs: Additional keyword arguments passed to `sns.histplot()`.
+            save_kwargs: Keyword arguments to pass to `self.save()`. Must include `save_path`. If `None` ignores saving.
+            kwargs: Additional keyword arguments to pass to `plot.setup()`.
+
+        Returns:
+            fig, ax.
+
+        """
+        fig, ax = plot.setup(title=title, xlabel=xlabel, x_unit=length_unit, **kwargs)
+        radius = np.diff(np.hstack(self.halo.scatter_track_radius).reshape(-1, 2)).ravel().to(length_unit)
+        sns.histplot(radius, log_scale=log_scale, stat=stat, ax=ax, **histplot_kwargs)
+        self.save(fig=fig, save_kwargs=save_kwargs)
+        return fig, ax
