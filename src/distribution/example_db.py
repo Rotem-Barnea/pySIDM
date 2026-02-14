@@ -3,13 +3,17 @@
 See `https://local-volume-database.readthedocs.io/en/latest/index.html` for reference.
 """
 
+from __future__ import annotations
+
 import warnings
-from typing import TYPE_CHECKING, Any, Literal, TypedDict
+from typing import TYPE_CHECKING, Any, TypedDict
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from astropy.units import Quantity
+
+from src import types
 
 if TYPE_CHECKING:
     from .bundle import PhysicalExample
@@ -35,8 +39,8 @@ def load_db(path: str | Path | None = None):
 
 
 def get_db_parameters(
-    name: 'PhysicalExample',
-    on_unknown: Literal['error', 'warning', 'suppress'] = 'suppress',
+    name: PhysicalExample,
+    on_unknown: types.ErrorHandle = 'suppress',
     default: ExampleParameters | None = None,
     **kwargs: Any,
 ) -> ExampleParameters:

@@ -1,5 +1,7 @@
 """Wrapper for the tqdm module with time-tracking capabilities"""
 
+from __future__ import annotations
+
 import os
 from typing import TYPE_CHECKING, Any, Generic, cast
 from collections.abc import Iterable, Iterator

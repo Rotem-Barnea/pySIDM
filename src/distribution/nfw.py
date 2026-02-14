@@ -1,5 +1,7 @@
 """NFW profile distribution class"""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any, Self, Literal
 from functools import partial
 
@@ -9,14 +11,11 @@ from numba import njit
 from astropy import cosmology
 from astropy.units import Quantity
 
-from src import units, agama_wrappers
-from src.types import FloatOrArray
-
-from . import example_db
-from .distribution import Distribution
+from src import types, units, agama_wrappers
 
 if TYPE_CHECKING:
     from .bundle import PhysicalExample
+from .distribution import Distribution
 
 
 class NFW(Distribution):
@@ -38,13 +37,13 @@ class NFW(Distribution):
     @staticmethod
     @njit
     def calculate_density(
-        r: FloatOrArray,
+        r: types.FloatOrArray,
         rho_s: float = 1,
         r_s: float = 1,
         r_vir: float = 1,
         truncate_power: int = 4,
         truncate: bool = True,
-    ) -> FloatOrArray:
+    ) -> types.FloatOrArray:
         """Calculate the density (`rho`) at a given radius.
 
         This method is meant to be overwritten by subclasses. The function gets called by njit parallelized functions and must be njit compatible.
@@ -142,12 +141,11 @@ class NFW(Distribution):
 
     @classmethod
     def from_example(
-        cls,
-        name: 'PhysicalExample' = 'default',
-        c: float | Literal['From mass'] | None = None,
-        **kwargs: Any,
+        cls, name: PhysicalExample = 'default', c: float | Literal['From mass'] | None = None, **kwargs: Any
     ) -> Self:
         """Create an NFW distribution from a predefined list of examples matching real galaxies."""
+        from . import example_db
+
         if name == 'Sague-1':  # Numbers taken from arXiv:0809.2781
             return cls(
                 total_mass=Quantity(4.5e5, 'Msun'),

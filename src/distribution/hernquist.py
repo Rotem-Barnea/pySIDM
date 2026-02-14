@@ -1,19 +1,18 @@
 """Hernquist profile distribution class"""
 
-from typing import TYPE_CHECKING, Any, Self, Literal
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, Self
 
 import numpy as np
 from numba import njit
 from astropy.units import Quantity
 
-from src import agama_wrappers
-from src.types import FloatOrArray
-
-from . import example_db
-from .distribution import Distribution
+from src import types, agama_wrappers
 
 if TYPE_CHECKING:
     from .bundle import PhysicalExample
+from .distribution import Distribution
 
 
 class Hernquist(Distribution):
@@ -35,13 +34,13 @@ class Hernquist(Distribution):
     @staticmethod
     @njit
     def calculate_density(
-        r: FloatOrArray,
+        r: types.FloatOrArray,
         rho_s: float = 1,
         r_s: float = 1,
         r_vir: float = 1,
         truncate_power: int = 4,
         truncate: bool = False,
-    ) -> FloatOrArray:
+    ) -> types.FloatOrArray:
         """Calculate the density (`rho`) at a given radius.
 
         This method is meant to be overwritten by subclasses. The function gets called by njit parallelized functions and must be njit compatible.
@@ -71,11 +70,13 @@ class Hernquist(Distribution):
     @classmethod
     def from_example(
         cls,
-        name: 'PhysicalExample' = 'default',
-        on_unknown: Literal['error', 'warning', 'suppress'] = 'suppress',
+        name: PhysicalExample = 'default',
+        on_unknown: types.ErrorHandle = 'suppress',
         **kwargs: Any,
     ) -> Self:
         """Create a Hernquist distribution from a predefined list of examples matching real galaxies."""
+        from . import example_db
+
         if name == 'Sague-1':
             return cls(
                 r_half_light=Quantity(30, 'pc'),  # doi:10.1111/j.1365-2966.2009.15287.x

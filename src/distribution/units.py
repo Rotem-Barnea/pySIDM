@@ -1,5 +1,7 @@
 """Internal module for managing distribution-derived units"""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, Any
 
 import numpy as np
@@ -15,8 +17,8 @@ if TYPE_CHECKING:
 class DistributionUnits:
     """Unit management for distribution-derived quantities"""
 
-    def __init__(self, distribution: 'Distribution'):
-        self.distribution: 'Distribution' = distribution
+    def __init__(self, distribution: Distribution):
+        self.distribution: Distribution = distribution
 
     @property
     def r_s(self) -> Unit:
@@ -38,9 +40,7 @@ class DistributionUnits:
         """Dynamic time of the profile."""
         return def_unit(
             't_dyn',
-            np.sqrt(self.distribution.r_s**3 / (constants.G * self.distribution.total_mass)).decompose(
-                units.system
-            ),
+            np.sqrt(self.distribution.r_s**3 / (constants.G * self.distribution.total_mass)).decompose(units.system),
             doc=f'{self.distribution.title} dynamic time',
         )
 

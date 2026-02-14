@@ -1,5 +1,7 @@
 """Base distribution class"""
 
+from __future__ import annotations
+
 import warnings
 from typing import TYPE_CHECKING, Any, Literal, Callable, cast
 from pathlib import Path
@@ -20,11 +22,11 @@ from src import rng, plot, units, report, physics, agama_wrappers
 from src.types import FloatOrArray, ParticleType, QuantitySpline, QuantityInterpolate
 from src.utils import utils
 
+if TYPE_CHECKING:
+    from src.phase_space import PhaseSpace
+
 from . import io
 from .units import DistributionUnits
-
-if TYPE_CHECKING:
-    from ..phase_space import PhaseSpace
 
 Backends = Literal['python', 'agama']
 
@@ -1074,7 +1076,7 @@ class Distribution:
             cast(Quantity, np.vstack(utils.split_3d(velocity, generator=generator)).T),
         )
 
-    def phase_space(self, **kwargs: Any) -> 'PhaseSpace':
+    def phase_space(self, **kwargs: Any) -> PhaseSpace:
         """Returns the phase space object matching the distribution."""
         from ..phase_space import PhaseSpace
 

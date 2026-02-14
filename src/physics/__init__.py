@@ -1,7 +1,5 @@
 """Physics calculations"""
 
-from src.utils import utils
-
-from . import sidm, leapfrog, eddington
+from . import sidm, utils, leapfrog, eddington
 
 __all__ = ['utils', 'leapfrog', 'sidm', 'eddington']

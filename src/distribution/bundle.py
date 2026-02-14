@@ -1,6 +1,8 @@
 """Managing setting up physical (real world) examples of galactic halos"""
 
-from typing import TYPE_CHECKING, Any, Self, Literal, cast, get_args
+from __future__ import annotations
+
+from typing import Any, Self, Literal, cast, get_args
 
 import numpy as np
 import regex
@@ -10,10 +12,8 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-if TYPE_CHECKING:
-    from src.plot import Scale
-
 from src import plot, units, report
+from src.plot import Scale
 
 from .nfw import NFW
 from .hernquist import Hernquist
@@ -114,7 +114,7 @@ class Bundle:
         y_unit: UnitLike | None | Literal['auto'] = 'auto',
         xlabel: str | None | Literal['auto'] = 'auto',
         ylabel: str | None | Literal['auto'] = 'auto',
-        xscale: 'Scale' = 'log',
+        xscale: Scale = 'log',
         labels: list[str] | None = None,
         lineplot_kwargs: list[dict[str, Any]] | None = None,
         **kwargs: Any,

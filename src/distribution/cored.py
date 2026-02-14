@@ -5,7 +5,9 @@ Density profile: ρ(r) = ρ₀ / (1 + (r/rc)²)³
 Constant-density core with ρ(r→0) = ρ₀ and asymptotic falloff ρ ∝ r⁻⁶.
 """
 
-from typing import TYPE_CHECKING, Any, Self
+from __future__ import annotations
+
+from typing import Any, Self
 
 from numba import njit
 from astropy.units import Quantity
@@ -13,10 +15,8 @@ from astropy.units import Quantity
 from src import agama_wrappers
 from src.types import FloatOrArray
 
+from .bundle import PhysicalExample
 from .distribution import Distribution
-
-if TYPE_CHECKING:
-    from .bundle import PhysicalExample
 
 
 class Cored(Distribution):
@@ -91,7 +91,7 @@ class Cored(Distribution):
         return super().to_agama_potential(type=type, gamma=gamma, beta=beta, **kwargs)
 
     @classmethod
-    def from_example(cls, name: 'PhysicalExample' = 'default', **kwargs: Any) -> Self:
+    def from_example(cls, name: PhysicalExample = 'default', **kwargs: Any) -> Self:
         """Create a Plummer distribution from a predefined list of examples matching real galaxies."""
         if name == 'Draco':
             return cls(

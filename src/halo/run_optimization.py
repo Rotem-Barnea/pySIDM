@@ -1,5 +1,7 @@
 """Manage the optimizations made  mid-run, such as time-step (`dt`) optimization and early quitting on core collapse"""
 
+from __future__ import annotations
+
 import time
 from typing import TYPE_CHECKING, Any, Literal
 
@@ -19,7 +21,7 @@ if TYPE_CHECKING:
 
 
 def optimize_dt(
-    halo: 'Halo',
+    halo: Halo,
     max_factor: int = 20,
     min_factor: int = 1,
     factor_steps: int = 30,

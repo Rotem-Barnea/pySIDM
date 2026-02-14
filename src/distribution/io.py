@@ -1,14 +1,15 @@
 """IO operations on distribution classes"""
 
+from __future__ import annotations
+
 import pickle
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from pathlib import Path
 
 from src import agama_wrappers
 from src.agama_wrappers import agama
 
-if TYPE_CHECKING:
-    from .distribution import Distribution
+from .distribution import Distribution
 
 
 def save_agama_potential(
@@ -37,7 +38,7 @@ def load_agama_potential(path: str | Path, stem: str) -> agama_wrappers.Potentia
     return None
 
 
-def save_distribution(path: str | Path, stem: str, distribution: 'Distribution', **kwargs: Any):
+def save_distribution(path: str | Path, stem: str, distribution: Distribution, **kwargs: Any):
     """Save a distribution to a file."""
     agama_potential = distribution.agama_potential
     if agama_potential is not None:
@@ -53,7 +54,7 @@ def save_distribution(path: str | Path, stem: str, distribution: 'Distribution',
     distribution.agama_total_potential = agama_total_potential
 
 
-def load_distribution(path: str | Path, stem: str) -> 'Distribution':
+def load_distribution(path: str | Path, stem: str) -> Distribution:
     """Save a distribution to a file."""
     with open(Path(path) / f'{stem}.pkl', 'rb') as f:
         distribution = pickle.load(f)

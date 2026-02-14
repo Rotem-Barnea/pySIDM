@@ -1,5 +1,7 @@
 """Internal module for plotting halo data"""
 
+from __future__ import annotations
+
 from copy import deepcopy
 from typing import TYPE_CHECKING, Any, Literal, cast
 
@@ -7,6 +9,7 @@ import numpy as np
 import scipy
 import seaborn as sns
 from astropy import table
+from numpy.typing import NDArray
 from astropy.units import Quantity
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
@@ -22,8 +25,8 @@ if TYPE_CHECKING:
 class HaloPlotter:
     """Class for plotting halo data."""
 
-    def __init__(self, halo: 'Halo'):
-        self.halo: 'Halo' = halo
+    def __init__(self, halo: Halo):
+        self.halo: Halo = halo
 
     @property
     def results_path(self):
@@ -49,7 +52,7 @@ class HaloPlotter:
         save_kwargs = deepcopy(save_kwargs)
         if 'name' in save_kwargs:
             save_kwargs['save_path'] = self.results_path / save_kwargs.pop('name')
-        plot.save(fig=fig, **save_kwargs)
+        plot.save(fig=fig, **save_kwargs, **kwargs)
 
     def enclosed_mass_ratio(
         self,
@@ -139,27 +142,6 @@ class HaloPlotter:
             )
         self.save(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
-
-    def animate_enclosed_mass_ratio(
-        self,
-        particle_type: types.ParticleType,
-        save_kwargs: dict[str, Any] = {},
-        **kwargs: Any,
-    ) -> None:
-        """Animate the fraction of the enclosed mass that is contributed by the specified particle type, as a function of the radius, over time.
-
-        Parameters:
-            particle_type: The particle type to calculate the fraction distribution for.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`.
-            kwargs: Additional keyword arguments passed to the plotting function `self.enclosed_mass_ratio()`.
-        """
-        plot.save_images(
-            plot.to_images(
-                iterator=list(self.get_particle_states().group_by('time').groups)[:-1],
-                plot_fn=lambda x: self.plot_enclosed_mass_ratio(data=x, particle_type=particle_type, **kwargs),
-            ),
-            **save_kwargs,
-        )
 
     def core_density(
         self,
@@ -403,4 +385,93 @@ class HaloPlotter:
         )
         sns.lineplot(x=t[:-1].value, y=scatters[:-1].value, ax=ax, **lineplot_kwargs)
         self.save_plot(fig=fig, save_kwargs=save_kwargs)
+        return fig, ax
+
+    def phase_space(
+        self,
+        data: table.QTable,
+        filter_particle_type: types.ParticleType | None = None,
+        mask: NDArray[np.bool_] | None = None,
+        filter_indices: NDArray[np.int64] | list[int] | None = None,
+        x_bins: Quantity['length'] = Quantity(np.linspace(1e-2, 35, 200), 'kpc'),
+        y_bins: Quantity['velocity'] = Quantity(np.linspace(0, 60, 200), 'km/second'),
+        x_key: str = 'r',
+        y_key: str = 'v_norm',
+        x_adjust_bins_edges_to_data: bool = False,
+        y_adjust_bins_edges_to_data: bool = False,
+        cmap: str = 'jet',
+        transparent_value: float | None = 0,
+        xlabel: str | None = 'Radius',
+        ylabel: str | None = 'Velocity',
+        x_unit: UnitLike = 'kpc',
+        y_unit: UnitLike = 'km/second',
+        adjust_data_to_EL: bool = False,
+        setup_kwargs: dict[str, Any] = {},
+        save_kwargs: dict[str, Any] = {},
+        **kwargs: Any,
+    ) -> tuple[Figure, Axes]:
+        """Plot the phase space distribution of the data.
+
+        Parameters:
+            data: The data to plot.
+            filter_particle_type: Whether to filter to only plot the specified particle type.
+            filter_indices: Keep only the specified indices in `data` (based on the `particle_index` column).
+            mask: Any additional mask to apply to the data. Must match the shape of the `data` (pre any other filtration).
+            x_bins: The bins for the x-axis (mainly - radius). Also used to define the range to consider.
+            y_bins: The bins for the y-axis (mainly - velocity). Also used to define the range to consider.
+            x_adjust_bins_edges_to_data: Overwrite `x_bins` edges to match the data range.
+            y_adjust_bins_edges_to_data: Overwrite `y_bins` edges to match the data range.
+            x_key: The key for the x-axis in `data` (mainly - radius).
+            y_key: The key for the y-axis in `data` (mainly - velocity).
+            cmap: The colormap to use for the plot.
+            transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
+            xlabel: The label of the x-axis.
+            ylabel: The label of the y-axis.
+            x_unit: Units to use for the x-axis.
+            y_unit: Units to use for the y-axis.
+            adjust_data_to_EL: Adds a specific angular momentum column to the data (`data['L'] = data['r'] * data['vp']`) and transforms the energy to specific energy.
+            setup_kwargs: Additional keyword arguments to pass to `setup()`.
+            kwargs: Additional keyword arguments to pass to the plot function (`plot.heatmap()`).
+
+        Returns:
+            fig, ax.
+        """
+
+        data = self.halo.preprocess_particle_states(
+            data=data,
+            filter_particle_type=filter_particle_type,
+            mask=mask,
+            filter_indices=filter_indices,
+        )
+
+        if adjust_data_to_EL:
+            data['L'] = data['r'] * cast(Quantity, data['vp'])
+            data['E'] = data['E'] / cast(Quantity, data['m'])
+
+        grid, extent = plot.aggregate_2d_data(
+            data=data,
+            x_key=x_key,
+            y_key=y_key,
+            x_bins=x_bins,
+            y_bins=y_bins,
+            x_adjust_bins_edges_to_data=x_adjust_bins_edges_to_data,
+            y_adjust_bins_edges_to_data=y_adjust_bins_edges_to_data,
+            data_x_unit=x_unit,
+            data_y_unit=y_unit,
+        )
+        fig, ax = plot.heatmap(
+            grid=grid,
+            extent=extent,
+            xlabel=xlabel,
+            ylabel=ylabel,
+            x_unit=x_unit,
+            y_unit=y_unit,
+            x_range=x_bins,
+            y_range=y_bins,
+            cmap=cmap,
+            transparent_value=transparent_value,
+            setup_kwargs=setup_kwargs,
+            **kwargs,
+        )
+        self.save(fig=fig, save_kwargs=save_kwargs)
         return fig, ax

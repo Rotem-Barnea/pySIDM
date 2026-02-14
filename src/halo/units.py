@@ -1,5 +1,7 @@
 """Internal module for managing halo-derived units"""
 
+from __future__ import annotations
+
 from typing import TYPE_CHECKING, cast
 
 from astropy.units import Unit, def_unit
@@ -13,8 +15,8 @@ if TYPE_CHECKING:
 class HaloUnits:
     """Unit management for distribution-derived quantities"""
 
-    def __init__(self, halo: 'Halo'):
-        self.halo: 'Halo' = halo
+    def __init__(self, halo: Halo):
+        self.halo: Halo = halo
 
     @property
     def time_step(self) -> Unit:
