@@ -96,11 +96,11 @@ class Halo:
         Parameters:
             dt: Time-step of the halo. If not a `Quantity`, assumed to be a factor multiplying the dynamical time of the first distribution in `distributions`.
             r: Radius of the halo particles.
-            v: Velocity of the halo particles, of shape `(n_particles, 3)`, `(vx,vy,vr)` with `vx`,`vy` the two perpendicular components of the off-radial plane.
+            v: Velocity of the halo particles, of shape `(n_particles, 3)`, `(vx, vy, vr)` with `vx`,`vy` the two perpendicular components of the off-radial plane.
             m: Mass of the halo particles.
             particle_type: Type of the halo particles. Should comply with ParticleType (i.e. `dm` or `baryon`).
             distribution_id: ID of the relevant distribution that sourced the particles.
-            leapfrog_convergence_rounds: Number of rounds each particle needs to converge the leapfrog integrator. Used to jumpstart the next step for difficult particles.
+            leapfrog_convergence_rounds: Number of rounds each particle needs to converge the leapfrog integrator. Used to jump-start the next step for difficult particles.
             potential_reference: Potential at infinity of the halo. If `None` calculates from the first density.
             distributions: List of distributions of the halo.
             n_interactions: Number of interactions the halo had.
@@ -114,7 +114,7 @@ class Halo:
             steps: number of steps made in the simulation (should match `self.time/self.dt` but left as a sanity check).
             background: Background mass distribution of the halo.
             last_saved_time: Last time a snapshot was saved.
-            save_every_time: How often should a snapshot be saved, in time units.  If not a `Quantity`, assumed to be a factor multiplying the dynamical time of the first distribution in `distributions`.
+            save_every_time: How often should a snapshot be saved, in time units. If not a `Quantity`, assumed to be a factor multiplying the dynamical time of the first distribution in `distributions`.
             save_every_n_steps: How often should a snapshot be saved, in time-step units (integer).
             dynamics_params: Dynamics parameters of the halo, sent to the leapfrog integrator.
             scatter_params: Scatter parameters of the halo, used in the SIDM calculation.
@@ -256,7 +256,7 @@ class Halo:
             n_particles: List of number of particles for each particle type. If a number, use the same given amount for all distributions.
             seed: Seed for the random number generator. Ignore if `generator` is provided.
             generator: If `None` use the default generator from `rng.generator`.
-            sample_kwargs: Additional keyword argumants to pass ot the sampling function.
+            sample_kwargs: Additional keyword arguments to pass to the sampling function.
             join_distributions: If `True`, joining the distributions (`Distribution.merge_distributions`). Use `False` if the distributions already had Eddington inversion calculated elsewhere.
             distribution_as_background: If provided, treat as an index in the `distributions` list, pop it's value and treat it as a static background instead of sampling from it. If `background` is provided as a keyword argument, ignore this feature.
             kwargs: Additional keyword arguments, passed to the constructor.
@@ -305,7 +305,7 @@ class Halo:
 
     @property
     def name(self) -> str | list[str]:
-        """If the halo is made out of a physical example, return it's name"""
+        """If the halo is made out of a physical example, return its name"""
         unique_names = np.unique([distribution.name for distribution in self.distributions])
         if len(unique_names) == 1 and unique_names[0] != '':
             return unique_names[0]
@@ -313,7 +313,7 @@ class Halo:
 
     @property
     def backend(self) -> Backends | list[Backends]:
-        """If the halo is made out of a physical example, return it's name"""
+        """If the halo is made out of a physical example, return its name"""
         unique_backends = np.unique([distribution.backend for distribution in self.distributions])
         if len(unique_backends) == 1 and unique_backends[0] != '':
             return self.distributions[0].backend
@@ -625,9 +625,9 @@ class Halo:
         self._scatter_params = sidm.normalize_params(value)
 
     def cleanup_particles(self, presorted: bool = True) -> None:
-        """Cleanup the particles by dropping nullish values and particles outside the radius.
+        """Clean up the particles by dropping nullish values and particles outside the radius.
 
-        Significantly faster if the dataframe is presorted.
+        Significantly faster if the DataFrame is presorted.
         """
         if self.cleanup_nullish_particles or self.cleanup_particles_by_radius:
             drop_indices = pd.Series(data=np.zeros(len(self._particles), dtype=np.bool_), index=self._particles.index)
@@ -1012,7 +1012,7 @@ class Halo:
 
         Every step:
             - Sort particles by radius.
-            - Cleanup erroneous particles.
+            - Clean up erroneous particles.
             - Save a snapshot if it's time.
             - Perform scattering. This is done before the leapfrog integration since it doesn't modify the particle positions and thus doesn't require resorting.
             - Perform leapfrog integration.
@@ -1094,7 +1094,7 @@ class Halo:
         save_kwargs: types.SaveParams = {},
         optimize_dt_kwargs: types.OptimizeDtParams | None = None,
     ):
-        """Run bootstraping phase if applicable. Only runs gravitational dynamics for the specified number of steps (i.e. no SIDM) to ensure relaxation into a steady state for the initial conditions."""
+        """Run bootstrapping phase if applicable. Only runs gravitational dynamics for the specified number of steps (i.e. no SIDM) to ensure relaxation into a steady state for the initial conditions."""
         if self.steps == 0 and self.bootstrap_steps > 0:
             if optimize_dt_kwargs is not None:
                 self.dt = run_optimization.optimize_dt(self, **optimize_dt_kwargs)
@@ -1224,7 +1224,7 @@ class Halo:
         Parameters:
             path: Save path to load from.
             update_save_path: Whether to update the internal save path to `path` (for example, if the directory was moved after the run).
-            static: Whether to load the simulation with `hard_save=False` as a safeguard, to avoid accidently evolving the simulation on a completed run (that was loaded for analysis).
+            static: Whether to load the simulation with `hard_save=False` as a safeguard, to avoid accidentally evolving the simulation on a completed run (that was loaded for analysis).
             undersample_snapshots: If provided, undersample loading the snapshot tables by the given factor (i.e. load every 10th table, etc.).
             verbose: Whether to print progress information during loading.
 
@@ -1444,80 +1444,6 @@ class Halo:
         )
         times, labels = output.drop_duplicates().sort_values('time').to_numpy().T
         return Quantity(times, time_unit), labels.tolist()
-
-    def plot_r_kde_over_time(
-        self,
-        include_start: bool = True,
-        include_now: bool = False,
-        filter_particle_type: ParticleType | None = None,
-        x_range: Quantity['length'] | None = None,
-        x_clip: Quantity['length'] | None = None,
-        x_unit: UnitLike = 'kpc',
-        time_unit: TimeUnitLike = 'dynamical time',
-        time_format: str = '.1f',
-        title: str | None = 'Density progression over time',
-        xlabel: str | None = 'Radius',
-        indices: list[int] | None = None,
-        color_palette: str | None = None,
-        legend_loc: str | None = 'outside center right',
-        save_kwargs: dict[str, Any] | None = None,
-        **kwargs: Any,
-    ) -> tuple[Figure, Axes]:
-        """Plot the density progression over time.
-
-        Parameters:
-            include_start: Whether to include the initial particle distribution in the plot.
-            include_now: Whether to include the current particle distribution in the plot.
-            filter_particle_type: Whether to filter to only plot the specified particle type.
-            x_range: The radius range to clip the data to (hard slicing the source data prior to plotting). If `None`, ignores.
-            x_clip: The radius range to clip the data to (using the `clip` keyword argument in `sns.kdeplot()`). If `None`, ignores.
-            time_unit: The time units to use in the plot.
-            time_format: Format string for time.
-            title: The title of the plot.
-            xlabel: The label for the x-axis.
-            indices: The snapshot indices to plot. If `None` plots everything.
-            color_palette: The color palette to use for the halos. If `None`, uses the default color palette.
-            legend_loc: The location of the legend. If `None` uses the default location.
-            save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
-            kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
-
-        Returns:
-            fig, ax.
-        """
-
-        data_tables = [] if not include_now else [self.initial_particles]
-        data_tables += [self.snapshots]
-        if include_now:
-            data_tables += [self.particles]
-        data = table.QTable(table.vstack(data_tables))
-        if filter_particle_type is not None:
-            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
-
-        indices = indices if indices is not None else list(range(len(np.unique(np.array(data['time'])))))
-
-        colors = sns.color_palette(color_palette, len(indices)) if color_palette is not None else None
-
-        time_unit = self.fill_time_unit(time_unit)
-        fig, ax = plot.setup(**utils.drop_None(title=title, xlabel=xlabel, u_unit=x_unit), **kwargs)
-        clip = tuple(x_clip.to(x_unit).value) if x_clip is not None else None
-        for i, group in enumerate(data.group_by('time').groups):
-            if i not in indices:
-                continue
-            sub = group['r'].to(x_unit).value
-            if x_range is not None:
-                sub = sub[pd.Series(sub).between(*x_range.to(x_unit).value)]
-            sns.kdeplot(
-                sub,
-                ax=ax,
-                clip=clip,
-                color=colors[indices.index(i)] if colors is not None else None,
-                label=group['time'][0].to(time_unit).to_string(format='latex', formatter=time_format),
-            )
-        if legend_loc:
-            fig.legend(loc=legend_loc)
-
-        self.save_plot(fig=fig, save_kwargs=save_kwargs)
-        return fig, ax
 
     def plot_distribution(
         self,
@@ -2078,7 +2004,7 @@ class Halo:
             time_unit: Units to use for time.
             time_format: Format string for time.
             smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
-            smooth_interpolate_kind: Interpolation kind for the density plot. Applied after the gaussian smoothing to further smooth the plot data.
+            smooth_interpolate_kind: Interpolation kind for the density plot. Applied after the Gaussian smoothing to further smooth the plot data.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
 
@@ -2134,7 +2060,7 @@ class Halo:
         """Plot the distribution of the scattering particles by the number of scatterings (fraction per bin).
 
         Parameters:
-            bins: The bin edges to use for the number of scatterings (the dividers between bins, the start and end will be added automatically).
+            bins: The bin edges to use for the number of scatterings (the dividers between bins - the start and end will be added automatically).
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: Title for the plot.
@@ -2328,7 +2254,7 @@ class Halo:
             x_key: The key to use for the x-axis.
             x_unit: The units for the x-column in the data.
             cmap: The colormap to use for the plot.
-            cbar_log_scale: Wheather to plot the cbar in a log scale.
+            cbar_log_scale: Whether to plot the cbar in a log scale.
             transparent_value: Grid value to turn transparent (i.e. plot as `NaN`). If `None` ignores.
             xlabel: The label for the x-axis.
             ylabel: The label for the y-axis.
@@ -2461,8 +2387,8 @@ class Halo:
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: The title of the plot.
-            accuracy_factor: The width of the plotted error range (in units of standard deviations),
-            plot_guidelines: A dictionary of guidelines for plotting. A dict with keys `times` and `labels`, where `times` is an array of time Quantities shaped (n_guidelines, 2), and `labels` is a list of strings of length n_guidelines that will be plotted at the center of each guideline tuple (row).
+            accuracy_factor: The width of the error range (in units of standard deviations),
+            plot_guidelines: A dictionary of guidelines for plotting, with keys `times` and `labels`. Where `times` is an array of time Quantities shaped (n_guidelines, 2), and `labels` is a list of strings of length n_guidelines that will be plotted at the center of each guideline tuple (row).
             texts: Overwrites the autogenerated text bubbles from `plot_guidelines`. If provided must be a list of dictionaries valid for `ax.text()`.
             vlines: Overwrites the autogenerated vertical lines from `plot_guidelines`. If provided must be a list of dictionaries valid for `ax.axvline()`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
