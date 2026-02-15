@@ -15,6 +15,9 @@ QuantityLike = TypeVar('QuantityLike', Quantity, NDArray[np.float64])
 ParticleType = Literal['dm', 'baryon', 'cdm']
 TimeUnitLike = UnitLike | Literal['time step', 'dynamical time', 'core collapse', 't_c']
 ErrorHandle = Literal['error', 'warning', 'suppress']
+PhysicalProperty = Literal[
+    'density', 'velocity dispersion', 'temperature', 'pressure', 'internal energy', 'enclosed_mass'
+]
 
 T = TypeVar('T')
 

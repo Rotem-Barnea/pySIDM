@@ -16,13 +16,11 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
+from src import rng, plot, types, units, physics
+from src.tqdm import tqdm
 from src.utils import utils
-
-from . import rng, plot, units, physics
-from .tqdm import tqdm
-from .types import ParticleType
-from .distribution import Distribution, PhysicalProperty
-from .physics.leapfrog import FactorGuessKwargs
+from src.distribution import Distribution
+from src.physics.leapfrog import FactorGuessKwargs
 
 
 class PhaseSpace:
@@ -48,7 +46,7 @@ class PhaseSpace:
         scatter_factor: float = 1,
         save_every_t: Quantity['time'] | None = Quantity(1, 'Myr'),
         label: str | None = None,
-        particle_type: ParticleType | None = None,
+        particle_type: types.ParticleType | None = None,
         save_path: Path | str | None = None,
         generator: np.random.Generator | None = None,
         seed: int | None = None,
@@ -106,7 +104,7 @@ class PhaseSpace:
         self.particle_type = particle_type or (self.distribution.particle_type if self.distribution is not None else '')
         self.save_path: Path | None = Path(save_path) if isinstance(save_path, str) else save_path
 
-    def __getitem__(self, y: PhysicalProperty) -> Quantity:
+    def __getitem__(self, y: types.PhysicalProperty) -> Quantity:
         """Get the specified property"""
         return cast(Quantity, getattr(self, y.replace(' ', '_')))
 
@@ -852,7 +850,7 @@ class PhaseSpace:
 
     def plot(
         self,
-        y: PhysicalProperty,
+        y: types.PhysicalProperty,
         smoothing_sigma: float | None = None,
         title: str | None | Literal['auto'] = 'auto',
         xlabel: str | None = 'Radius',

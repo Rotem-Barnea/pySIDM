@@ -30,10 +30,6 @@ from .units import DistributionUnits
 
 Backends = Literal['python', 'agama']
 
-PhysicalProperty = Literal[
-    'density', 'velocity dispersion', 'temperature', 'pressure', 'internal energy', 'enclosed_mass'
-]
-
 
 class Distribution:
     """General mass distribution profile."""

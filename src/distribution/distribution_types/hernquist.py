@@ -11,8 +11,8 @@ from astropy.units import Quantity
 from src import types, agama_wrappers
 
 if TYPE_CHECKING:
-    from .bundle import PhysicalExample
-from .distribution import Distribution
+    from ..bundle import PhysicalExample
+from ..distribution import Distribution
 
 
 class Hernquist(Distribution):

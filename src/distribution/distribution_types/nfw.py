@@ -14,8 +14,8 @@ from astropy.units import Quantity
 from src import types, units, agama_wrappers
 
 if TYPE_CHECKING:
-    from .bundle import PhysicalExample
-from .distribution import Distribution
+    from ..bundle import PhysicalExample
+from ..distribution import Distribution
 
 
 class NFW(Distribution):

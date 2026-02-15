@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Self, Literal, cast, get_args
+from typing import TYPE_CHECKING, Any, Self, Literal, cast, get_args
 
 import numpy as np
 import regex
@@ -12,12 +12,11 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, units, report
+from src import plot, types, units, report
 from src.plot import Scale
 
-from .nfw import NFW
-from .hernquist import Hernquist
-from .distribution import Distribution, PhysicalProperty
+if TYPE_CHECKING:
+    from . import Distribution
 
 PhysicalExample = Literal['Sague-1', 'Draco', 'Fornax dSph', 'default', 'Daneng2024:DM11+baryon']
 BundleOption = Literal['dm_only', 'b_only', None]
@@ -29,6 +28,8 @@ class Bundle:
     def __init__(self, distributions: list[Distribution], merge: bool = False) -> None:
         self.distributions = distributions
         if merge:
+            from . import Distribution
+
             Distribution.merge_distributions(self.distributions)
 
     @classmethod
@@ -62,10 +63,14 @@ class Bundle:
             print('running example', name)
         distributions: list[Distribution] = []
         if suffix == 'dm_only' or suffix is None:
+            from . import NFW
+
             distributions += [
                 NFW.from_example(name, r_min=r_min, r_max=r_max, particle_type='dm', **dm_kwargs, **kwargs)
             ]
         if suffix == 'b_only' or suffix is None:
+            from . import Hernquist
+
             distributions += [
                 Hernquist.from_example(name, r_min=r_min, r_max=r_max, particle_type='baryon', **b_kwargs, **kwargs)
             ]
@@ -109,7 +114,7 @@ class Bundle:
 
     def plot(
         self,
-        property: PhysicalProperty,
+        property: types.PhysicalProperty,
         x_unit: UnitLike | None | Literal['auto'] = 'auto',
         y_unit: UnitLike | None | Literal['auto'] = 'auto',
         xlabel: str | None | Literal['auto'] = 'auto',
@@ -145,7 +150,7 @@ class Bundle:
 
     def plot_with(
         self,
-        property: PhysicalProperty,
+        property: types.PhysicalProperty,
         other: Self,
         labels: list[str] | None = None,
         lineplot_kwargs: list[dict[str, Any]] | None = None,
@@ -197,6 +202,8 @@ class HaloBaryonBundle(Bundle):
             b_kwargs: Keyword arguments for the baryonic distribution.
             **kwargs: Additional keyword arguments passed to both distributions.
         """
+        from . import NFW, Hernquist
+
         return cls(
             dm_distribution=NFW(r_min=r_min, r_max=r_max, particle_type='dm', **dm_kwargs, **kwargs),
             baryon_distribution=Hernquist(r_min=r_min, r_max=r_max, particle_type='baryon', **b_kwargs, **kwargs),
@@ -252,7 +259,7 @@ class HaloBaryonBundle(Bundle):
 
     def plot_pair(
         self,
-        property: PhysicalProperty,
+        property: types.PhysicalProperty,
         dm_label: str = 'DM',
         baryon_label: str = 'Baryons',
         dm_lineplot_kwargs: dict[str, Any] = {},
@@ -269,7 +276,7 @@ class HaloBaryonBundle(Bundle):
 
     def plot_pair_with(
         self,
-        property: PhysicalProperty,
+        property: types.PhysicalProperty,
         other: Bundle,
         other_labels: list[str] | None = None,
         other_lineplot_kwargs: list[dict[str, Any]] | None = None,
@@ -305,6 +312,8 @@ class MixedCSIDM(Bundle):
         merge: bool = True,
         **kwargs: Any,
     ) -> None:
+        from . import NFW
+
         super().__init__(
             distributions=[
                 NFW(

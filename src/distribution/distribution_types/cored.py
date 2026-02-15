@@ -7,7 +7,7 @@ Constant-density core with ρ(r→0) = ρ₀ and asymptotic falloff ρ ∝ r⁻�
 
 from __future__ import annotations
 
-from typing import Any, Self
+from typing import TYPE_CHECKING, Any, Self
 
 from numba import njit
 from astropy.units import Quantity
@@ -15,8 +15,9 @@ from astropy.units import Quantity
 from src import agama_wrappers
 from src.types import FloatOrArray
 
-from .bundle import PhysicalExample
-from .distribution import Distribution
+if TYPE_CHECKING:
+    from ..bundle import PhysicalExample
+from ..distribution import Distribution
 
 
 class Cored(Distribution):

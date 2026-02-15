@@ -17,11 +17,10 @@ from src import plot, types, units
 from src.tqdm import tqdm
 from src.utils import utils
 from src.phase_space import PhaseSpace
-from src.distribution import PhysicalProperty
 
 from .halo import Halo
 
-PlotProperty = PhysicalProperty | Literal['baryon mass ratio']
+PlotProperty = types.PhysicalProperty | Literal['baryon mass ratio']
 
 
 class Halos:
