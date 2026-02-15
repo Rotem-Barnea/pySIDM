@@ -2,7 +2,7 @@
 
 from typing import Literal, TypeVar, TypedDict, cast
 
-from src.utils import utils
+from src import utils
 
 
 class RelaxationParams(TypedDict):
@@ -38,4 +38,4 @@ ParamsType = TypeVar('ParamsType', RelaxationParams, RelaxationParams)
 
 def normalize_params(params: ParamsType | None, params_type: Literal['relaxation'] = 'relaxation') -> ParamsType:
     """Normalize the parameters to set default values for missing attributes."""
-    return cast(type(params), {**default_params[params_type], **utils.handle_default(params, {})})
+    return cast(type(params), {**default_params[params_type], **utils.clean.default(params, {})})

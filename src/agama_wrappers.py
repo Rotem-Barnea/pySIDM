@@ -8,9 +8,7 @@ import numpy as np
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 
-from src import units
-from src.types import QuantityOrArray
-from src.utils import utils
+from src import types, units, utils
 
 T = TypeVar('T')
 
@@ -82,7 +80,7 @@ def mass() -> Unit:
     return agama.getUnits()['mass']
 
 
-def to_3d(x: QuantityOrArray) -> QuantityOrArray:
+def to_3d(x: types.QuantityLike) -> NDArray[np.float64]:
     """Convert a spherical norm value to a 3D vector such that the values are on the x axis.
 
     Parameters:
@@ -197,7 +195,9 @@ class GalaxyModel:
 
         r = cast(Quantity, np.sqrt(x**2 + y**2 + z**2))
         vr = cast(Quantity, (x * vx + y * vy + z * vz) / r)
-        v = cast(Quantity, np.vstack([*utils.split_2d(np.sqrt(vx**2 + vy**2 + vz**2 - vr**2), arccos=False), vr]).T)
+        v = cast(
+            Quantity, np.vstack([*utils.utils.split_2d(np.sqrt(vx**2 + vy**2 + vz**2 - vr**2), arccos=False), vr]).T
+        )
         return r, v, m
 
     @vectorize

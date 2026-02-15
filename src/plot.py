@@ -28,13 +28,11 @@ from matplotlib.collections import QuadMesh
 from numba.misc.coverage_support import Callable
 from matplotlib.backends.backend_agg import FigureCanvasAgg
 
-from src.utils import utils
+from src import types, units, utils
+from src.tqdm import tqdm
 
 if TYPE_CHECKING:
     from src.distribution.distribution import Distribution
-
-from . import types, units, physics
-from .tqdm import tqdm
 
 Scale = Literal['linear', 'log', 'guess']
 
@@ -66,12 +64,12 @@ def pretty_ax_text(
     Returns:
         Keyword arguments for `ax.text`.
     """
-    return utils.drop_None(
+    return utils.utils.drop_None(
         x=x,
         y=y,
         transform=transform,
         verticalalignment=verticalalignment,
-        bbox={**utils.drop_None(boxstyle=bbox_boxstyle, facecolor=bbox_facecolor, alpha=bbox_alpha), **bbox},
+        bbox={**utils.utils.drop_None(boxstyle=bbox_boxstyle, facecolor=bbox_facecolor, alpha=bbox_alpha), **bbox},
         **kwargs,
     )
 
@@ -142,10 +140,10 @@ def setup(
     ax.set(**{'xscale': xscale, 'yscale': yscale, **(ax_set or {})})
     if title is not None:
         ax.set_title(title)
-    xlabel = utils.add_label_unit(xlabel, x_unit)
+    xlabel = utils.units.add_to_label(xlabel, x_unit)
     if xlabel is not None:
         ax.set_xlabel(xlabel)
-    ylabel = utils.add_label_unit(ylabel, y_unit)
+    ylabel = utils.units.add_to_label(ylabel, y_unit)
     if ylabel is not None:
         ax.set_ylabel(ylabel)
     for line in hlines:
@@ -181,11 +179,11 @@ def update_units(
 ) -> Axes:
     """Update the units of a plot."""
     if x_unit != 'ignore':
-        xlabel = utils.replace_label_unit(ax.get_xlabel(), x_unit)
+        xlabel = utils.utils.update_label(ax.get_xlabel(), x_unit)
         if xlabel is not None:
             ax.set_xlabel(xlabel)
     if y_unit != 'ignore':
-        ylabel = utils.replace_label_unit(ax.get_ylabel(), y_unit)
+        ylabel = utils.utils.update_label(ax.get_ylabel(), y_unit)
         if ylabel is not None:
             ax.set_ylabel(ylabel)
     return ax
@@ -216,11 +214,11 @@ def default_plot_text(
         output = {}
     if lower:
         output = {k: v.lower() for k, v in output.items()}
-    output = {**output, **utils.drop_None(xlabel=xlabel, ylabel=ylabel, title=title)}
-    return utils.drop_None(
+    output = {**output, **utils.utils.drop_None(xlabel=xlabel, ylabel=ylabel, title=title)}
+    return utils.utils.drop_None(
         title=output.get('title', None),
-        xlabel=utils.add_label_unit(output.get('xlabel', None), x_unit),
-        ylabel=utils.add_label_unit(output.get('ylabel', None), y_unit),
+        xlabel=utils.units.add_to_label(output.get('xlabel', None), x_unit),
+        ylabel=utils.units.add_to_label(output.get('ylabel', None), y_unit),
     )
 
 
@@ -341,7 +339,7 @@ def format_cbar(
         elif grid_row_normalization == 'integral':
             cbar_label = f'{cbar_label} density per unit length'
 
-    cbar_label = utils.add_label_unit(cbar_label, cbar_unit)
+    cbar_label = utils.units.add_to_label(cbar_label, cbar_unit)
     if cbar_label:
         cbar.set_label(cbar_label)
 
@@ -417,7 +415,7 @@ def trace(
             r=particle['r'][0].to(length_unit).to_string(format='latex', formatter=length_format),
         )
     fig, ax = setup(
-        **kwargs, **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel), x_unit=time_unit, y_unit=y_unit
+        **kwargs, **utils.utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel), x_unit=time_unit, y_unit=y_unit
     )
     sns.lineplot(x=x, y=np.array(y), ax=ax, label=label)
     if save_kwargs is not None:
@@ -519,20 +517,20 @@ def heatmap(
 
     if x_range is not None and y_range is not None:
         if xclip:
-            mask = utils.mask_edge_zeros(grid=grid, axis=0)
+            mask = utils.utils.mask_edge_zeros(grid=grid, axis=0)
             grid, x_range = cast(tuple[Quantity, Quantity], (grid[:, mask], x_range[mask]))
         if yclip:
-            mask = utils.mask_edge_zeros(grid=grid, axis=1)
+            mask = utils.utils.mask_edge_zeros(grid=grid, axis=1)
             grid, y_range = cast(tuple[Quantity, Quantity], (grid[mask, :], y_range[mask]))
         extent = cast(
-            tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_range.to(x_unit), y_range.to(y_unit))
+            tuple[Quantity, Quantity, Quantity, Quantity], utils.utils.to_extent(x_range.to(x_unit), y_range.to(y_unit))
         )
-        xscale = utils.guess_scale(x_range) if xscale == 'guess' else xscale
-        yscale = utils.guess_scale(y_range) if yscale == 'guess' else yscale
+        xscale = utils.utils.guess_scale(x_range) if xscale == 'guess' else xscale
+        yscale = utils.utils.guess_scale(y_range) if yscale == 'guess' else yscale
     else:
         assert extent is not None, '`extent` must be provided if `x_range` and `y_range` are not'
-        xscale = utils.guess_scale(Quantity(extent[:2])) if xscale == 'guess' else xscale
-        yscale = utils.guess_scale(Quantity(extent[2:])) if yscale == 'guess' else yscale
+        xscale = utils.utils.guess_scale(Quantity(extent[:2])) if xscale == 'guess' else xscale
+        yscale = utils.utils.guess_scale(Quantity(extent[2:])) if yscale == 'guess' else yscale
     extent_value = (
         float(extent[0].to(x_unit).value),
         float(extent[1].to(x_unit).value),
@@ -603,7 +601,7 @@ def phase_space(
         ylabel='Velocity',
         x_unit=length_unit,
         y_unit=velocity_unit,
-        **utils.drop_None(x_range=r_range, y_range=v_range),
+        **utils.utils.drop_None(x_range=r_range, y_range=v_range),
         **kwargs,
     )
 
@@ -1141,7 +1139,7 @@ def animate_density_presentation(snapshots: table.QTable, distribution: Distribu
         sns.lineplot(
             x=x['r'],
             y=scipy.ndimage.gaussian_filter(
-                physics.utils.local_density(
+                utils.physics.local_density(
                     r=x['r'],
                     m=x['m'],
                     max_radius_j=100,
@@ -1166,7 +1164,7 @@ def animate_xy_presentation(snapshots: table.QTable, distribution: Distribution,
     """Animation of the simulation's "particles" in an x-y plane over time, made for a presentation keynote."""
 
     def g_(data: Any, x_bins: Quantity, y_bins: Quantity) -> tuple[Quantity, tuple[Quantity, Quantity]]:
-        x, y = utils.split_2d(data['r'], arccos=False)
+        x, y = utils.utils.split_2d(data['r'], arccos=False)
         grid, (x_range, y_range) = aggregate_2d_data(
             table.QTable({'x': x, 'y': y}),
             x_key='x',

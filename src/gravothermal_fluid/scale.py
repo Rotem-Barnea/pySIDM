@@ -3,14 +3,16 @@
 from typing import Any, Literal, cast, get_args, overload
 
 import numpy as np
+import pandas as pd
 from astropy import constants
 from numpy.typing import NDArray
 from astropy.units import Unit, Quantity
 from astropy.units.typing import UnitLike
 
 from src import units
-from src.types import QuantityOrArray
 from src.distribution.distribution import Distribution
+
+QuantityOrArray = Quantity | NDArray[np.float64] | pd.Series
 
 ScaleType = Literal[
     'length',

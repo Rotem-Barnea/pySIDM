@@ -16,9 +16,8 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import rng, plot, types, units, physics
+from src import rng, plot, types, units, utils, physics
 from src.tqdm import tqdm
-from src.utils import utils
 from src.distribution import Distribution
 from src.physics.leapfrog import FactorGuessKwargs
 
@@ -64,7 +63,7 @@ class PhaseSpace:
 
         self.r_grid, self.v_grid = cast(tuple[Quantity, Quantity], np.meshgrid(self.r_array, self.v_array))
 
-        self.dr, self.dv = map(utils.diff, [self.r_array, self.v_array])
+        self.dr, self.dv = map(utils.utils.diff, [self.r_array, self.v_array])
         self.dr_grid, self.dv_grid = cast(tuple[Quantity, Quantity], np.meshgrid(self.dr, self.dv))
         self.volume_element = cast(Quantity, self.dv_grid * self.dr_grid)
 
@@ -146,19 +145,19 @@ class PhaseSpace:
             groups = snapshots.group_by('time').groups
             data = groups[-2]
             if isinstance(r_range, int):
-                r = utils.get_columns(snapshots, ['r'])[0]
+                r = utils.utils.get_columns(snapshots, ['r'])[0]
                 r_range = cast(Quantity, np.geomspace(r.min(), r.max(), r_range))
             if isinstance(v_range, int):
-                vx, vy, vr = utils.get_columns(snapshots, ['vx', 'vy', 'vr'])
+                vx, vy, vr = utils.utils.get_columns(snapshots, ['vx', 'vy', 'vr'])
                 v = np.sqrt(vx**2 + vy**2 + vr**2)
                 v_range = cast(Quantity, np.geomspace(v.min(), v.max(), v_range))
         else:
             groups = None
         if data is not None:
             if isinstance(data, table.QTable):
-                r, vx, vy, vr, m = utils.get_columns(data, columns=['r', 'vx', 'vy', 'vr', 'm'])
+                r, vx, vy, vr, m = utils.utils.get_columns(data, columns=['r', 'vx', 'vy', 'vr', 'm'])
                 if 'time' in data.columns:
-                    t = cast(Quantity, utils.get_columns(data, ['time'])[0][0])
+                    t = cast(Quantity, utils.utils.get_columns(data, ['time'])[0][0])
             else:
                 r, vx, vy, vr, m = (
                     Quantity(data['r'], units.length),
@@ -174,20 +173,20 @@ class PhaseSpace:
         assert vy is not None, 'Failed to parse `vy`'
         assert vr is not None, 'Failed to parse `vr`'
         assert m is not None, 'Failed to parse `m`'
-        r, vx, vy, vr, m = utils.unmask_quantity(r, vx, vy, vr, m)
+        r, vx, vy, vr, m = utils.utils.unmask_quantity(r, vx, vy, vr, m)
 
         if isinstance(r_range, int):
             r_range = cast(Quantity, np.geomspace(r.min(), r.max(), r_range))
         if isinstance(v_range, int):
             v = np.sqrt(vx**2 + vy**2 + vr**2)
             v_range = cast(Quantity, np.geomspace(v.min(), v.max(), v_range))
-        ps = cls(distribution, **utils.drop_None(r_range=r_range, v_range=v_range, t=t), **kwargs)
+        ps = cls(distribution, **utils.utils.drop_None(r_range=r_range, v_range=v_range, t=t), **kwargs)
         ps.mass_grid = ps.particles_to_mass_grid(r=r, vx=vx, vy=vy, vr=vr, m=m)
         if groups is not None:
             mass_grids = []
             grids_time = []
             for group in tqdm(groups, desc=f'Creating snapshot grids for {ps.label}', disable=not verbose):
-                r, vx, vy, vr, m, t = utils.get_columns(group, ['r', 'vx', 'vy', 'vr', 'm', 'time'])
+                r, vx, vy, vr, m, t = utils.utils.get_columns(group, ['r', 'vx', 'vy', 'vr', 'm', 'time'])
                 mass_grids += [ps.particles_to_mass_grid(r=r, vx=vx, vy=vy, vr=vr, m=m)]
                 grids_time += [t[0]]
             ps.mass_grids = np.stack(mass_grids)
@@ -469,7 +468,7 @@ class PhaseSpace:
             ).ravel(),
             self.v_array.unit,
         )
-        vx, vy, vr = cast(tuple[Quantity, Quantity, Quantity], utils.split_3d(v_norm))
+        vx, vy, vr = cast(tuple[Quantity, Quantity, Quantity], utils.utils.split_3d(v_norm))
 
         m = cast(Quantity, np.tile(self.mass_grid.ravel()[mask] / N, N))
         M = cast(Quantity, np.tile(np.repeat(self.mass_grid.sum(axis=0).cumsum(), len(self.v_array))[mask], N))
@@ -522,7 +521,7 @@ class PhaseSpace:
             Quantity(v_interp(v_indices), self.v_array.unit),
         )
         if velocity_d3:
-            velocity = utils.split_3d_quantity(velocity, generator=self.generator)
+            velocity = utils.utils.split_3d_quantity(velocity, generator=self.generator)
         return radius, velocity
 
     def particles_gravitational_step(
@@ -755,7 +754,7 @@ class PhaseSpace:
             yscale: The scale of the y-axis.
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
             distribution_kwargs: Additional keyword arguments passed to `distribution.plot_rho()`.
-            smooth_kwargs: Additional keyword arguments passed to `utils.smooth_holes_1d()`.
+            smooth_kwargs: Additional keyword arguments passed to `utils.clean.smooth_holes_1d()`.
             save_kwargs: Additional keyword arguments to pass to `save_plot()`. If `None` ignores saving.
             **kwargs: Additional keyword arguments passed to `plot.setup()` if `plot_distribution` is `False` or to `distribution.plot_rho()` if `plot_distribution` is `True`.
         """
@@ -774,7 +773,7 @@ class PhaseSpace:
 
         x = self.r_array
         y = self.density if mass_grid is None else self.calculate_density(mass_grid)
-        y = utils.smooth_holes_1d(x=x, y=y, include_zero=True, **smooth_kwargs)
+        y = utils.clean.smooth_holes_1d(x=x, y=y, include_zero=True, **smooth_kwargs)
         x, y = x[(y >= 0) * (~np.isnan(y))], y[(y >= 0) * (~np.isnan(y))]
         if smoothing_sigma is not None:
             y = Quantity(scipy.ndimage.gaussian_filter(y.value, smoothing_sigma), y.unit)
@@ -817,7 +816,7 @@ class PhaseSpace:
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
-            smooth_kwargs: Additional keyword arguments passed to `utils.smooth_holes_1d()`.
+            smooth_kwargs: Additional keyword arguments passed to `utils.clean.smooth_holes_1d()`.
             save_kwargs: Keyword arguments to pass to `save_plot()`. If `None` ignores saving.
             **kwargs: Additional keyword arguments passed to `plot.setup()`.
         """
@@ -834,7 +833,7 @@ class PhaseSpace:
 
         x = self.r_array
         y = self.temperature if mass_grid is None else self.calculate_temperature(mass_grid)
-        y = utils.smooth_holes_1d(x=x, y=y, include_zero=True, **smooth_kwargs)
+        y = utils.clean.smooth_holes_1d(x=x, y=y, include_zero=True, **smooth_kwargs)
         x, y = x[(y >= 0) * (~np.isnan(y))], y[(y >= 0) * (~np.isnan(y))]
         if smoothing_sigma is not None:
             y = Quantity(scipy.ndimage.gaussian_filter(y.value, smoothing_sigma), y.unit)
@@ -877,14 +876,14 @@ class PhaseSpace:
             xscale: The scale of the x-axis.
             yscale: The scale of the y-axis.
             lineplot_kwargs: Additional keyword arguments passed to `sns.lineplot()`.
-            smooth_kwargs: Additional keyword arguments passed to `utils.smooth_holes_1d()`.
+            smooth_kwargs: Additional keyword arguments passed to `utils.clean.smooth_holes_1d()`.
             save_kwargs: Keyword arguments to pass to `save_plot()`. If `None` ignores saving.
             **kwargs: Additional keyword arguments passed to `plot.setup()`.
         """
 
         x = self.r_array
         y_values = self[y]
-        y_values = utils.smooth_holes_1d(x=x, y=y_values, include_zero=True, **smooth_kwargs)
+        y_values = utils.clean.smooth_holes_1d(x=x, y=y_values, include_zero=True, **smooth_kwargs)
         x, y_values = map(
             lambda x: cast(Quantity, x),
             (x[(y_values >= 0) * (~np.isnan(y_values))], y_values[(y_values >= 0) * (~np.isnan(y_values))]),
@@ -898,8 +897,8 @@ class PhaseSpace:
             y_unit = str(y_values.unit)
 
         fig, ax = plot.setup(
-            xscale=utils.guess_scale(x) if xscale == 'guess' else xscale,
-            yscale=utils.guess_scale(y_values) if yscale == 'guess' else yscale,
+            xscale=utils.utils.guess_scale(x) if xscale == 'guess' else xscale,
+            yscale=utils.utils.guess_scale(y_values) if yscale == 'guess' else yscale,
             title=y.title() if title == 'auto' else title,
             xlabel=xlabel,
             ylabel=y.title() if ylabel == 'auto' else ylabel,

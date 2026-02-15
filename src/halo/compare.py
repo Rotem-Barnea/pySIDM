@@ -13,9 +13,8 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, types, units
+from src import plot, types, units, utils
 from src.tqdm import tqdm
-from src.utils import utils
 from src.phase_space import PhaseSpace
 
 from .halo import Halo
@@ -55,16 +54,16 @@ class Halos:
         lineplot_kwargs: dict[str, Any] = {},
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
-        r = utils.get_columns(data, ['r'])[0]
+        r = utils.utils.get_columns(data, ['r'])[0]
         if x_unit is None:
             x_unit = str(r.unit)
 
-        enclosed_dm_mass = utils.get_columns(data, ['m'])[0].cumsum()
+        enclosed_dm_mass = utils.utils.get_columns(data, ['m'])[0].cumsum()
         if halo.background is not None and halo.background.distribution is not None:
             enclosed_baryon_mass = halo.background.distribution.enclosed_mass(r)
             ratio = enclosed_baryon_mass / (enclosed_baryon_mass + enclosed_dm_mass)
         else:
-            _data = utils.slice_closest(
+            _data = utils.utils.slice_closest(
                 data=halo.get_particle_states(initial=initial_particles, now=final_particles),
                 value=cast(Quantity, data['time'][0]),
             ).to_pandas()
@@ -154,8 +153,8 @@ class Halos:
                 else:
                     title = f'{filter_particle_type} {y} at time t={time_label}'
 
-            data = utils.slice_closest(
-                data=utils.slice_closest(
+            data = utils.utils.slice_closest(
+                data=utils.utils.slice_closest(
                     data=halo.get_particle_states(initial=initial_particles, now=final_particles), value=_time
                 ),
                 value=filter_particle_type,

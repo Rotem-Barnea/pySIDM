@@ -2,33 +2,18 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 from functools import cached_property
 
+import numpy as np
+import pandas as pd
 from astropy import table
 from astropy.units import Quantity
 
-from src import types
-from src.utils import utils
+from src import types, units, utils
 
 if TYPE_CHECKING:
     from .halo import Halo
-
-ParticleProperty = Literal[
-    'r',
-    'vx',
-    'vy',
-    'vr',
-    'vp',
-    'm',
-    'v_norm',
-    'time',
-    'E',
-    'particle_type',
-    'particle_index',
-    'distribution_id',
-    'leapfrog_convergence_rounds',
-]
 
 
 class HaloParticles(object):
@@ -36,6 +21,16 @@ class HaloParticles(object):
 
     def __init__(self, halo: 'Halo'):
         self.halo = halo
+
+    def invalidate(self, *properties: str):
+        """Invalidates the cache for the specified properties, so they are recalculated."""
+        for property in properties:
+            if property == 'density':
+                continue
+            try:
+                delattr(self, property)
+            except AttributeError:
+                pass
 
     @cached_property
     def snapshots(self) -> table.QTable:
@@ -67,15 +62,14 @@ class HaloParticles(object):
     @cached_property
     def now(self) -> table.QTable:
         """Particle's current state"""
-        return self.groups[-2]
+        return self.particles
 
     def __getitem__(self, key: types.ParticleType | Quantity['time']) -> table.QTable:
         if isinstance(key, str):
-            return utils.slice_closest(self.snapshots, key, 'particle_type')
-        return utils.slice_closest(self.snapshots, key)
+            return utils.utils.slice_closest(self.snapshots, key, 'particle_type')
+        return utils.utils.slice_closest(self.snapshots, key)
 
-    @cached_property
-    def particles(self) -> table.QTable:
+    def to_table(self, data: pd.DataFrame) -> table.QTable:
         """Particle data QTable.
 
         Has the following columns:
@@ -93,22 +87,22 @@ class HaloParticles(object):
             distribution_id: Identifier of the source distribution.
             leapfrog_convergence_rounds: Number of leapfrog convergence rounds in the previous step.
         """
-        self.halo.particles_df.sort_values('r', kind=self.sort_kind, inplace=True)
-        data = table.QTable(
+        data = data.copy().sort_values('r', kind=self.sort_kind)
+        vx, vy, vr = [Quantity(data[key], units.velocity) for key in ['vx', 'vy', 'vr']]
+        return table.QTable(
             {
-                'r': self.halo.r,
-                'vx': self.halo.vx,
-                'vy': self.halo.vy,
-                'vr': self.halo.vr,
-                'vp': self.halo.vp,
-                'm': self.halo.m,
-                'v_norm': self.halo.v_norm,
-                'time': [self.halo.time] * len(self.halo.r),
-                'E': self.halo.E,
-                'particle_type': self.halo.particles_df['particle_type'],
-                'particle_index': self.halo.particles_df.index,
-                'distribution_id': self.halo.particles_df['distribution_id'],
-                'leapfrog_convergence_rounds': self.halo.particles_df['leapfrog_convergence_rounds'],
+                'r': Quantity(data['r'], units.length),
+                'vx': vx,
+                'vy': vy,
+                'vr': vr,
+                'vp': np.sqrt(vx**2 + vy**2),
+                'v_norm': np.sqrt(vx**2 + vy**2 + vr**2),
+                'm': Quantity(data['m'], units.mass),
+                'time': [self.halo.time] * len(data),
+                # 'E': Quantity(data['E'], units.energy),
+                'particle_type': data['particle_type'],
+                'particle_index': data.index,
+                'distribution_id': data['distribution_id'],
+                'leapfrog_convergence_rounds': data['leapfrog_convergence_rounds'],
             }
         )
-        return data

@@ -10,14 +10,29 @@ from astropy.units import Unit, Quantity
 from astropy.units.typing import UnitLike
 
 FloatOrArray = TypeVar('FloatOrArray', float, NDArray[np.float64])
-QuantityOrArray = Quantity | NDArray[np.float64] | pd.Series
-QuantityLike = TypeVar('QuantityLike', Quantity, NDArray[np.float64])
+QuantityLike = TypeVar('QuantityLike', Quantity, NDArray[np.float64], pd.Series)
 ParticleType = Literal['dm', 'baryon', 'cdm']
 TimeUnitLike = UnitLike | Literal['time step', 'dynamical time', 'core collapse', 't_c']
 ErrorHandle = Literal['error', 'warning', 'suppress']
 PhysicalProperty = Literal[
     'density', 'velocity dispersion', 'temperature', 'pressure', 'internal energy', 'enclosed_mass'
 ]
+ParticleProperty = Literal[
+    'r',
+    'vx',
+    'vy',
+    'vr',
+    'vp',
+    'm',
+    'v_norm',
+    'time',
+    'E',
+    'particle_type',
+    'particle_index',
+    'distribution_id',
+    'leapfrog_convergence_rounds',
+]
+
 
 T = TypeVar('T')
 
@@ -35,12 +50,12 @@ class QuantitySpline(scipy.interpolate.UnivariateSpline):
     def __init__(
         self, in_unit: UnitLike | None = None, out_unit: UnitLike | None = None, *args: Any, **kwargs: Any
     ) -> None:
-        from src.utils import utils
+        from src import utils
 
         kwargs = kwargs.copy()
-        in_unit = utils.guess_unit(in_unit, kwargs.get('x', None))
-        out_unit = utils.guess_unit(out_unit, kwargs.get('y', None))
-        super().__init__(*utils.strip_args_units(*args), **utils.strip_kwargs_units(**kwargs))
+        in_unit = utils.units.guess(in_unit, kwargs.get('x', None))
+        out_unit = utils.units.guess(out_unit, kwargs.get('y', None))
+        super().__init__(*utils.units.strip_args(*args), **utils.units.strip_kwargs(**kwargs))
         self.in_unit = Unit(str(in_unit))
         self.out_unit = Unit(str(out_unit))
         self.input_args = args
@@ -71,12 +86,12 @@ class QuantityInterpolate(scipy.interpolate.interp1d):
     def __init__(
         self, in_unit: UnitLike | None = None, out_unit: UnitLike | None = None, *args: Any, **kwargs: Any
     ) -> None:
-        from src.utils import utils
+        from src import utils
 
         kwargs = kwargs.copy()
-        in_unit = utils.guess_unit(in_unit, kwargs.get('x', None))
-        out_unit = utils.guess_unit(out_unit, kwargs.get('y', None))
-        super().__init__(*utils.strip_args_units(*args), **utils.strip_kwargs_units(**kwargs))
+        in_unit = utils.units.guess(in_unit, kwargs.get('x', None))
+        out_unit = utils.units.guess(out_unit, kwargs.get('y', None))
+        super().__init__(*utils.units.strip_args(*args), **utils.units.strip_kwargs(**kwargs))
         self.in_unit = Unit(str(in_unit))
         self.out_unit = Unit(str(out_unit))
         self.input_args = args

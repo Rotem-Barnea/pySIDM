@@ -10,8 +10,7 @@ from astropy import constants
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
-from src import units
-from src.utils import utils
+from src import units, utils
 
 G = constants.G.decompose(units.system).value
 
@@ -66,7 +65,7 @@ def normalize_params(params: Params | None) -> Params:
     Returns:
         Normalized parameters.
     """
-    return Params({**default_params, **cast(Params, utils.handle_default(params, {}))})
+    return Params({**default_params, **cast(Params, utils.clean.default(params, {}))})
 
 
 class FactorGuessKwargs(TypedDict, total=False):

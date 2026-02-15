@@ -24,10 +24,9 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, units, report, physics
+from src import plot, units, utils, report
 from src.tqdm import tqdm
 from src.types import ParticleType, TimeUnitLike
-from src.utils import utils
 from src.physics import sidm, leapfrog
 from src.background import BackgroundDistribution
 from src.phase_space import PhaseSpace
@@ -149,11 +148,11 @@ class Halo:
         self.particles_df.sort_values('r', kind=self.sort_kind, inplace=True)
         self.time: Quantity['time'] = time.to(units.time)
         self.steps: int = int(steps)
-        self.distributions: list[Distribution] = utils.handle_default(distributions, [])
+        self.distributions: list[Distribution] = utils.clean.default(distributions, [])
         self.dt: Quantity['time'] = (dt if isinstance(dt, Quantity) else Quantity(dt, self.units.dynamical_time)).to(
             units.time
         )
-        self.unoptimized_dt: Quantity['time'] = utils.handle_default(unoptimized_dt, self.dt)
+        self.unoptimized_dt: Quantity['time'] = utils.clean.default(unoptimized_dt, self.dt)
         if isinstance(background, Distribution):
             self.background: BackgroundDistribution | None = BackgroundDistribution(distribution=background)
         else:
@@ -161,9 +160,9 @@ class Halo:
         self.potential_reference: Quantity['energy'] = (
             potential_reference
             if potential_reference is not None
-            else physics.utils.poisson_potential(self.r, self.M, self.m)[-1]
+            else utils.physics.poisson_potential(self.r, self.M, self.m)[-1]
         )
-        self.snapshots: table.QTable = utils.handle_default(snapshots, table.QTable())
+        self.snapshots: table.QTable = utils.clean.default(snapshots, table.QTable())
         self.save_every_n_steps = save_every_n_steps
         self.save_every_time: Quantity['time'] | None
         if save_every_time is None:
@@ -174,15 +173,15 @@ class Halo:
             self.save_every_time = Quantity(save_every_time, self.units.dynamical_time).to(units.time)
         self._dynamics_params = leapfrog.normalize_params(cast(leapfrog.Params | None, dynamics_params))
         self._scatter_params = sidm.normalize_params(cast(sidm.Params | None, scatter_params))
-        self.ministep_size: deque[float] = utils.handle_default(ministep_size, deque())
-        self.scatter_track_time: deque[float] = utils.handle_default(scatter_track_time, deque())
-        self.scatter_track_index: deque[NDArray[np.int64]] = utils.handle_default(scatter_track_index, deque())
-        self.scatter_track_radius: deque[NDArray[np.float64]] = utils.handle_default(scatter_track_radius, deque())
+        self.ministep_size: deque[float] = utils.clean.default(ministep_size, deque())
+        self.scatter_track_time: deque[float] = utils.clean.default(scatter_track_time, deque())
+        self.scatter_track_index: deque[NDArray[np.int64]] = utils.clean.default(scatter_track_index, deque())
+        self.scatter_track_radius: deque[NDArray[np.float64]] = utils.clean.default(scatter_track_radius, deque())
         self._initial_particles = self.particles_df.copy()
         self.initial_particles = self.particles.copy()
         self.last_saved_time: Quantity['time'] = last_saved_time
-        self.scatter_rounds: deque[int] = utils.handle_default(scatter_rounds, deque())
-        self.scatter_rounds_underestimated: deque[int] = utils.handle_default(scatter_rounds_underestimated, deque())
+        self.scatter_rounds: deque[int] = utils.clean.default(scatter_rounds, deque())
+        self.scatter_rounds_underestimated: deque[int] = utils.clean.default(scatter_rounds_underestimated, deque())
         self.hard_save: bool = hard_save
         self.save_path: Path | str | None = Path(save_path) if isinstance(save_path, str) else save_path
         self.r_max: Quantity['length'] = r_max.to(units.length)
@@ -195,13 +194,13 @@ class Halo:
         self.cleanup_nullish_particles = cleanup_nullish_particles
         self.cleanup_particles_by_radius = cleanup_particles_by_radius
         self.reached_core_collapse = reached_core_collapse
-        self.runtime_realtime_track: deque[float] = utils.handle_default(runtime_realtime_track, deque())
-        self.runtime_track_sort: deque[float] = utils.handle_default(runtime_track_sort, deque())
-        self.runtime_track_cleanup: deque[float] = utils.handle_default(runtime_track_cleanup, deque())
-        self.runtime_track_sidm: deque[float] = utils.handle_default(runtime_track_sidm, deque())
-        self.runtime_track_leapfrog: deque[float] = utils.handle_default(runtime_track_leapfrog, deque())
-        self.runtime_track_full_step: deque[float] = utils.handle_default(runtime_track_full_step, deque())
-        self.runtime_track_simulation_time: deque[float] = utils.handle_default(runtime_track_simulation_time, deque())
+        self.runtime_realtime_track: deque[float] = utils.clean.default(runtime_realtime_track, deque())
+        self.runtime_track_sort: deque[float] = utils.clean.default(runtime_track_sort, deque())
+        self.runtime_track_cleanup: deque[float] = utils.clean.default(runtime_track_cleanup, deque())
+        self.runtime_track_sidm: deque[float] = utils.clean.default(runtime_track_sidm, deque())
+        self.runtime_track_leapfrog: deque[float] = utils.clean.default(runtime_track_leapfrog, deque())
+        self.runtime_track_full_step: deque[float] = utils.clean.default(runtime_track_full_step, deque())
+        self.runtime_track_simulation_time: deque[float] = utils.clean.default(runtime_track_simulation_time, deque())
         if generator is not None:
             self.rng = generator
             self.seed = generator.bit_generator.seed_seq.entropy
@@ -336,7 +335,7 @@ class Halo:
             'Either `qtable` must be provided, or `r`, `v` and `m` must be'
         )
         if qtable is not None:
-            r, vx, vy, vr, m = utils.get_columns(qtable, columns=['r', 'vx', 'vy', 'vr', 'm'])
+            r, vx, vy, vr, m = utils.utils.get_columns(qtable, columns=['r', 'vx', 'vy', 'vr', 'm'])
             return Halo.to_dataframe(
                 r=r,
                 v=cast(Quantity, np.vstack([vx, vy, vr]).T),
@@ -435,7 +434,7 @@ class Halo:
                 'm': self.m,
                 'v_norm': self.v_norm,
                 'time': [self.time] * len(self.r),
-                'E': self.E,
+                'E': (self.potential - self.internal_energy).to(units.energy),
                 'particle_type': self.particles_df['particle_type'],
                 'particle_index': self.particles_df.index,
                 'distribution_id': self.particles_df['distribution_id'],
@@ -515,7 +514,7 @@ class Halo:
             data_tables += [self.initial_particles]
         data = table.QTable(table.vstack(data_tables))
         if filter_particle_type is not None:
-            data = utils.slice_closest(data=data, value=filter_particle_type, key='particle_type')
+            data = utils.utils.slice_closest(data=data, value=filter_particle_type, key='particle_type')
         return data
 
     def preprocess_particle_states(
@@ -542,19 +541,19 @@ class Halo:
         if mask is not None:
             data = cast(table.QTable, data[mask]).copy()
         if filter_particle_type is not None:
-            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
+            data = utils.utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         if filter_interacting is not None:
             indices = np.unique(np.hstack(self.scatter_track_index))
-            data = utils.filter_indices(data, indices)
+            data = utils.clean.filter_indices(data, indices)
         if filter_indices is not None:
-            data = utils.filter_indices(data, filter_indices)
+            data = utils.clean.filter_indices(data, filter_indices)
         if time is not None:
             if time == 'start':
-                data = utils.slice_closest(data, value=data['time'].min())
+                data = utils.utils.slice_closest(data, value=data['time'].min())
             elif time == 'end':
-                data = utils.slice_closest(data, value=data['time'].max())
+                data = utils.utils.slice_closest(data, value=data['time'].max())
             else:
-                data = utils.slice_closest(data, value=time)
+                data = utils.utils.slice_closest(data, value=time)
         return data
 
     @overload
@@ -717,7 +716,7 @@ class Halo:
     @property
     def M(self) -> Quantity['mass']:
         """The enclosed mass below the particle."""
-        halo_mass = physics.utils.enclosed_mass(r=self.r, m=self.m)
+        halo_mass = utils.physics.enclosed_mass(r=self.r, m=self.m)
         if self.background is not None:
             background_mass = self.background.M_at_time(self.r, self.time)
             return cast(Quantity, halo_mass + background_mass)
@@ -726,12 +725,12 @@ class Halo:
     @property
     def vp(self) -> Quantity['velocity']:
         """The tangential velocity of the particle."""
-        return utils.fast_quantity_norm(cast(Quantity, self.v[:, :2]))
+        return utils.utils.fast_quantity_norm(cast(Quantity, self.v[:, :2]))
 
     @property
     def v_norm(self) -> Quantity['velocity']:
         """The velocity norm of the particle."""
-        return utils.fast_quantity_norm(self.v)
+        return utils.utils.fast_quantity_norm(self.v)
 
     @property
     def m(self) -> Quantity['mass']:
@@ -746,44 +745,17 @@ class Halo:
     @property
     def poisson_potential(self) -> Quantity['energy']:
         """The gravitational potential energy of the particle."""
-        return cast(Quantity, physics.utils.poisson_potential(self.r, self.M, self.m))
+        return utils.physics.poisson_potential(self.r, self.M, self.m)
 
     @property
     def potential(self) -> Quantity['specific energy']:
         """The relative gravitational potential energy of the particle."""
-        return cast(Quantity, physics.utils.potential(self.r, self.M, self.m)).to(units.energy)
-
-    @property
-    def E(self) -> Quantity['specific energy']:
-        """The energy of the particle."""
-        return (self.potential - self.internal_energy).to(units.energy)
+        return utils.physics.potential(self.r, self.M, self.m).to(units.energy)
 
     @property
     def local_density(self) -> Quantity['mass density']:
         """The local mass density around the particle."""
-        return cast(
-            Quantity['mass density'],
-            physics.utils.local_density(
-                self.r,
-                self.m,
-                self.scatter_params['max_radius_j'],
-            ),
-        )
-
-    @property
-    def local_density_by_type(self) -> dict[str, Quantity['mass density']]:
-        """The local mass density around the particle. Split by particle type."""
-        return {
-            particle_type: cast(
-                Quantity['mass density'],
-                physics.utils.local_density(
-                    cast(Quantity, data['r']),
-                    cast(Quantity, data['m']),
-                    self.scatter_params['max_radius_j'],
-                ),
-            )
-            for particle_type, data in self.particles_by_type.items()
-        }
+        return utils.physics.local_density(self.r, self.m, self.scatter_params['max_radius_j'])
 
     @property
     def n_scatters(self) -> NDArray[np.int64]:
@@ -922,7 +894,7 @@ class Halo:
         """
         return run_optimization.core_collapse_core_density_estimate(
             snapshots=self.get_particle_states(),
-            initial_r=utils.get_columns(self.initial_particles_by_type['dm'], ['r'])[0],
+            initial_r=utils.utils.get_columns(self.initial_particles_by_type['dm'], ['r'])[0],
             inner_core_radius=inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
             critical_ratio=critical_ratio if critical_ratio is not None else self.critical_ratio,
         )
@@ -939,8 +911,10 @@ class Halo:
     def core_density_ratio(self, inner_core_radius: Quantity['length'] | None = None) -> float:
         """Calculate the ratio of the core density to the initial density."""
         return run_optimization.core_density_ratio(
-            r=utils.get_columns(self.particles_by_type['dm'], ['r'])[0],
-            initial_r=utils.get_columns(utils.slice_closest(self.initial_particles, 'dm', 'particle_type'), ['r'])[0],
+            r=utils.utils.get_columns(self.particles_by_type['dm'], ['r'])[0],
+            initial_r=utils.utils.get_columns(
+                utils.utils.slice_closest(self.initial_particles, 'dm', 'particle_type'), ['r']
+            )[0],
             inner_core_radius=inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
         )
 
@@ -995,7 +969,7 @@ class Halo:
         return run_optimization.check_early_quit(
             core_collapse_kwargs={
                 'r': self.r,
-                'initial_r': utils.get_columns(self.initial_particles, ['r'])[0],
+                'initial_r': utils.utils.get_columns(self.initial_particles, ['r'])[0],
                 'inner_core_radius': inner_core_radius if inner_core_radius is not None else self.inner_core_radius,
                 'critical_ratio': critical_ratio if critical_ratio is not None else self.critical_ratio,
             }
@@ -1065,7 +1039,7 @@ class Halo:
             )
             self.scatter_track_index += [np.array(self.particles_df[mask].iloc[indices].index, dtype=np.int64)]
             self.scatter_track_time += [self.time.value]
-            self.scatter_track_radius += [self.r[mask][indices]]
+            self.scatter_track_radius += [r[mask][indices]]
             self.scatter_rounds += [scatter_rounds]
             self.scatter_rounds_underestimated += [scatter_rounds_underestimated]
             self.runtime_track_sidm += [time.perf_counter() - t0]
@@ -1241,7 +1215,7 @@ class Halo:
         tables = io.load_tables(path, undersample={'snapshots': undersample_snapshots}, verbose=verbose)
         assert tables['particles'] is not None, 'Particles table is missing'
         particles = tables['particles']
-        r, vx, vy, vr, m = utils.get_columns(particles, columns=['r', 'vx', 'vy', 'vr', 'm'])
+        r, vx, vy, vr, m = utils.utils.get_columns(particles, columns=['r', 'vx', 'vy', 'vr', 'm'])
         output = cls(
             r=r,
             v=cast(Quantity, np.vstack([vx, vy, vr]).T),
@@ -1307,8 +1281,8 @@ class Halo:
         initial = self.initial_particles.copy()
         final = self.particles.copy()
         if filter_particle_type is not None:
-            initial = utils.slice_closest(initial, value=filter_particle_type, key='particle_type')
-            final = utils.slice_closest(final, value=filter_particle_type, key='particle_type')
+            initial = utils.utils.slice_closest(initial, value=filter_particle_type, key='particle_type')
+            final = utils.utils.slice_closest(final, value=filter_particle_type, key='particle_type')
 
         return report.Report(
             header=f'After {self.current_step} steps with dt={self.dt:.4f} | {self.time:.1f}',
@@ -1459,7 +1433,7 @@ class Halo:
         time_unit = self.fill_time_unit(time_unit)
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
-            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
+            data = utils.utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         grid, extent, (x_range, y_range) = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
@@ -1526,7 +1500,7 @@ class Halo:
         time_unit = self.fill_time_unit(time_unit)
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
-            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
+            data = utils.utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         grid, extent, (x_range, y_range) = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
@@ -1599,7 +1573,7 @@ class Halo:
         time_unit = self.fill_time_unit(time_unit)
         data = self.get_particle_states(now=include_now, initial=include_start, snapshots=True)
         if filter_particle_type is not None:
-            data = utils.slice_closest(data, value=filter_particle_type, key='particle_type')
+            data = utils.utils.slice_closest(data, value=filter_particle_type, key='particle_type')
         grid, extent, (x_range, y_range) = plot.aggregate_evolution_data(
             data=data,
             radius_bins=radius_bins,
@@ -1777,7 +1751,12 @@ class Halo:
                 n_scatters=self.n_scatters.sum(),
             )
         fig, ax = plot.setup(
-            fig, ax, figsize=figsize, minorticks=True, **utils.drop_None(title=title, xlabel=xlabel), x_unit=length_unit
+            fig,
+            ax,
+            figsize=figsize,
+            minorticks=True,
+            **utils.utils.drop_None(title=title, xlabel=xlabel),
+            x_unit=length_unit,
         )
         sns.histplot(
             Quantity(np.hstack(self.scatter_track_radius), units.length).to(length_unit),
@@ -1847,7 +1826,7 @@ class Halo:
         fig, ax = plot.setup(
             **kwargs,
             yscale='log',
-            **utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel),
+            **utils.utils.drop_None(title=title, xlabel=xlabel, ylabel=ylabel),
             x_unit=length_unit,
             y_unit=density_unit,
         )

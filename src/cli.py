@@ -8,8 +8,7 @@ from functools import partial
 import regex
 from astropy.units import Unit, Quantity
 
-from src import distribution
-from src.utils import utils
+from src import utils, distribution
 
 
 def parse_unit(x: str, whitelist: list[str] | None = None, required_physical_type: str | None = None) -> Unit | str:
@@ -33,7 +32,7 @@ def parse_from_args(
     **kwargs: Any,
 ) -> dict[str, Any]:
     """Clean up keyword arguments read through `parser.parse_args()`."""
-    params = utils.drop_None(**kwargs)
+    params = utils.utils.drop_None(**kwargs)
     if blacklist_prefix is not None:
         for prefix in blacklist_prefix:
             params = {k: v for k, v in params.items() if not k.startswith(prefix)}

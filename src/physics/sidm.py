@@ -3,14 +3,12 @@
 from typing import TypedDict, cast
 
 import numpy as np
-import pandas as pd
 from numba import njit, prange
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
-from src import units, physics
+from src import types, units, utils
 from src.tqdm import tqdm
-from src.utils import utils
 
 no_sigma = Quantity(0, 'cm^2/g')
 
@@ -63,7 +61,7 @@ def normalize_params(params: Params | None) -> Params:
     Returns:
         Normalized parameters.
     """
-    params = Params({**default_params, **cast(Params, utils.handle_default(params, {}))})
+    params = Params({**default_params, **cast(Params, utils.clean.default(params, {}))})
     params['sigma'] = params['sigma'].to(units.cross_section)
     return params
 
@@ -267,12 +265,12 @@ def scatter_unique_pairs(
 
 
 def scatter_chance_shortcut(
-    r: Quantity['length'] | NDArray[np.float64] | pd.Series,
-    vx: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
-    vy: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
-    vr: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
+    r: types.QuantityLike,
+    vx: types.QuantityLike,
+    vy: types.QuantityLike,
+    vr: types.QuantityLike,
     dt: Quantity['time'],
-    m: Quantity['mass'] | NDArray[np.float64] | pd.Series,
+    m: types.QuantityLike,
     sigma: Quantity[units.cross_section],
     max_radius_j: int = default_params['max_radius_j'],
 ) -> NDArray[np.float64]:
@@ -298,17 +296,17 @@ def scatter_chance_shortcut(
         v_rel=v_rel,
         dt=np.full(len(v), dt.value),
         sigma=sigma.value,
-        density_term=np.array(physics.utils.local_density(r, m, max_radius_j, volume_kind='shell', mass_kind='single')),
+        density_term=np.array(utils.physics.local_density(r, m, max_radius_j, volume_kind='shell', mass_kind='single')),
     )
 
 
 def scatter_underestimate_shortcut(
-    r: Quantity['length'] | NDArray[np.float64] | pd.Series,
-    vx: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
-    vy: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
-    vr: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
+    r: types.QuantityLike,
+    vx: types.QuantityLike,
+    vy: types.QuantityLike,
+    vr: types.QuantityLike,
     dt: Quantity['time'],
-    m: Quantity['mass'] | NDArray[np.float64] | pd.Series,
+    m: types.QuantityLike,
     sigma: Quantity[units.cross_section],
     max_radius_j: int = default_params['max_radius_j'],
     kappa: float = default_params['kappa'],
@@ -342,12 +340,12 @@ def scatter_underestimate_shortcut(
 
 
 def scatter(
-    r: Quantity['length'] | NDArray[np.float64] | pd.Series,
-    vx: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
-    vy: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
-    vr: Quantity['velocity'] | NDArray[np.float64] | pd.Series,
+    r: types.QuantityLike,
+    vx: types.QuantityLike,
+    vy: types.QuantityLike,
+    vr: types.QuantityLike,
     dt: Quantity['time'],
-    m: Quantity['mass'] | NDArray[np.float64] | pd.Series,
+    m: types.QuantityLike,
     sigma: Quantity[units.cross_section],
     max_radius_j: int = default_params['max_radius_j'],
     kappa: float = default_params['kappa'],
@@ -401,19 +399,10 @@ def scatter(
         return _vx, _vy, _vr, interacted, 0, 0
     if generator is None:
         generator = np.random.default_rng()
-    _vx, _vy = utils.split_2d(r=utils.fast_norm(np.vstack([_vx, _vy]).T), arccos=False, generator=generator)
+    _vx, _vy = utils.utils.split_2d(r=utils.utils.fast_norm(np.vstack([_vx, _vy]).T), arccos=False, generator=generator)
     v_output = np.vstack([_vx, _vy, _vr]).T
     _sigma = sigma.value
-    local_density = cast(
-        NDArray[np.float64],
-        physics.utils.local_density(
-            _r,
-            _m,
-            max_radius_j,
-            volume_kind='shell',
-            mass_kind='single',
-        ),
-    )
+    local_density = utils.physics.local_density(_r, _m, max_radius_j, volume_kind='shell', mass_kind='single')
     v_rel = np.zeros((len(v_output), max_radius_j), dtype=np.float64)
     update_v_rel(
         v_rel=v_rel,
@@ -457,10 +446,12 @@ def scatter(
         scatter_chance[~relevant_particles] = 0
         if len(interacted_particles) > 0:
             # Only update the relative velocities and scattering chance for particles that scattered in the past round or in the neighborhood of scattering particles. I.e. only particles that would have a change in their v_rel values, otherwise the probability is the same and we don't need to recalculate it.
-            mask = relevant_particles * utils.expand_mask_back(
-                utils.indices_to_mask(interacted_particles, len(v_output)), n=max_radius_j
+            mask = relevant_particles * utils.utils.expand_mask_back(
+                utils.utils.indices_to_mask(interacted_particles, len(v_output)), n=max_radius_j
             )
-            _vx, _vy = utils.split_2d(r=utils.fast_norm(v_output[mask, :2]), arccos=False, generator=generator)
+            _vx, _vy = utils.utils.split_2d(
+                r=utils.utils.fast_norm(v_output[mask, :2]), arccos=False, generator=generator
+            )
             v_output[mask, 0], v_output[mask, 1] = _vx, _vy
             update_v_rel(v_rel=v_rel, v=v_output, max_radius_j=max_radius_j, whitelist_mask=mask)
             scatter_chance[mask] = fast_scatter_chance(
@@ -485,7 +476,7 @@ def scatter(
             blacklist = index[counts >= max_allowed_scatters]
         else:
             blacklist = []
-        pairs = utils.clean_pairs(
+        pairs = utils.clean.pairs(
             pairs=pick_scatter_partner(v_rel=v_rel, scatter_mask=events, rolls=pair_rolls),
             shuffle=True,
             blacklist=blacklist,
@@ -496,7 +487,7 @@ def scatter(
             scatter_unique_pairs(
                 v=v_output,
                 pairs=pairs,
-                theta=utils.random_angle(len(pairs), arccos=True, generator=generator),
-                phi=utils.random_angle(len(pairs), arccos=False, generator=generator),
+                theta=utils.utils.random_angle(len(pairs), arccos=True, generator=generator),
+                phi=utils.utils.random_angle(len(pairs), arccos=False, generator=generator),
             )
     return *v_output.T, interacted, max_scatter_rounds, underestimation

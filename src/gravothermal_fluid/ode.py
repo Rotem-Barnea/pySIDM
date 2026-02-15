@@ -11,9 +11,8 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, units
+from src import plot, units, utils
 from src.tqdm import tqdm
-from src.utils import utils
 from src.distribution.distribution import Distribution
 
 # from src.distribution.distribution import PhysicalProperty as BasePhysicalProperty
@@ -45,7 +44,7 @@ class GravothermalFluid:
         if radius is None:
             radius = distribution.geomspace_grid
         self.distribution = distribution
-        cell_center = utils.to_center(radius, method='geometric')
+        cell_center = utils.utils.to_center(radius, method='geometric')
         velocity_dispersion = distribution.calculate_velocity_dispersion(cell_center)
         density = distribution.density(cell_center)
         enclosed_mass = distribution.enclosed_mass(radius)
@@ -199,7 +198,7 @@ class GravothermalFluid:
     @property  # @cached_property
     def density(self) -> NDArray[np.float64]:
         """Calculate the density from the energy and pressure. Center-aligned array (shape (N-1,))."""
-        return 3 / 2 * self.pressure * utils.safe_inverse(self.internal_energy)
+        return 3 / 2 * self.pressure * utils.safe.inverse(self.internal_energy)
 
     @property  # @cached_property
     def velocity_dispersion(self) -> NDArray[np.float64]:
@@ -209,7 +208,7 @@ class GravothermalFluid:
     @property  # @cached_property
     def heat_conduction(self) -> NDArray[np.float64]:
         """The heat conduction (kappa) at each point. Center-aligned array (shape (N-1,))."""
-        return self.a / self.b * self.cross_section + utils.safe_inverse(self.C * self.pressure)
+        return self.a / self.b * self.cross_section + utils.safe.inverse(self.C * self.pressure)
 
     @property  # @cached_property
     def internal_energy_gradient(self) -> NDArray[np.float64]:
@@ -221,8 +220,10 @@ class GravothermalFluid:
     def luminosity(self) -> NDArray[np.float64]:
         """The luminosity at each point. Edge-aligned array (shape (N,))."""
         self.invalidate('luminosity_gradient')
-        return -(self.radius**4 * utils.to_edge(self.pressure) * self.internal_energy_gradient) * utils.safe_inverse(
-            utils.to_edge(self.heat_conduction) * utils.to_edge(self.velocity_dispersion)
+        return -(
+            self.radius**4 * utils.utils.to_edge(self.pressure) * self.internal_energy_gradient
+        ) * utils.safe.inverse(
+            utils.utils.to_edge(self.heat_conduction) * utils.utils.to_edge(self.velocity_dispersion)
         )
 
     @property  # @cached_property
@@ -241,7 +242,7 @@ class GravothermalFluid:
         return min(
             self.base_dt,
             self.CFL
-            * np.min(np.abs(self.internal_energy * utils.safe_inverse(self.luminosity_gradient, fill_value=np.nan))),
+            * np.min(np.abs(self.internal_energy * utils.safe.inverse(self.luminosity_gradient, fill_value=np.nan))),
         )
 
     def transfer_heat(self) -> float:
@@ -249,13 +250,13 @@ class GravothermalFluid:
         dt = self.dt.copy()
         heat = -self.luminosity_gradient * dt
         self.internal_energy += heat
-        self.pressure += self.pressure * utils.safe_inverse(self.internal_energy) * heat
+        self.pressure += self.pressure * utils.safe.inverse(self.internal_energy) * heat
         return dt
 
     @property  # @cached_property
     def shell_center(self) -> NDArray[np.float64]:
         """The radius of each shell's center. Center-aligned array (shape (N-1,))."""
-        return utils.to_center(self.radius, method='geometric')
+        return utils.utils.to_center(self.radius, method='geometric')
 
     @property  # @cached_property
     def shell_width(self) -> NDArray[np.float64]:
@@ -290,7 +291,7 @@ class GravothermalFluid:
     @property
     def pressure_force(self) -> NDArray[np.float64]:
         """The pressure force applied to each shell. Edge-aligned array without the first and final cells (shape (N-2,))."""
-        return -utils.safe_inverse(np.sqrt(self.shell_density[:-1] * self.shell_density[1:])) * (
+        return -utils.safe.inverse(np.sqrt(self.shell_density[:-1] * self.shell_density[1:])) * (
             np.diff(self.pressure) / np.diff(self.shell_center)
         )
 
@@ -321,7 +322,7 @@ class GravothermalFluid:
             r_old = self.radius.copy()
             self.radius[1:-1] += (
                 self.radius[1:-1]
-                * utils.safe_log(
+                * utils.safe.log(
                     np.abs(self.force_ratio).clip(
                         min=1 / self.relaxation_params['driving_force_limit'],
                         max=self.relaxation_params['driving_force_limit'],

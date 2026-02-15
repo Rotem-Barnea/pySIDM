@@ -18,9 +18,8 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import rng, plot, units, report, physics, agama_wrappers
+from src import rng, plot, units, utils, report, physics, agama_wrappers
 from src.types import FloatOrArray, ParticleType, QuantitySpline, QuantityInterpolate
-from src.utils import utils
 
 if TYPE_CHECKING:
     from src.phase_space import PhaseSpace
@@ -98,7 +97,7 @@ class Distribution:
         self.spline_s = spline_s
         self.truncate = truncate
         self.truncate_power = truncate_power
-        self.id = utils.make_id(id)
+        self.id = utils.utils.make_id(id)
         self.backend: Backends = backend
 
         self._r_s = self._r_vir = self._c = self._total_mass = self._rho_s = None
@@ -357,12 +356,12 @@ class Distribution:
             data_mask: A mask to filter out only parts of the data for the fitting.
             truncate: Whether to truncate the distribution at the virial radius, and solve for it as a parameter as well.
             distribution_kwargs: Additional keyword arguments passed on to the distribution.
-            kwargs: Additional keyword arguments passed on to the solver (utils.curve_fit()).
+            kwargs: Additional keyword arguments passed on to the solver (utils.utils.curve_fit()).
 
         Returns:
             A dict with the solved parameters: `{'rho_s':rho_s,'r_s':r_s,'r_vir:r_vir}`, or `{'rho_s':rho_s,'r_s':r_s}`.
         """
-        popt = utils.fit_curve(
+        popt = utils.utils.fit_curve(
             f=lambda *x: partial(cls.calculate_density, truncate=truncate, **distribution_kwargs)(*x),
             x=x,
             y=y,
@@ -411,7 +410,7 @@ class Distribution:
     ) -> agama_wrappers.Potential:
         """Generate an agama potential from the distribution."""
         return agama_wrappers.Potential(
-            **utils.drop_None(
+            **utils.utils.drop_None(
                 type=type,
                 gamma=gamma,
                 beta=beta,
@@ -615,7 +614,7 @@ class Distribution:
     def spherical_density_integrate(self, r: Quantity['length'], use_rho_s: bool = True) -> Quantity['mass']:
         """Calculate the density (`rho`) integral in `[0,r]` assuming spherical symmetry. `use_rho_s` is used internally to calculate the density scale and shouldn't be used."""
         rho_s = self.rho_s.decompose(units.system).value if use_rho_s else 1
-        integral = utils.fast_spherical_density_integrate(
+        integral = utils.utils.fast_spherical_density_integrate(
             np.atleast_1d(r.to(units.length).value),
             self.calculate_density,
             rho_s,
@@ -711,7 +710,7 @@ class Distribution:
     @cached_property
     def quantile_function(self) -> QuantityInterpolate:
         """Mass quantile function (inverted cdf) interpolated at a given radius `r`."""
-        cdf, rs = utils.joint_clean(arrays=[self.mass_cdf(self.geomspace_grid), self.geomspace_grid.value])
+        cdf, rs = utils.clean.to_join([self.mass_cdf(self.geomspace_grid), self.geomspace_grid.value])
         return QuantityInterpolate(
             x=cdf,
             y=rs,
@@ -884,7 +883,7 @@ class Distribution:
             vs[:] = vs_grid
             pdf = np.zeros_like(vs)
             for i, v in enumerate(vs):
-                pdf[i] = v**2 * utils.linear_interpolation(E_grid, f_grid, potential[particle] - v**2 / 2)
+                pdf[i] = v**2 * utils.utils.linear_interpolation(E_grid, f_grid, potential[particle] - v**2 / 2)
             pdf /= pdf.sum()
             cdf = np.cumsum(pdf)
             i = np.searchsorted(cdf, rolls[particle]) - 1
@@ -937,7 +936,7 @@ class Distribution:
         See `roll_v()` for parameter details.
         """
         return cast(
-            Quantity, np.vstack(utils.split_3d(self.sample_v_norm(r, generator=generator), generator=generator)).T
+            Quantity, np.vstack(utils.utils.split_3d(self.sample_v_norm(r, generator=generator), generator=generator)).T
         )
 
     def sample_legacy(
@@ -987,7 +986,7 @@ class Distribution:
             - The joint pdf is discretized on a grid of radius and velocity bins. If not provided directly (`radius_range`, `velocity_range`), a linear grid is constructed based on the rest of the parameters. The final row and column is dropped to facilitate the calculation of the `drdv` term.
             - The discretized distribution is flattened and sampled from using `generator.choice` with probability weights set by the bin value.
             - The sampled radius and velocity are perturbed by a uniform noise term to provide sub-pixel results.
-            - Angles for the velocity split are sampled by `utils.split_3d()`.
+            - Angles for the velocity split are sampled by `utils.utils.split_3d()`.
 
         ** IF THE BACKEND IS 'AGAMA', THE ALL OPTIONS ARE IGNORED, AND THE SAMPLING IS HANDLED BY AGAMA **
 
@@ -1043,7 +1042,7 @@ class Distribution:
             if fail_on_negative:
                 raise ValueError(f'Negative probability density encountered, {self}')
             else:
-                probability_grid = cast(NDArray[np.float64], utils.smooth_holes_2d(probability_grid))
+                probability_grid = cast(NDArray[np.float64], utils.clean.smooth_holes_2d(probability_grid))
                 probability_grid[probability_grid < 0] = 0
 
         indices = np.unravel_index(
@@ -1074,7 +1073,7 @@ class Distribution:
 
         return (
             Quantity(r_interp(r_indices), radius_range.unit),
-            cast(Quantity, np.vstack(utils.split_3d(velocity, generator=generator)).T),
+            cast(Quantity, np.vstack(utils.utils.split_3d(velocity, generator=generator)).T),
         )
 
     def phase_space(self, r_range: Quantity | int = 500, v_range: Quantity | int = 500, **kwargs: Any) -> PhaseSpace:

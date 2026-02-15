@@ -9,14 +9,12 @@ import numpy as np
 import scipy
 import seaborn as sns
 from astropy import table
-from numpy.typing import NDArray
 from astropy.units import Quantity
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from astropy.units.typing import UnitLike
 
-from src import plot, types, physics
-from src.utils import utils
+from src import plot, types, utils
 
 if TYPE_CHECKING:
     from .halo import Halo
@@ -109,7 +107,7 @@ class HaloPlotter:
             data = self.halo.get_particle_states()
         time_unit = self.fill_time_unit(time_unit)
         if times is None:
-            times = cast(Quantity, np.unique(utils.get_columns(data, ['time'])[0]))
+            times = cast(Quantity, np.unique(utils.utils.get_columns(data, ['time'])[0]))
         times = cast(Quantity, np.atleast_1d(times))
         used_times = []
         if labels is None:
@@ -120,8 +118,8 @@ class HaloPlotter:
             if t in used_times:
                 continue
             used_times += [t]
-            group = utils.slice_closest(data, t)
-            r, m, types = utils.get_columns(group, ['r', 'm', 'particle_type'])
+            group = utils.utils.slice_closest(data, t)
+            r, m, types = utils.utils.get_columns(group, ['r', 'm', 'particle_type'])
             y = (m * (types == particle_type)).cumsum() / m.cumsum()
             min_i = (
                 max(np.argmax(types == particle_type), np.argmax(types != particle_type)) if stable_first_index else 0
@@ -264,7 +262,7 @@ class HaloPlotter:
             data = self.halo.get_particle_states(filter_particle_type=filter_particle_type)
         time_unit = self.fill_time_unit(time_unit)
         if times is None:
-            times = cast(Quantity, np.unique(utils.get_columns(data, ['time'])[0]))
+            times = cast(Quantity, np.unique(utils.utils.get_columns(data, ['time'])[0]))
         times = cast(Quantity, np.atleast_1d(times))
         used_times = []
         if labels is None:
@@ -275,12 +273,12 @@ class HaloPlotter:
             if t in used_times:
                 continue
             used_times += [t]
-            group = utils.slice_closest(data, t)
-            r, m = utils.get_columns(group, ['r', 'm'])
+            group = utils.utils.slice_closest(data, t)
+            r, m = utils.utils.get_columns(group, ['r', 'm'])
             x = cast(Quantity, r.to(x_unit))
             y = cast(
                 Quantity,
-                physics.utils.local_density(
+                utils.utils.physics.local_density(
                     r=r, m=m, max_radius_j=max_radius_j, volume_kind='density', mass_kind='sum'
                 ).to(y_unit),
             )
@@ -391,9 +389,6 @@ class HaloPlotter:
         self,
         time: Quantity['time'] | Literal['initial', 'now'] | None = 'now',
         data: table.QTable | None = None,
-        filter_particle_type: types.ParticleType | None = None,
-        mask: NDArray[np.bool_] | None = None,
-        filter_indices: NDArray[np.int64] | list[int] | None = None,
         x_bins: Quantity['length'] | int = 200,
         y_bins: Quantity['velocity'] | int = 200,
         x_key: str = 'r',
@@ -412,10 +407,8 @@ class HaloPlotter:
         """Plot the phase space distribution of the data.
 
         Parameters:
+            time: The time to plot. Only relevant if `data` is not provided, in which case the closest time will be taken from the halo's snapshots.
             data: The data to plot.
-            filter_particle_type: Whether to filter to only plot the specified particle type.
-            filter_indices: Keep only the specified indices in `data` (based on the `particle_index` column).
-            mask: Any additional mask to apply to the data. Must match the shape of the `data` (pre any other filtration).
             x_bins: The bins for the x-axis (mainly - radius). Also used to define the range to consider. If an `int`, treat as the number of bins and fit the range to the edges of the data.
             y_bins: The bins for the y-axis (mainly - velocity). Also used to define the range to consider. If an `int`, treat as the number of bins and fit the range to the edges of the data.
             x_key: The key for the x-axis in `data` (mainly - radius).
@@ -441,7 +434,7 @@ class HaloPlotter:
             elif time == 'initial':
                 data = self.halo.initial_particles
             else:
-                data = utils.slice_closest(self.halo.get_particle_states(), time)
+                data = utils.utils.slice_closest(self.halo.get_particle_states(), time)
 
         if adjust_data_to_EL:
             data['L'] = data['r'] * cast(Quantity, data['vp'])

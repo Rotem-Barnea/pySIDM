@@ -11,8 +11,8 @@ from astropy import table
 from numpy.typing import NDArray
 from astropy.units import Quantity
 
+from src import utils
 from src.tqdm import tqdm
-from src.utils import utils
 
 from . import types
 
@@ -184,7 +184,7 @@ def core_collapse_scatter_estimate(
     )
     return Quantity(
         scipy.interpolate.interp1d(
-            *utils.joint_clean([scatters, t]),
+            *utils.clean.to_join([scatters, t]),
             kind=kind,
             bounds_error=bounds_error,
             fill_value=fill_value,

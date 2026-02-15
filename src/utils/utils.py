@@ -1,6 +1,5 @@
 """General purpose utility functions"""
 
-import re
 import datetime
 from typing import Any, Literal, Callable, cast
 from collections.abc import Sequence
@@ -14,7 +13,7 @@ from numpy.typing import NDArray, ArrayLike
 from astropy.units import Unit, Quantity
 from astropy.units.typing import UnitLike
 
-from src import rng, types, units
+from src import rng, types
 
 
 def random_angle(
@@ -87,120 +86,9 @@ def split_3d_quantity(x: Quantity, generator: np.random.Generator | None = None)
     return cast(Quantity, np.vstack(split_3d(x, generator=generator)).T)
 
 
-def joint_clean(
-    arrays: list[NDArray[Any]],
-    keys: list[str] | None = None,
-    clean_by: str | int = 0,
-) -> NDArray[Any]:
-    """Clean a list of arrays by removing duplicates and sorting them by a given key.
-
-    Parameters:
-        arrays: The arrays to clean.
-        keys: Names for each array, to be used with `clean_by`. If `None` defaults to "column_{j}".
-        clean_by: The column to sort and drop duplicates by. If a string, must match `keys`. If `int` must be smaller than the number of columns, and the value will be treated as the selected index. Defaults to 0 (the first column).
-
-    Returns:
-        The cleaned arrays.
-    """
-    if keys is None:
-        keys = [f'column_{i}' for i in range(len(arrays))]
-    data = pd.DataFrame(dict(zip(keys, arrays)))
-    if isinstance(clean_by, int):
-        clean_by = data.columns[clean_by]
-    data = data.drop_duplicates(clean_by).sort_values(clean_by)
-    return data.to_numpy().T
-
-
-def clean_pairs(
-    pairs: NDArray[np.int64],
-    blacklist: list[int] | NDArray[np.int64] = [],
-    shuffle: bool = False,
-    generator: np.random.Generator | None = None,
-) -> NDArray[np.int64]:
-    """Clean a list of pairs by removing duplicates.
-
-    Ensures no particle is considered multiple times.
-
-    Parameters:
-        pairs: The raw array of pairs, of shape (n_pairs, 2).
-        blacklist: List of blacklisted particles. If provided (and not empty), any pair containing a blacklisted particle is removed *after* any other filtering (which might lead to over-dropping).
-        shuffle: Whether to shuffle the raw pairs before cleaning, to avoid biasing on smaller indices (and thus smaller radii). The shuffle is performed in-place without prior copy (will affect the input `pairs`).
-
-    Returns:
-        The cleaned array of pairs, of shape (n_cleaned_pairs, 2).
-    """
-    if generator is None:
-        generator = rng.generator
-    if shuffle:
-        generator.shuffle(pairs)
-    _, indices = np.unique(pairs.ravel(), return_index=True)
-    first_occurrence = np.zeros(2 * len(pairs), dtype=np.bool_)
-    first_occurrence[indices] = True
-    first_occurrence = first_occurrence.reshape(pairs.shape)
-    cleaned_pairs = pairs[first_occurrence.all(axis=1)]
-    if len(blacklist) > 0:
-        cleaned_pairs = np.array(
-            [pair for pair in cleaned_pairs if pair[0] not in blacklist and pair[1] not in blacklist]
-        )
-    return cleaned_pairs
-
-
 def drop_None(**kwargs: Any) -> dict[Any, Any]:
     """Remove key-value pairs where the value is `None`."""
     return {key: value for key, value in kwargs.items() if value is not None}
-
-
-def rank_array(r: NDArray[Any]) -> NDArray[np.int64]:
-    """Calculate the rank of every element in the array."""
-    return r.argsort().argsort()
-
-
-def derivate(
-    x: types.FloatOrArray, y_fn: Callable[[types.FloatOrArray], types.FloatOrArray], h: float = 1e-4
-) -> types.FloatOrArray:
-    """Calculate the derivative of a function at a point.
-
-    Calculates a forward numerical derivative: `(y_fn(x + h) - y_fn(x)) / h`
-
-    Parameters:
-        x: The point/points at which to calculate the derivative.
-        y_fn: The function to differentiate.
-        h: The step size for numerical differentiation.
-
-    Returns:
-        The derivative of the function at the given point/points.
-    """
-    return (y_fn(x + h) - y_fn(x)) / h
-
-
-def derivate2(
-    x: types.FloatOrArray, y_fn: Callable[[types.FloatOrArray], types.FloatOrArray], h: float = 1e-4
-) -> types.FloatOrArray:
-    """Calculate the second order derivative of a function at a point.
-
-    Calculates a forward numerical derivative: `(y_fn(x + 2 * h) - 2 * y_fn(x + h) + y_fn(x)) / h**2`
-
-    Parameters:
-        x: The point/points at which to calculate the derivative.
-        y_fn: The function to differentiate.
-        h: The step size for numerical differentiation.
-
-    Returns:
-        The derivative of the function at the given point/points.
-    """
-    return (y_fn(x + 2 * h) - 2 * y_fn(x + h) + y_fn(x)) / h**2
-
-
-def quantity_derivate(x: Quantity, y_fn: Callable[[Quantity], Quantity], h: float = 1e-4) -> Quantity:
-    """Calculate the derivative of a function at a point. Wrapper for `derivate()` to handle and output `Quantity` objects."""
-    t = Quantity(h, x.unit)
-    return cast(Quantity, (y_fn(cast(Quantity, x + t)) - y_fn(x)) / t)
-
-
-def quantity_derivate2(x: Quantity, y_fn: Callable[[Quantity], Quantity], h: float = 1e-4) -> Quantity:
-    """Calculate the second order derivative of a function at a point. Wrapper for `derivate2()` to handle and output `Quantity` objects."""
-    t = Quantity(h, x.unit)
-    return cast(Quantity, (y_fn(cast(Quantity, x + 2 * t)) - 2 * y_fn(cast(Quantity, x + t)) + y_fn(x)) / t**2)
 
 
 @njit
@@ -271,57 +159,6 @@ def fast_unique_mask(x: NDArray[np.int64]) -> NDArray[np.int64]:
     for i in prange(len(x)):
         output[x[i]] += 1
     return output
-
-
-def aggregate_QTable(
-    data: table.QTable,
-    groupby: str | list[str],
-    keys: str | list[str],
-    agg_fn: str | Callable[[Any], Any],
-    final_unit: dict[str, UnitLike] | None = None,
-) -> table.QTable:
-    """Shorthand for aggregating a QTable function by transforming to a pandas DataFrame and back.
-
-    Done by:
-        1. transform the data to a pandas DataFrame using `data.to_pandas()`.
-        2. group by the specified columns `.groupby(groupby)`.
-        3. slice by the desired keys `[keys]`.
-        4. aggregate using the specified function `.agg(agg_fn)`.
-        5. transform the aggregated DataFrame back to a table.Table and set the right units `table.Table.from_pandas(...,index=True, units=final_units)`.
-        6. transform to a QTable `QTable(...)`.
-
-    Parameters:
-        data: The QTable to aggregate.
-        groupby: The column(s) to group by.
-        keys: The column(s) to aggregate.
-        agg_fn: The aggregation function. Anything acceptable by `pandas.DataFrame.agg()`.
-        final_unit: The units to set for the aggregated columns (otherwise will be left unitless).
-
-    Returns:
-        The aggregated QTable.
-    """
-    return table.QTable(
-        table.Table.from_pandas(
-            pd.DataFrame(data.to_pandas().groupby(groupby)[keys].agg(agg_fn)), index=True, units=final_unit
-        )
-    )
-
-
-def add_label_unit(label: str | None, plot_unit: UnitLike | None = None) -> str | None:
-    """Add the units to the `label` in a LaTeX formatted string and enclosed in brackets. Ignore if label is `None` or '' (unit-less)."""
-    if label is None:
-        return None
-    if plot_unit is None or plot_unit == '':
-        return label
-    string_unit = f'{Unit(cast(str, plot_unit)):latex}'
-    return rf'{label} $\left[{string_unit.strip("$")}\right]$'
-
-
-def replace_label_unit(label: str | None, plot_unit: UnitLike | None = None) -> str | None:
-    """Replace the label unit with another unit."""
-    if label is None:
-        return None
-    return add_label_unit(label=re.sub(r' \$\\left\[.*\\right\]\$$', '', label), plot_unit=plot_unit)
 
 
 @njit(parallel=True)
@@ -422,120 +259,6 @@ def slice_closest(
     return output
 
 
-def filter_indices(
-    data: table.QTable | pd.DataFrame,
-    indices: list[int] | NDArray[np.int64],
-    copy: bool = True,
-) -> table.QTable:
-    """Filter the data to only keep the specified indices.
-
-    Parameters:
-        data: The data to filter.
-        indices: The indices to filter by.
-        copy: Whether to return a copy of the sliced data.
-
-    Returns:
-        The filtered data.
-    """
-    mask = pd.Series(False, index=np.array(data['particle_index']))
-    mask.loc[mask.index.isin(indices)] = True
-    output = cast(table.QTable, data[np.array(mask)])
-    if copy:
-        return output.copy()
-    return output
-
-
-def handle_default(value: Any, default: Any) -> Any:
-    """Handles setting the default value, avoiding pointer issues with Python by allowing the default function argument to be `None`"""
-    if value is None:
-        return default
-    return value
-
-
-def smooth_holes_1d(
-    x: types.QuantityOrArray,
-    y: types.QuantityOrArray,
-    mask: NDArray[np.bool_] | None = None,
-    include_zero: bool = False,
-    assume_sorted: bool = False,
-    bounds_error: bool = False,
-    fill_value: Literal['extrapolate']
-    | float
-    | tuple[float, float]
-    | NDArray[np.float64]
-    | tuple[NDArray[np.float64], NDArray[np.float64]] = 'extrapolate',
-    **kwargs: Any,
-) -> types.QuantityOrArray:
-    """Smooths holes in a 1D array, defined by the provided mask.
-
-    Smoothing is done by interpolating the values around the holes.
-
-    Parameters:
-        x: The x values used for the interpolation.
-        y: The y values used for the interpolation.
-        mask: The mask indicating the holes to be smoothed. If `None` treat all negative values as holes.
-        include_zero: Only relevant if `mask` is not provided. Define "hole" as any `y<=0`, otherwise only fill `y<0`.
-        assume_sorted: Whether the x values are sorted.
-        bounds_error: Whether to raise an error if the x values are out of bounds.
-        fill_value: The value to use for extrapolation. Must be accepted by `scipy.interpolate.interp1d()`.
-        kwargs: Additional keyword arguments to pass to the interpolation function.
-
-    Returns:
-        The smoothed y values.
-    """
-    if mask is None:
-        if include_zero:
-            mask = np.array(y) <= 0
-        else:
-            mask = np.array(y) < 0
-    smoothed = np.array(y).copy()
-    smoothed[mask] = scipy.interpolate.interp1d(
-        x=np.array(x[~mask]),
-        y=np.array(y[~mask]),
-        assume_sorted=assume_sorted,
-        bounds_error=bounds_error,
-        fill_value=fill_value,
-        **kwargs,
-    )(np.array(x[mask]))
-    if isinstance(y, Quantity):
-        return Quantity(smoothed, y.unit)
-    return smoothed
-
-
-def smooth_holes_2d(
-    data: types.QuantityOrArray, mask: NDArray[np.bool_] | None = None, include_zero: bool = False, **kwargs: Any
-) -> types.QuantityOrArray:
-    """Smooths holes in a 2D array, defined by the provided mask.
-
-    Smoothing is done by interpolating the values around the holes.
-
-    Parameters:
-        data: The data to be smoothed.
-        mask: The mask indicating the holes to be smoothed. If `None` treat all negative values as holes.
-        include_zero: Only relevant if `mask` is not provided. Define "hole" as any `data<=0`, otherwise only fill `data<0`.
-        kwargs: Additional keyword arguments to pass to the interpolation function.
-
-    Returns:
-        The smoothed data values.
-    """
-    if mask is None:
-        if include_zero:
-            mask = np.array(data) <= 0
-        else:
-            mask = np.array(data) < 0
-    smoothed = np.array(data).copy()
-    y, x = np.indices(data.shape)
-    smoothed[mask] = scipy.interpolate.griddata(
-        points=(x[~mask], y[~mask]),
-        values=data[~mask],
-        xi=(x[mask], y[mask]),
-        **kwargs,
-    )
-    if isinstance(data, Quantity):
-        return Quantity(smoothed, data.unit)
-    return smoothed
-
-
 def make_id(id: Any | None = None, method: Literal['timestamp'] = 'timestamp') -> int:
     """Generates a unique identifier.
 
@@ -604,9 +327,7 @@ def mask_edge_zeros(grid: NDArray[Any] | Quantity, axis: int | None = None) -> N
     return np.where((indices >= non_zero_indices[0]) * (indices <= non_zero_indices[-1]), True, False)
 
 
-def diff(
-    x: types.QuantityOrArray, pad_width: ArrayLike = (0, 1), mode: str = 'edge', **kwargs: Any
-) -> types.QuantityOrArray:
+def diff(x: types.QuantityLike, pad_width: ArrayLike = (0, 1), mode: str = 'edge', **kwargs: Any) -> types.QuantityLike:
     """Returns the difference between consecutive elements of an array.
 
     By default, extend the difference array to match the original shape by duplicating the final value.
@@ -625,7 +346,7 @@ def diff(
         kwargs['mode'] = mode
     if 'pad_width' not in kwargs:
         kwargs['pad_width'] = pad_width
-    return cast(type(x), np.pad(np.diff(x), **kwargs))
+    return cast(types.QuantityLike, np.pad(np.diff(x), **kwargs))
 
 
 def unmask_quantity(*args: Quantity) -> tuple[Quantity, ...]:
@@ -639,69 +360,6 @@ def get_columns(data: table.QTable, columns: list[str], unmask: bool = True) -> 
     if unmask:
         return unmask_quantity(*output)
     return tuple(output)
-
-
-def strip_args_units(*args: Any) -> list[Any]:
-    """Strip units from positional arguments if they are quantities. Also decompose them to the `run_unit` system."""
-    out_args = []
-    for arg in args:
-        out_args += [arg.decompose(units.system).value if isinstance(arg, Quantity) else arg]
-    return out_args
-
-
-def strip_kwargs_units(**kwargs: Any) -> dict[str, Any]:
-    """Strip units from keyword arguments if they are quantities. Also decompose them to the `run_unit` system."""
-    out_kwargs = {}
-    for key, value in kwargs.items():
-        out_kwargs[key] = value.decompose(units.system).value if isinstance(value, Quantity) else value
-    return kwargs
-
-
-def differentiate_savgol(
-    x: types.QuantityLike,
-    y: types.QuantityLike,
-    window_length: int = 11,
-    polyorder: int = 3,
-    deriv: int = 1,
-    **kwargs: Any,
-) -> types.QuantityLike:
-    """Calculate the derivative using a savgol filter to increase stability.
-
-    Taking the derivative using a savgol filter on argument logspace (`dy/dln(x)`), and then recovering the desired `dy/dx` using the chain rule.
-    The edges where the filter is unstable are replaced  with the first and last (`window_length//2`) points with the closest physically 'safe' calculated derivative.
-
-    Parameters:
-        x: The x values.
-        y: The y values.
-        window_length: The length of the filter window. Should be odd.
-        polyorder: The order of the polynomial used to fit the data.
-        deriv: The order of the derivative to compute.
-        **kwargs: Additional keyword arguments to pass to `scipy.signal.savgol_filter`.
-
-    Returns:
-        dy/dx
-    """
-    if isinstance(x, Quantity) and isinstance(y, Quantity):
-        out_unit = cast(Unit, y.unit) / cast(Unit, x.unit)
-    else:
-        out_unit = None
-
-    derivative = scipy.signal.savgol_filter(
-        np.array(y),
-        window_length=window_length,
-        polyorder=polyorder,
-        deriv=deriv,
-        delta=np.mean(np.diff(np.log(np.array(x)))),
-        **kwargs,
-    ) / np.array(x)
-
-    half_window = window_length // 2
-    derivative[:half_window] = derivative[half_window]
-    derivative[-half_window:] = derivative[-half_window]
-
-    if isinstance(x, Quantity) and isinstance(y, Quantity):
-        return Quantity(derivative, out_unit)
-    return derivative
 
 
 def to_center(
@@ -736,31 +394,6 @@ def to_edge(
         high = center_value[-1]
 
     return cast(type(center_value), np.hstack([low, (center_value[:-1] + center_value[1:]) / 2, high]))
-
-
-def safe_inverse(denominator: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
-    """Safely calculates `1/denominator`, filling cells with `denominator=0` with `fill_value`"""
-    return np.divide(1, denominator, out=np.full_like(denominator, fill_value), where=denominator != 0)
-
-
-def safe_sqrt(x: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
-    """Safely calculates `np.sqrt(x)`, filling cells with `x<0` with `fill_value`"""
-    return np.sqrt(x, out=np.full_like(x, fill_value), where=x >= 0)
-
-
-def safe_log(x: NDArray[np.float64], fill_value: float = 0) -> NDArray[np.float64]:
-    """Safely calculates `np.safe_log(x)`, filling cells with `x<=0` with `fill_value`"""
-    return np.log(x, out=np.full_like(x, fill_value), where=x > 0)
-
-
-def guess_unit(unit: UnitLike | None = None, array: NDArray[np.float64] | Quantity | None = None) -> UnitLike:
-    """Pull the desired unit from the array if not provided."""
-    if unit is None:
-        if isinstance(array, Quantity):
-            unit = cast(Unit, array.unit)
-        else:
-            unit = ''
-    return unit
 
 
 def fit_curve(
@@ -811,4 +444,3 @@ def fit_curve(
         Quantity(p, x.unit if unit == 'x' else (y.unit if unit == 'y' else unit)) if unit is not None else p
         for p, unit in zip(popt, output_scheme)
     ]
-    # lambda r, r_s, rho_s: np.log(rho_s / ((r / r_s) * (1 + r / r_s) ** 2))
