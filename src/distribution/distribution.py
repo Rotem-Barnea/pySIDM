@@ -717,7 +717,12 @@ class Distribution:
         """Mass quantile function (inverted cdf) interpolated at a given radius `r`."""
         cdf, rs = utils.joint_clean(arrays=[self.mass_cdf(self.geomspace_grid), self.geomspace_grid.value])
         return QuantityInterpolate(
-            x=cdf, y=rs, kind='cubic', bounds_error=False, fill_value=(self.r_min.value, self.r_max.value)
+            x=cdf,
+            y=rs,
+            out_unit=str(self.geomspace_grid.unit),
+            kind='cubic',
+            bounds_error=False,
+            fill_value=(self.r_min.value, self.r_max.value),
         )
 
     def poisson_potential(self, r: Quantity['length']) -> Quantity['specific energy']:
@@ -1076,11 +1081,19 @@ class Distribution:
             cast(Quantity, np.vstack(utils.split_3d(velocity, generator=generator)).T),
         )
 
-    def phase_space(self, **kwargs: Any) -> PhaseSpace:
+    def phase_space(self, r_range: Quantity | int = 500, v_range: Quantity | int = 500, **kwargs: Any) -> PhaseSpace:
         """Returns the phase space object matching the distribution."""
         from ..phase_space import PhaseSpace
 
-        return PhaseSpace(self, **kwargs)
+        if isinstance(r_range, int):
+            r_range = Quantity(np.geomspace(self.r_min.value, self.r_max.value, r_range), self.r_min.unit)
+        if isinstance(v_range, int):
+            v_range = Quantity(
+                np.linspace(0, 1.5 * np.sqrt(self.potential_grid.max()).value, v_range),
+                units.velocity,
+            )
+
+        return PhaseSpace(self, r_range=r_range, v_range=v_range, **kwargs)
 
     def full_sample(
         self,

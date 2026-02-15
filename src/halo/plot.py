@@ -389,16 +389,15 @@ class HaloPlotter:
 
     def phase_space(
         self,
-        data: table.QTable,
+        time: Quantity['time'] | Literal['initial', 'now'] | None = 'now',
+        data: table.QTable | None = None,
         filter_particle_type: types.ParticleType | None = None,
         mask: NDArray[np.bool_] | None = None,
         filter_indices: NDArray[np.int64] | list[int] | None = None,
-        x_bins: Quantity['length'] = Quantity(np.linspace(1e-2, 35, 200), 'kpc'),
-        y_bins: Quantity['velocity'] = Quantity(np.linspace(0, 60, 200), 'km/second'),
+        x_bins: Quantity['length'] | int = 200,
+        y_bins: Quantity['velocity'] | int = 200,
         x_key: str = 'r',
         y_key: str = 'v_norm',
-        x_adjust_bins_edges_to_data: bool = False,
-        y_adjust_bins_edges_to_data: bool = False,
         cmap: str = 'jet',
         transparent_value: float | None = 0,
         xlabel: str | None = 'Radius',
@@ -417,10 +416,8 @@ class HaloPlotter:
             filter_particle_type: Whether to filter to only plot the specified particle type.
             filter_indices: Keep only the specified indices in `data` (based on the `particle_index` column).
             mask: Any additional mask to apply to the data. Must match the shape of the `data` (pre any other filtration).
-            x_bins: The bins for the x-axis (mainly - radius). Also used to define the range to consider.
-            y_bins: The bins for the y-axis (mainly - velocity). Also used to define the range to consider.
-            x_adjust_bins_edges_to_data: Overwrite `x_bins` edges to match the data range.
-            y_adjust_bins_edges_to_data: Overwrite `y_bins` edges to match the data range.
+            x_bins: The bins for the x-axis (mainly - radius). Also used to define the range to consider. If an `int`, treat as the number of bins and fit the range to the edges of the data.
+            y_bins: The bins for the y-axis (mainly - velocity). Also used to define the range to consider. If an `int`, treat as the number of bins and fit the range to the edges of the data.
             x_key: The key for the x-axis in `data` (mainly - radius).
             y_key: The key for the y-axis in `data` (mainly - velocity).
             cmap: The colormap to use for the plot.
@@ -437,37 +434,34 @@ class HaloPlotter:
             fig, ax.
         """
 
-        data = self.halo.preprocess_particle_states(
-            data=data,
-            filter_particle_type=filter_particle_type,
-            mask=mask,
-            filter_indices=filter_indices,
-        )
+        if data is None:
+            assert time is not None, 'If `data` is not provided, `time` must be provided'
+            if time == 'now':
+                data = self.halo.particles
+            elif time == 'initial':
+                data = self.halo.initial_particles
+            else:
+                data = utils.slice_closest(self.halo.get_particle_states(), time)
 
         if adjust_data_to_EL:
             data['L'] = data['r'] * cast(Quantity, data['vp'])
             data['E'] = data['E'] / cast(Quantity, data['m'])
 
-        grid, extent = plot.aggregate_2d_data(
+        grid, (x_range, y_range) = plot.aggregate_2d_data(
             data=data,
             x_key=x_key,
             y_key=y_key,
             x_bins=x_bins,
             y_bins=y_bins,
-            x_adjust_bins_edges_to_data=x_adjust_bins_edges_to_data,
-            y_adjust_bins_edges_to_data=y_adjust_bins_edges_to_data,
-            data_x_unit=x_unit,
-            data_y_unit=y_unit,
         )
         fig, ax = plot.heatmap(
             grid=grid,
-            extent=extent,
+            x_range=x_range,
+            y_range=y_range,
             xlabel=xlabel,
             ylabel=ylabel,
             x_unit=x_unit,
             y_unit=y_unit,
-            x_range=x_bins,
-            y_range=y_bins,
             cmap=cmap,
             transparent_value=transparent_value,
             setup_kwargs=setup_kwargs,

@@ -12,7 +12,7 @@ if __name__ == '__main__':
     from src.distribution import NFW
 
     sigma = Quantity(50, 'cm**2/gram')
-    dist = NFW(total_mass=Quantity(2e11, 'Msun'), c='From mass', r_vir='From mass', name='CDM+SIDM')
+    dist = NFW(total_mass=Quantity(2e11, 'Msun'), c='From mass', r_vir='From mass', name='CDM+SIDM', backend='python')
     # dist = NFW.from_example('Draco')
 
     fraction = float(os.environ.get('FRACTION', 0))

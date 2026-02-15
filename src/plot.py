@@ -817,34 +817,30 @@ def aggregate_2d_data(
     data: table.QTable | pd.DataFrame,
     x_key: str,
     y_key: str,
-    x_bins: Quantity,
-    y_bins: Quantity,
-    x_adjust_bins_edges_to_data: bool = False,
-    y_adjust_bins_edges_to_data: bool = False,
+    x_bins: Quantity | int,
+    y_bins: Quantity | int,
     output_type: Literal['counts', 'value'] = 'counts',
     value_key: str | None = None,
     value_statistic: str | None = 'mean',
     row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
     data_x_unit: UnitLike = '',
     data_y_unit: UnitLike = '',
-) -> tuple[Quantity, tuple[Quantity, Quantity, Quantity, Quantity]]:
+) -> tuple[Quantity, tuple[Quantity, Quantity]]:
     """Prepares data to be plotted in a 2d heatmap plot, like a phase space plot.
 
     Parameters:
         data: The input data, as a table with every row being a particle at a given time (fully raveled). Must contain the columns given in `x_key` and `y_key`.
         x_key: The key for the x-axis data.
         y_key: The key for the y-axis data.
-        x_bins: The bins for the x-axis. Also used to define the x-axis range to consider.
-        y_bins: The bins for the y-axis. Also used to define the y-range to consider.
-        x_adjust_bins_edges_to_data: Overwrite `x_bins` edges to match the data range.
-        y_adjust_bins_edges_to_data: Overwrite `y_bins` edges to match the data range.
+        x_bins: The bins for the x-axis. Also used to define the x-axis range to consider. If an `int`, treat as the number of bins and fit the range to the edges of the data.
+        y_bins: The bins for the y-axis. Also used to define the y-range to consider. If an `int`, treat as the number of bins and fit the range to the edges of the data.
         output_type: The type of calculation to fill each bin.
         row_normalization: The normalization to apply to each row. If `None` no normalization is applied. If `float` it must be a percentile value (between 0 and 1), and the normalization will be based on this quantile of each row.
         data_x_unit: The units for the x-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
         data_y_unit: The units for the y-column in the data. Only used if `data` doesn't have defined units (i.e. a `pd.DataFrame` input).
 
     Returns:
-        data, extent.
+        data, extent, x_bins, y_bins.
     """
     if isinstance(data, pd.DataFrame):
         sub = table.QTable.from_pandas(data[[x_key, y_key]], units={x_key: data_x_unit, y_key: data_y_unit})
@@ -859,17 +855,14 @@ def aggregate_2d_data(
     if data_y_unit is None:
         data_y_unit = ''
 
-    if x_adjust_bins_edges_to_data:
-        x_bins = Quantity(np.linspace(sub[x_key].min(), sub[x_key].max(), len(x_bins)))
-    if y_adjust_bins_edges_to_data:
-        y_bins = Quantity(np.linspace(sub[y_key].min(), sub[y_key].max(), len(y_bins)))
+    if isinstance(x_bins, int):
+        x_bins = Quantity(np.linspace(sub[x_key].min(), sub[x_key].max(), x_bins))
+    if isinstance(y_bins, int):
+        y_bins = Quantity(np.linspace(sub[y_key].min(), sub[y_key].max(), y_bins))
 
     x_bins = x_bins.to(data_x_unit)
     y_bins = y_bins.to(data_y_unit)
-    grid = np.histogram2d(
-        cast(NDArray[np.float64], sub[x_key]), cast(NDArray[np.float64], sub[y_key]), (x_bins, y_bins)
-    )[0].T
-
+    assert isinstance(x_bins, Quantity) and isinstance(y_bins, Quantity)
     if output_type == 'counts':
         grid = Quantity(
             np.histogram2d(
@@ -900,7 +893,7 @@ def aggregate_2d_data(
     elif row_normalization == 'integral':
         grid /= np.expand_dims(np.trapezoid(y=grid, x=np.matlib.repmat(x_bins[:-1], len(grid), 1), axis=1), 1)
 
-    return cast(Quantity, grid), cast(tuple[Quantity, Quantity, Quantity, Quantity], utils.to_extent(x_bins, y_bins))
+    return (cast(Quantity, grid), (x_bins, y_bins))
 
 
 def aggregate_phase_space_data(
@@ -910,7 +903,7 @@ def aggregate_phase_space_data(
     row_normalization: Literal['max', 'sum', 'integral'] | float | None = None,
     data_length_unit: UnitLike = 'kpc',
     data_velocity_unit: UnitLike = 'km/second',
-) -> tuple[Quantity, tuple[Quantity['length'], Quantity['length'], Quantity['velocity'], Quantity['velocity']]]:
+) -> tuple[Quantity, tuple[Quantity['length'], Quantity['velocity']]]:
     """Prepares data to be plotted in a 2d phase space heatmap plot, with radius x-axis and velocity y-axis. Intended to be passed on to `heatmap()`.
 
     Parameters:
@@ -1172,40 +1165,37 @@ def animate_density_presentation(snapshots: table.QTable, distribution: Distribu
 def animate_xy_presentation(snapshots: table.QTable, distribution: Distribution, save_path: str | Path) -> None:
     """Animation of the simulation's "particles" in an x-y plane over time, made for a presentation keynote."""
 
-    def g_(
-        data: Any, x_bins: Quantity, y_bins: Quantity
-    ) -> tuple[Quantity, tuple[Quantity, Quantity, Quantity, Quantity], Quantity, Quantity]:
+    def g_(data: Any, x_bins: Quantity, y_bins: Quantity) -> tuple[Quantity, tuple[Quantity, Quantity]]:
         x, y = utils.split_2d(data['r'], arccos=False)
-        grid, extent = aggregate_2d_data(
+        grid, (x_range, y_range) = aggregate_2d_data(
             table.QTable({'x': x, 'y': y}),
             x_key='x',
             y_key='y',
             x_bins=x_bins,
             y_bins=y_bins,
         )
-        x_grid, y_grid = np.meshgrid(np.diff(x_bins), np.diff(y_bins))
+        x_grid, y_grid = np.meshgrid(np.diff(x_range), np.diff(y_range))
         r_2d = np.sqrt(x_grid**2 + y_grid**2)
         volume = x_grid * y_grid
         volume[r_2d < distribution.r_vir] *= np.sqrt(distribution.r_vir**2 - r_2d[r_2d < distribution.r_vir] ** 2).value
         grid /= volume
-        return cast(Quantity, grid), extent, x_bins, y_bins
+        return cast(Quantity, grid), (x_range, y_range)
 
     def g(data: Any) -> tuple[Figure, Axes]:
-        grid, extent, x_bins, y_bins = g_(
+        grid, (x_range, y_range) = g_(
             data=data,
             x_bins=Quantity(np.linspace(-30, 30, 100), 'kpc'),
             y_bins=Quantity(np.linspace(-30, 30, 100), 'kpc'),
         )
         fig, ax = heatmap(
             grid,
-            extent,
             x_unit='kpc',
             y_unit='kpc',
             norm=colors.LogNorm(vmin=1, vmax=1e3),
             cmap='jet',
             transparent_value=0,
-            x_range=x_bins,
-            y_range=y_bins,
+            x_range=x_range,
+            y_range=y_range,
             title=f'Particle distribution at time = {data["time"][0].to("Gyr"):.1f}',
             cbar_label='Particles',
         )
@@ -1258,18 +1248,17 @@ def animate_xy_presentation(snapshots: table.QTable, distribution: Distribution,
         )
         fig.add_artist(con2)
 
-        grid, extent, x_bins, y_bins = g_(
+        grid, (x_range, y_range) = g_(
             data=data, x_bins=Quantity(np.linspace(-1, 1, 100), 'kpc'), y_bins=Quantity(np.linspace(-1, 1, 100), 'kpc')
         )
         fig, ax_zoom = heatmap(
             grid,
-            extent,
             x_unit='kpc',
             y_unit='kpc',
             norm=colors.LogNorm(vmin=1, vmax=1e3),
             cmap='jet',
-            x_range=x_bins,
-            y_range=y_bins,
+            x_range=x_range,
+            y_range=y_range,
             fig=fig,
             ax=ax_zoom,
             cbar=False,
