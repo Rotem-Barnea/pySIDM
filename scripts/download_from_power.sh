@@ -22,7 +22,7 @@ mkdir -p "$LOCAL_BASE"
 
 rsync -avP "${USER}@${REMOTE_HOST}:${REMOTE_BASE}/" "${LOCAL_BASE}/"
 if [ $? -eq 0 ]; then
-    echo "Download complete, files at ${LOCAL_BASE}"
+    echo "Download complete, files at $LOCAL_BASE"
 else
     echo "Download failed. Check VPN or SSH connection."
 fi
