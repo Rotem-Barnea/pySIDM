@@ -137,7 +137,7 @@ class Halo:
             Halo object.
         """
         self.sort_kind: SortKind = sort_kind
-        self._particles = self.to_dataframe(
+        self.particles_df = self.to_dataframe(
             r=r,
             v=v,
             m=m,
@@ -145,7 +145,7 @@ class Halo:
             distribution_id=distribution_id,
             leapfrog_convergence_rounds=leapfrog_convergence_rounds,
         )
-        self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
+        self.particles_df.sort_values('r', kind=self.sort_kind, inplace=True)
         self.time: Quantity['time'] = time.to(units.time)
         self.steps: int = int(steps)
         self.distributions: list[Distribution] = utils.handle_default(distributions, [])
@@ -177,7 +177,7 @@ class Halo:
         self.scatter_track_time: deque[float] = utils.handle_default(scatter_track_time, deque())
         self.scatter_track_index: deque[NDArray[np.int64]] = utils.handle_default(scatter_track_index, deque())
         self.scatter_track_radius: deque[NDArray[np.float64]] = utils.handle_default(scatter_track_radius, deque())
-        self._initial_particles = self._particles.copy()
+        self._initial_particles = self.particles_df.copy()
         self.initial_particles = self.particles.copy()
         self.last_saved_time: Quantity['time'] = last_saved_time
         self.scatter_rounds: deque[int] = utils.handle_default(scatter_rounds, deque())
@@ -383,7 +383,7 @@ class Halo:
         self.time = Quantity(0, units.time)
         self.steps = 0
         self.last_saved_time = Quantity(0, units.time)
-        self._particles = self._initial_particles.copy()
+        self.particles_df = self._initial_particles.copy()
         self.scatter_rounds = deque()
         self.scatter_rounds_underestimated = deque()
         self.scatter_track_index = deque()
@@ -423,7 +423,7 @@ class Halo:
             distribution_id: Identifier of the source distribution.
             leapfrog_convergence_rounds: Number of leapfrog convergence rounds in the previous step.
         """
-        self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
+        self.particles_df.sort_values('r', kind=self.sort_kind, inplace=True)
         data = table.QTable(
             {
                 'r': self.r,
@@ -435,10 +435,10 @@ class Halo:
                 'v_norm': self.v_norm,
                 'time': [self.time] * len(self.r),
                 'E': self.E,
-                'particle_type': self._particles['particle_type'],
-                'particle_index': self._particles.index,
-                'distribution_id': self._particles['distribution_id'],
-                'leapfrog_convergence_rounds': self._particles['leapfrog_convergence_rounds'],
+                'particle_type': self.particles_df['particle_type'],
+                'particle_index': self.particles_df.index,
+                'distribution_id': self.particles_df['distribution_id'],
+                'leapfrog_convergence_rounds': self.particles_df['leapfrog_convergence_rounds'],
             }
         )
         return data
@@ -630,17 +630,19 @@ class Halo:
         Significantly faster if the DataFrame is presorted.
         """
         if self.cleanup_nullish_particles or self.cleanup_particles_by_radius:
-            drop_indices = pd.Series(data=np.zeros(len(self._particles), dtype=np.bool_), index=self._particles.index)
+            drop_indices = pd.Series(
+                data=np.zeros(len(self.particles_df), dtype=np.bool_), index=self.particles_df.index
+            )
             if self.cleanup_nullish_particles:
-                drop_indices += self._particles['r'].isna()
+                drop_indices += self.particles_df['r'].isna()
             if self.cleanup_particles_by_radius:
-                drop_indices += self._particles['r'] > self.r_max.value
+                drop_indices += self.particles_df['r'] > self.r_max.value
             if drop_indices.any():
                 if presorted:
                     end = drop_indices.argmax()
-                    self._particles = self._particles.iloc[:end].copy()
+                    self.particles_df = self.particles_df.iloc[:end].copy()
                 else:
-                    self._particles.drop(index=drop_indices[drop_indices].index, inplace=True)
+                    self.particles_df.drop(index=drop_indices[drop_indices].index, inplace=True)
 
     #####################
     ##Physical properties
@@ -664,27 +666,27 @@ class Halo:
     @property
     def r(self) -> Quantity['length']:
         """Particle radius."""
-        return Quantity(self._particles['r'], units.length)
+        return Quantity(self.particles_df['r'], units.length)
 
     @property
     def vx(self) -> Quantity['velocity']:
         """The first perpendicular component (to the radial direction) of the particle velocity."""
-        return Quantity(self._particles['vx'], units.velocity)
+        return Quantity(self.particles_df['vx'], units.velocity)
 
     @property
     def vy(self) -> Quantity['velocity']:
         """The second perpendicular component (to the radial direction) of the particle velocity."""
-        return Quantity(self._particles['vy'], units.velocity)
+        return Quantity(self.particles_df['vy'], units.velocity)
 
     @property
     def vr(self) -> Quantity['velocity']:
         """The radial component of the particle velocity."""
-        return Quantity(self._particles['vr'], units.velocity)
+        return Quantity(self.particles_df['vr'], units.velocity)
 
     @property
     def v(self) -> Quantity['velocity']:
         """The velocity of the particle, as a 3-vector `(vx, vy, vr)`."""
-        return Quantity(self._particles[['vx', 'vy', 'vr']], units.velocity)
+        return Quantity(self.particles_df[['vx', 'vy', 'vr']], units.velocity)
 
     @property
     def time_step(self) -> Quantity['time']:
@@ -728,7 +730,7 @@ class Halo:
     @property
     def m(self) -> Quantity['mass']:
         """The mass of the particle."""
-        return Quantity(self._particles['m'], units.mass)
+        return Quantity(self.particles_df['m'], units.mass)
 
     @property
     def internal_energy(self) -> Quantity['energy']:
@@ -786,7 +788,7 @@ class Halo:
     @property
     def n_particles(self) -> dict[str, int]:
         """The total number of particles of every type in the halo."""
-        return self._particles['particle_type'].value_counts().to_dict()
+        return self.particles_df['particle_type'].value_counts().to_dict()
 
     @property
     def runtime_track(self):
@@ -1026,19 +1028,19 @@ class Halo:
         self.runtime_realtime_track += [datetime.now().timestamp()]
         t_start = time.perf_counter()
         t0 = time.perf_counter()
-        self._particles.sort_values('r', kind=self.sort_kind, inplace=True)
+        self.particles_df.sort_values('r', kind=self.sort_kind, inplace=True)
         self.runtime_track_sort += [time.perf_counter() - t0]
         t0 = time.perf_counter()
         self.cleanup_particles()
         self.runtime_track_cleanup += [time.perf_counter() - t0]
         if self.is_save_round():
             self.save_snapshot(**save_kwargs)
-        r, vx, vy, vr, m, leapfrog_convergence_rounds = self._particles[
+        r, vx, vy, vr, m, leapfrog_convergence_rounds = self.particles_df[
             ['r', 'vx', 'vy', 'vr', 'm', 'leapfrog_convergence_rounds']
         ].values.T
         if not in_bootstrap and self.scatter_params['sigma'] > sidm.no_sigma:
             t0 = time.perf_counter()
-            mask = cast(NDArray[np.bool_], self._particles['interacting'].values)
+            mask = cast(NDArray[np.bool_], self.particles_df['interacting'].values)
             (
                 vx[mask],
                 vy[mask],
@@ -1056,7 +1058,7 @@ class Halo:
                 generator=self.rng,
                 **self.scatter_params,
             )
-            self.scatter_track_index += [np.array(self._particles[mask].iloc[indices].index, dtype=np.int64)]
+            self.scatter_track_index += [np.array(self.particles_df[mask].iloc[indices].index, dtype=np.int64)]
             self.scatter_track_time += [self.time.value]
             self.scatter_track_radius += [self.r[mask][indices]]
             self.scatter_rounds += [scatter_rounds]
@@ -1074,11 +1076,11 @@ class Halo:
             dt=self.dt,
             **self.dynamics_params,
         )
-        self._particles['r'] = r
-        self._particles['vx'] = vx
-        self._particles['vy'] = vy
-        self._particles['vr'] = vr
-        self._particles['leapfrog_convergence_rounds'] = leapfrog_convergence_rounds
+        self.particles_df['r'] = r
+        self.particles_df['vx'] = vx
+        self.particles_df['vy'] = vy
+        self.particles_df['vr'] = vr
+        self.particles_df['leapfrog_convergence_rounds'] = leapfrog_convergence_rounds
 
         self.runtime_track_leapfrog += [time.perf_counter() - t0]
         if not in_bootstrap:
