@@ -92,7 +92,9 @@ def local_density(
     return cast(types.QuantityLike, density)
 
 
-def poisson_potential(r: types.QuantityLike, M: types.QuantityLike, m: types.QuantityLike) -> types.QuantityLike:
+def potential(
+    r: types.QuantityLike, M: types.QuantityLike, m: types.QuantityLike, with_reference: bool = True
+) -> types.QuantityLike:
     """Calculate the gravitational potential at a given radius.
 
     Performed using integration of the gravitational force `G*M(<=r)*m/r^2`.
@@ -101,29 +103,17 @@ def poisson_potential(r: types.QuantityLike, M: types.QuantityLike, m: types.Qua
         r: The position of the particles.
         M: The total enclosed mass (`M(<=r)`) at any particle position.
         m: The mass of each particle.
+        with_reference: Recalculates `potential_reference` (the value at infinity) based on the maximal value for the given particle array.
 
     Returns
         The gravitational potential at the given radius.
+
     """
     integral = scipy.integrate.cumulative_trapezoid(
         y=constants.G.decompose(units.system).value * M * m / r**2, x=r, initial=0
     )
-    if isinstance(r, Quantity):
-        return Quantity(integral, units.energy)
-    return integral
-
-
-def potential(r: types.QuantityLike, M: types.QuantityLike, m: types.QuantityLike) -> types.QuantityLike:
-    """Calculate the relative gravitational potential at a given radius.
-
-    Recalculates `potential_reference` (the value at infinity) based on the maximal value for the given particle array.
-
-    See `poisson_potential()` for details.
-    """
-    integral = scipy.integrate.cumulative_trapezoid(
-        y=constants.G.decompose(units.system).value * M * m / r**2, x=r, initial=0
-    )
-    integral = integral[-1] - integral
+    if with_reference:
+        integral = integral[-1] - integral
     if isinstance(r, Quantity):
         return Quantity(integral, units.energy)
     return integral

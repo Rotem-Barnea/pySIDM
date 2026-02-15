@@ -9,9 +9,8 @@ from scipy.interpolate import UnivariateSpline
 from astropy.units.typing import UnitLike
 
 from src import units
+from src.tqdm import tqdm
 from src.types import QuantitySpline
-
-from ..tqdm import tqdm
 
 
 def integral_f(

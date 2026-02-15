@@ -1,5 +1,5 @@
 """Physics calculations"""
 
-from . import sidm, utils, leapfrog, eddington
+from . import sidm, leapfrog, eddington
 
-__all__ = ['utils', 'leapfrog', 'sidm', 'eddington']
+__all__ = ['sidm', 'leapfrog', 'eddington']

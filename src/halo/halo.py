@@ -160,7 +160,7 @@ class Halo:
         self.potential_reference: Quantity['energy'] = (
             potential_reference
             if potential_reference is not None
-            else utils.physics.poisson_potential(self.r, self.M, self.m)[-1]
+            else utils.physics.potential(self.r, self.M, self.m, with_reference=False)[-1]
         )
         self.snapshots: table.QTable = utils.clean.default(snapshots, table.QTable())
         self.save_every_n_steps = save_every_n_steps
@@ -745,7 +745,7 @@ class Halo:
     @property
     def poisson_potential(self) -> Quantity['energy']:
         """The gravitational potential energy of the particle."""
-        return utils.physics.poisson_potential(self.r, self.M, self.m)
+        return utils.physics.potential(self.r, self.M, self.m, with_reference=False)
 
     @property
     def potential(self) -> Quantity['specific energy']:
