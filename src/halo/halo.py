@@ -37,6 +37,7 @@ from . import io, types, run_optimization
 from .plot import HaloPlotter
 from .units import HaloUnits
 from .animate import HaloAnimator
+from .particles import HaloParticles
 
 
 class Halo:
@@ -664,6 +665,11 @@ class Halo:
         return HaloUnits(self)
 
     @property
+    def halo_particles(self) -> HaloParticles:
+        """Particles of the halo."""
+        return HaloParticles(self)
+
+    @property
     def r(self) -> Quantity['length']:
         """Particle radius."""
         return Quantity(self.particles_df['r'], units.length)
@@ -746,7 +752,6 @@ class Halo:
     def potential(self) -> Quantity['specific energy']:
         """The relative gravitational potential energy of the particle."""
         return cast(Quantity, physics.utils.potential(self.r, self.M, self.m)).to(units.energy)
-        # return (self.potential_reference - self.poisson_potential).to(run_units.energy)
 
     @property
     def E(self) -> Quantity['specific energy']:
