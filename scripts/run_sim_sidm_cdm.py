@@ -34,7 +34,7 @@ if __name__ == '__main__':
             save_path=save_path,
             scatter_params={'sigma': sigma},
             sample_kwargs={'switch_particle_type': ['cdm', fraction_CDM]},
-            save_every_time=Quantity(50, 'Myr'),
+            save_every_time=Quantity(150, 'Myr'),
             bootstrap_steps=10000,
         )
 
