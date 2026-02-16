@@ -15,13 +15,13 @@ if __name__ == '__main__':
     dist = NFW(total_mass=Quantity(2e11, 'Msun'), c='From mass', r_vir='From mass', name='CDM+SIDM', backend='python')
     # dist = NFW.from_example('Draco')
 
-    fraction = float(os.environ.get('FRACTION', 0))
+    fraction_CDM = float(os.environ.get('FRACTION', 0))
 
-    sigma /= (1 - fraction) ** (3 / 2)
+    sigma /= (1 - fraction_CDM) ** (3 / 2)
 
     save_path = (
         Path(os.environ['SAVE_PATH'])
-        / f'run results/{dist.name} single fraction={fraction} [{os.environ.get("SLURM_JOB_ID", "local")}]'
+        / f'run results/{dist.name} single fraction={fraction_CDM} [{os.environ.get("SLURM_JOB_ID", "local")}]'
     )
 
     if save_path.exists():
@@ -33,7 +33,7 @@ if __name__ == '__main__':
             distributions=[dist],
             save_path=save_path,
             scatter_params={'sigma': sigma},
-            sample_kwargs={'switch_particle_type': ['cdm', fraction]},
+            sample_kwargs={'switch_particle_type': ['cdm', fraction_CDM]},
             save_every_time=Quantity(50, 'Myr'),
             bootstrap_steps=10000,
         )
