@@ -179,11 +179,11 @@ def update_units(
 ) -> Axes:
     """Update the units of a plot."""
     if x_unit != 'ignore':
-        xlabel = utils.utils.update_label(ax.get_xlabel(), x_unit)
+        xlabel = utils.units.update_label(ax.get_xlabel(), x_unit)
         if xlabel is not None:
             ax.set_xlabel(xlabel)
     if y_unit != 'ignore':
-        ylabel = utils.utils.update_label(ax.get_ylabel(), y_unit)
+        ylabel = utils.units.update_label(ax.get_ylabel(), y_unit)
         if ylabel is not None:
             ax.set_ylabel(ylabel)
     return ax
@@ -620,7 +620,7 @@ def density(
     minorticks: bool = True,
     label: str | None = None,
     cleanup_nonpositive: bool = True,
-    smooth_sigma: float = 1,
+    smoothing_sigma: float | None = 1,
     add_J: bool = False,
     save_kwargs: dict[str, Any] | None = None,
     line_kwargs: dict[str, Any] = {},
@@ -642,7 +642,7 @@ def density(
         minorticks: Whether to add the grid for the minor ticks.
         label: label to add to the plot legend.
         cleanup_nonpositive: drop negative values from the plot, to avoid "pits" in the log plot.
-        smooth_sigma: sigma for smoothing the density distribution.
+        smoothing_sigma: sigma for smoothing the density distribution.
         add_J: Multiply the density by the spherical jacobian (4*pi*radius^2).
         save_kwargs: Keyword arguments to pass to `save()`. Must include `save_path`. If `None` ignores saving.
         line_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
@@ -675,8 +675,7 @@ def density(
     if cleanup_nonpositive:
         x = x[density > 0]
         density = density[density > 0]
-    if smooth_sigma > 0:
-        density = scipy.ndimage.gaussian_filter1d(density, sigma=smooth_sigma)
+    density = utils.utils.gaussian_filter1d(density, smoothing_sigma)
     sns.lineplot(x=x, y=density, ax=ax, label=label, **line_kwargs)
     if label is not None:
         ax.legend()
@@ -858,24 +857,20 @@ def aggregate_2d_data(
     if isinstance(y_bins, int):
         y_bins = Quantity(np.linspace(sub[y_key].min(), sub[y_key].max(), y_bins))
 
-    x_bins = x_bins.to(data_x_unit)
-    y_bins = y_bins.to(data_y_unit)
+    x, y = utils.utils.get_columns(cast(table.QTable, sub), [x_key, y_key])
+    x_bins, y_bins = utils.utils.unmask_quantity(x_bins.to(data_x_unit), y_bins.to(data_y_unit))
     assert isinstance(x_bins, Quantity) and isinstance(y_bins, Quantity)
     if output_type == 'counts':
-        grid = Quantity(
-            np.histogram2d(
-                cast(NDArray[np.float64], sub[x_key]), cast(NDArray[np.float64], sub[y_key]), (x_bins, y_bins)
-            )[0].T
-        )
+        grid = Quantity(np.histogram2d(x.value, y.value, (x_bins.value, y_bins.value))[0].T)
     else:
         assert value_key is not None and value_statistic is not None, (
             '`value_key` and `value_statistic` must be provided if `output_type=value`'
         )
         grid = Quantity(
             scipy.stats.binned_statistic_2d(
-                x=data[x_key].to(x_bins.unit).value.astype(np.float64),
-                y=data[y_key].to(y_bins.unit).value.astype(np.float64),
-                values=data[value_key].value.astype(np.float64),
+                x=x.value.astype(np.float64),
+                y=y.value.astype(np.float64),
+                values=utils.utils.get_columns(cast(table.QTable, data), [value_key])[0].value.astype(np.float64),
                 statistic=value_statistic,
                 bins=[x_bins.value, y_bins.value],
             )[0].T,

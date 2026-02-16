@@ -834,7 +834,7 @@ class Halo:
     def max_core_time(
         self,
         time_binning: Quantity['time'] = Quantity(100, 'Myr'),
-        smoothing_sigma: int | None = 1,
+        smoothing_sigma: float | None = 1,
         kind: str = 'cubic',
     ) -> Quantity['time']:
         """Calculate the time at which the halo reaches maximum core.
@@ -852,8 +852,7 @@ class Halo:
         n = int(time_binning / self.dt)
         time = self.scatter_times
         scatters = np.add.reduceat(self.n_scatters, np.arange(0, len(self.n_scatters), n))
-        if smoothing_sigma is not None:
-            scatters = scipy.ndimage.gaussian_filter1d(scatters, sigma=smoothing_sigma)
+        scatters = utils.utils.gaussian_filter1d(scatters, smoothing_sigma)
         return cast(
             Quantity,
             time[
@@ -1775,7 +1774,7 @@ class Halo:
         length_unit: UnitLike = 'kpc',
         time_unit: TimeUnitLike = 'Gyr',
         time_format: str = '.1f',
-        smooth_sigma: float = 5,
+        smoothing_sigma: float | None = 5,
         smooth_interpolate_kind: str = 'linear',
         save_kwargs: dict[str, Any] | None = None,
         **kwargs: Any,
@@ -1793,7 +1792,7 @@ class Halo:
             length_unit: Units to use for the radius axis.
             time_unit: Units to use for time.
             time_format: Format string for time.
-            smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
+            smoothing_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel).
             smooth_interpolate_kind: Interpolation kind for the density plot. Applied after the Gaussian smoothing to further smooth the plot data.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
@@ -1815,7 +1814,7 @@ class Halo:
         interpolated_density = scipy.interpolate.interp1d(
             r_bins[density != 0], density[density != 0], kind=smooth_interpolate_kind
         )(r_bins)
-        smoothed_density = scipy.ndimage.gaussian_filter1d(interpolated_density, sigma=smooth_sigma)
+        smoothed_density = utils.utils.gaussian_filter1d(interpolated_density, smoothing_sigma)
 
         time_unit = self.fill_time_unit(time_unit)
         if title is not None:

@@ -39,9 +39,13 @@ class Halos:
         return self.halos[index]
 
     @classmethod
-    def from_paths(cls, paths: list[str | Path], verbose: bool = False) -> 'Halos':
+    def from_paths(
+        cls, paths: list[str | Path], verbose: Literal[False, 'low', 'high'] = 'low', **kwargs: Any
+    ) -> 'Halos':
         """Create form a list of paths."""
-        return cls([Halo.load(path=path, verbose=verbose) for path in tqdm(paths, disable=not verbose)])
+        return cls(
+            [Halo.load(path=path, verbose=(verbose == 'high'), **kwargs) for path in tqdm(paths, disable=not verbose)]
+        )
 
     def _plot_baryon_mass_ratio(
         self,
@@ -284,7 +288,7 @@ class Halos:
                             _lineplot_kwargs.pop('label')
                         else:
                             used_labels += [_lineplot_kwargs['label']]
-            fig, ax = halo.plot_cumulative_scattering_amount_over_time(
+            fig, ax = halo.plot.cumulative_scattering(
                 lineplot_kwargs=_lineplot_kwargs,
                 fig=fig,
                 ax=ax,
@@ -300,9 +304,6 @@ class Halos:
         time_unit: types.TimeUnitLike = 'Gyr',
         path_condition: dict[str, dict[str, Any]] | Literal['default'] = 'default',
         palette: str | None = None,
-        plot_kwargs: dict[str, Any] = {},
-        lineplot_kwargs: dict[str, Any] = {},
-        save_kwargs: dict[str, Any] = {},
         early_quit: bool = False,
         **kwargs: Any,
     ) -> tuple[Figure, Axes]:
@@ -312,44 +313,39 @@ class Halos:
             time_unit: The unit of time to use for the x-axis. If 'time step', 'dynamical time', or 'core collapse time', each halo will use its own value for its plot.
             path_condition: A dictionary of conditions to apply to the plot of each halo. If 'default', use the default set in `Halos.default_path_condition()`.
             palette: The color palette to use for the plot. If None, use the default palette.
-            plot_kwargs: Additional keyword arguments to pass to the plot function (`Halo.plot_core_density()`).
-            lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
-            save_kwargs: Additional keyword arguments to pass to `plot.save_plot()`.
             early_quit: If `True` force the plot on a predefined `fig` and `ax`. If `False` allows the plotting function (`phase_space.plot()`) to define axis parameters (title, axis labels, etc.).
-            **kwargs: Additional keyword arguments to pass to the plot function (`plot.setup()`).
+            **kwargs: Additional keyword arguments to pass to the plot function (`Halo.plot.core_density()`).
 
         Returns:
             fig, ax.
         """
 
-        fig, ax = plot.setup(**kwargs)
-        plot_kwargs = plot_kwargs.copy()
+        fig, ax = plot.setup()
+        kwargs = kwargs.copy()
         if path_condition == 'default':
             path_condition = self.default_path_condition()
 
         used_labels = []
 
+        save_kwargs = kwargs.pop('save_kwargs', {})
         for color, halo in plot.color_palette(tqdm(self.halos), palette=palette):
             assert halo.save_path is not None
-            plot_kwargs.pop('save_kwargs', None)
-            plot_kwargs.pop('lineplot_kwargs', None)
-            plot_kwargs.pop('early_quit', None)
-            _lineplot_kwargs = lineplot_kwargs.copy()
+            lineplot_kwargs = kwargs.pop('lineplot_kwargs', {}).copy()
             for key, value in path_condition.items():
                 if key in halo.save_path.name:
-                    _lineplot_kwargs = {'color': color, **_lineplot_kwargs, **value}
-                    if 'label' in _lineplot_kwargs:
-                        if _lineplot_kwargs['label'] in used_labels:
-                            _lineplot_kwargs.pop('label')
+                    lineplot_kwargs = {'color': color, **lineplot_kwargs, **value}
+                    if 'label' in lineplot_kwargs:
+                        if lineplot_kwargs['label'] in used_labels:
+                            lineplot_kwargs.pop('label')
                         else:
-                            used_labels += [_lineplot_kwargs['label']]
-            fig, ax = halo._plot.core_density(
-                lineplot_kwargs=_lineplot_kwargs,
+                            used_labels += [lineplot_kwargs['label']]
+            fig, ax = halo.plot.core_density(
+                lineplot_kwargs=lineplot_kwargs,
                 fig=fig,
                 ax=ax,
                 early_quit=early_quit,
                 time_unit=time_unit,
-                **plot_kwargs,
+                **kwargs,
             )
         plot.save(fig=fig, **save_kwargs)
         return fig, ax

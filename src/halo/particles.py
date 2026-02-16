@@ -22,6 +22,10 @@ class HaloParticles(object):
     def __init__(self, halo: 'Halo'):
         self.halo = halo
 
+    def _state(self) -> pd.DataFrame:
+        """The internal state of the simulation"""
+        return self.halo.particles_df
+
     def invalidate(self, *properties: str):
         """Invalidates the cache for the specified properties, so they are recalculated."""
         for property in properties:
@@ -68,6 +72,12 @@ class HaloParticles(object):
         if isinstance(key, str):
             return utils.utils.slice_closest(self.snapshots, key, 'particle_type')
         return utils.utils.slice_closest(self.snapshots, key)
+
+    def __len__(self) -> int:
+        return len(self.groups)
+
+    def __iter__(self) -> table.TableGroups:
+        return iter(self.groups)
 
     def to_table(self, data: pd.DataFrame) -> table.QTable:
         """Particle data QTable.

@@ -444,3 +444,13 @@ def fit_curve(
         Quantity(p, x.unit if unit == 'x' else (y.unit if unit == 'y' else unit)) if unit is not None else p
         for p, unit in zip(popt, output_scheme)
     ]
+
+
+def gaussian_filter1d(input: types.QuantityLike, sigma: float | None, **kwargs: Any) -> types.QuantityLike:
+    """Performs a 1d gaussian filter on the data, preserving units."""
+    if sigma is None or sigma == 0:
+        return input
+    filtered = scipy.ndimage.gaussian_filter1d(np.array(input), sigma=sigma, **kwargs)
+    if isinstance(input, Quantity):
+        return Quantity(filtered, input.unit)
+    return filtered

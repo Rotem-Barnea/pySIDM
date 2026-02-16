@@ -55,10 +55,10 @@ class DistributionUnits:
             doc=f'{self.distribution.title} scatter time scale',
         )
 
-    def t_c(self, **kwargs: Any) -> Unit:
+    def t_c(self, *args: Any, **kwargs: Any) -> Unit:
         """Base estimation for the core collapse time"""
         return def_unit(
             't_c',
-            Quantity(340, self.t_s(**kwargs)),
+            Quantity(340, self.t_s(*args, **kwargs)),
             doc=f'{self.distribution.title} collapse time',
         )

@@ -151,6 +151,7 @@ class HaloPlotter:
         xlabel: str | None = 'Time',
         ylabel: str | Literal['auto'] | None = 'auto',
         title: str | None = 'Inner core density ratio over time',
+        smoothing_sigma: float | None = None,
         lineplot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] = {},
         **kwargs: Any,
@@ -166,6 +167,7 @@ class HaloPlotter:
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
             title: The title of the plot.
+            smoothing_sigma: The smoothing factor over the number of scattering events.
             lineplot_kwargs: Additional keyword arguments to pass to `sns.lineplot()`.
             save_kwargs: Keyword arguments to pass to `plot.save_plot()`. Must include `save_path`. If `None` ignores saving.
             kwargs: Additional keyword arguments passed to `plot.setup()`.
@@ -197,7 +199,8 @@ class HaloPlotter:
         t = t.to(time_unit)
         ratio = Quantity(ratio)
         if stat == 'density':
-            ratio = ratio.to(density_unit)
+            ratio = cast(Quantity, ratio.to(density_unit))
+        ratio = utils.utils.gaussian_filter1d(ratio, smoothing_sigma)
         sns.lineplot(x=t.value, y=ratio.value, ax=ax, **lineplot_kwargs)
         ax = plot.update_units(
             ax=ax, x_unit=str(t.unit), y_unit=str(ratio.unit)
@@ -211,7 +214,7 @@ class HaloPlotter:
         data: table.QTable | None = None,
         filter_particle_type: types.ParticleType | None = None,
         max_radius_j: int = 10,
-        smooth_sigma: float = 0,
+        smoothing_sigma: float | None = None,
         x_range: Quantity['length'] | None = None,
         xlabel: str | None = 'Radius',
         ylabel: str | None = r'$\rho$',
@@ -234,7 +237,7 @@ class HaloPlotter:
             data: The data to pull from. If not provided use all snapshots.
             filter_particle_type: Only relevant if `data` is not provided. Filter the snapshots to only include the specified particle type.
             max_radius_j: The maximum neighbor radius to consider for the cell volume when computing the local density.
-            smooth_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel). Ignore if 0.
+            smoothing_sigma: Smoothing factor for the density plot (sigma for a 1d Gaussian kernel). Ignore if `0` or `None`.
             radius_range: Range of radius to consider (filters the data).
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
@@ -274,22 +277,23 @@ class HaloPlotter:
                 continue
             used_times += [t]
             group = utils.utils.slice_closest(data, t)
+            real_time = cast(Quantity, group['time'][0])
             r, m = utils.utils.get_columns(group, ['r', 'm'])
             x = cast(Quantity, r.to(x_unit))
             y = cast(
                 Quantity,
-                utils.utils.physics.local_density(
+                utils.physics.local_density(
                     r=r, m=m, max_radius_j=max_radius_j, volume_kind='density', mass_kind='sum'
                 ).to(y_unit),
             )
-            y = Quantity(scipy.ndimage.gaussian_filter1d(y, sigma=smooth_sigma), y.unit) if smooth_sigma > 0 else y
+            y = utils.utils.gaussian_filter1d(y, smoothing_sigma)
             if x_range is not None:
                 mask = (x > x_range[0]) * (x < x_range[1])
                 x, y = cast(tuple[Quantity, Quantity], (x[mask], y[mask]))
             if label == 'auto-disable':
                 label = None
             elif label == 'auto':
-                label = f'Time={t.to(time_unit):{time_format}}'
+                label = f'Time={real_time.to(time_unit):{time_format}}'
             sns.lineplot(x=x.value, y=y.value, ax=ax, label=label, color=color, **lineplot_kwargs)
         self.save(fig=fig, save_kwargs=save_kwargs)
         return fig, ax
@@ -297,9 +301,10 @@ class HaloPlotter:
     def cumulative_scattering(
         self,
         time_unit: types.TimeUnitLike = 'Gyr',
+        per_dm_particle: bool = False,
         undersample: int | None = None,
         xlabel: str | None = 'Time',
-        ylabel: str | None = 'Cumulative number of scattering events',
+        ylabel: str | Literal['auto'] | None = 'auto',
         yscale: plot.Scale = 'log',
         lineplot_kwargs: dict[str, Any] = {},
         save_kwargs: dict[str, Any] | None = None,
@@ -309,6 +314,7 @@ class HaloPlotter:
 
         Parameters:
             time_unit: Units for the x-axis.
+            per_dm_particle: Divide the y-axis by the number of SIDM particles.
             undersample: Downsample the data by this factor.
             xlabel: Label for the x-axis.
             ylabel: Label for the y-axis.
@@ -321,9 +327,15 @@ class HaloPlotter:
             fig, ax.
         """
         time_unit = self.fill_time_unit(time_unit)
+        if ylabel == 'auto':
+            ylabel = 'Cumulative number of scattering events'
+            if per_dm_particle:
+                ylabel = f'{ylabel} / per SIDM particle'
         fig, ax = plot.setup(xlabel=xlabel, ylabel=ylabel, x_unit=time_unit, yscale=yscale, **kwargs)
         x = cast(Quantity, self.halo.scatter_times.to(time_unit))
         y = Quantity(self.halo.n_scatters.cumsum())
+        if per_dm_particle:
+            y /= self.halo.n_particles['dm']
         if undersample is not None:
             x, y = cast(tuple[Quantity, Quantity], (x[::undersample], y[::undersample]))
         sns.lineplot(x=x.value, y=y.value, ax=ax, **lineplot_kwargs)
