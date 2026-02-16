@@ -17,7 +17,7 @@ if __name__ == '__main__':
 
     fraction = float(os.environ.get('FRACTION', 0))
 
-    sigma /= fraction ** (3 / 2)
+    sigma /= (1 - fraction) ** (3 / 2)
 
     save_path = (
         Path(os.environ['SAVE_PATH'])
