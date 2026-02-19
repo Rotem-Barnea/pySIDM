@@ -781,7 +781,7 @@ class Halo:
                 self.runtime_track_simulation_time,
                 fillvalue=np.nan,
             ),
-            columns=['sort', 'cleanup', 'sidm', 'leapfrog', 'full step', 'real timestep'],
+            columns=['sort', 'cleanup', 'sidm', 'leapfrog', 'full step', 'real timestep', 'simulation time'],
         )
 
     def unit_mass(self, distribution: Distribution) -> Quantity['mass']:
