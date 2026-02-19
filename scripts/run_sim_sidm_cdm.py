@@ -41,7 +41,7 @@ if __name__ == '__main__':
     print('Starting evolution')
 
     halo.evolve(
-        until_t=Quantity(20, 'Gyr'),
+        until_t=Quantity(45, 'Gyr'),
         optimize_dt_kwargs={'min_factor': 2, 'max_dt': Quantity(17e-3, 'Myr')},
-        early_quit_kwargs={'critical_ratio': 7.8},
+        early_quit_kwargs={'critical_ratio': 15},
     )
