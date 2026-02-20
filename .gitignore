@@ -4,4 +4,5 @@ __pycache__
 **/*.ipynb
 **/.DS_Store
 venv/
-analysis/*.py
+#analysis/*.py
+.harper-dictionary.txt
