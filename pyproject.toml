@@ -6,6 +6,7 @@ exclude = [
     "build",
     "dist",
     "__pycache__",
+    "src/GravothermalSIDM",
 ]
 
 [tool.ruff.lint]

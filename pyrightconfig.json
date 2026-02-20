@@ -17,7 +17,7 @@
   "reportUnknownLambdaType": false,
   "reportImplicitRelativeImport": false,
   "reportInvalidTypeForm": false,
-  "exclude": ["**/*.ipynb", "**/__pycache__"],
+  "exclude": ["**/*.ipynb", "**/__pycache__", "src/GravothermalSIDM/**/*"],
   "ignore": ["analysis/*.py"],
   "include": ["src"],
   "venv": "venv",
