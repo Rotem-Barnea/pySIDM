@@ -9,7 +9,7 @@ from astropy import constants, cosmology
 from astropy.units import Quantity
 
 import agama_wrappers
-from src import GravothermalSIDM, plot, types, units, utils, distribution, gravothermal_fluid
+from src import plot, types, units, utils, distribution, gravothermal_fluid
 from src.halo.halo import Halo
 from src.background import BackgroundDistribution
 from src.phase_space import PhaseSpace
@@ -36,10 +36,11 @@ halo = Halo.setup(
     bootstrap_steps=10000,
 )
 
-halo = Halo.load('../run results/Draco dynamic baryons 2')
+halo = Halo.load('../run results/2026-02-21/CDM+SIDM single fraction=0.4 [11127224]')
+halo.plot.cumulative_scattering()
 
 halo.evolve(
-    until_t=Quantity(20, 'Gyr'),
+    until_t=Quantity(40, 'Gyr'),
     optimize_dt_kwargs={'min_factor': 2, 'max_dt': Quantity(17e-3, 'Myr')},
 )
 

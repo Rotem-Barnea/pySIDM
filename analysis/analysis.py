@@ -73,7 +73,7 @@ halos[0].animate.phase_space(
     save_kwargs={'save_path': 'Phase space f=0.1.gif'},
 )
 
-halo = Halo.load(paths[-2])
+halo = Halo.load(paths[-1])
 f_SIDM = 1 - float(re.findall(r'fraction=([\d.]+)', halo.save_path.name)[0])
 halo.plot.local_density(
     # times=Quantity([0, 2 / f_SIDM, 11], 'Gyr'),
@@ -93,6 +93,10 @@ halo.animate.local_density(
     max_radius_j=100,
     save_kwargs={'save_path': 'CDM fraction SIDM density f=0.1.gif'},
 )
+
+halos[3].save_path
+
+halos.plot_cumulative_scattering()
 
 fig, ax = plot.setup(
     xlabel=r'f $\times$ Time',
