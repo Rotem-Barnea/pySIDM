@@ -13,22 +13,16 @@ from astropy import constants, cosmology
 from astropy.units import Quantity
 
 import agama_wrappers
-from src import GravothermalSIDM, plot, types, units, utils, distribution, gravothermal_fluid
+from src import plot, types, units, utils, distribution, gravothermal_fluid
 from src.halo import compare, run_optimization
 from src.tqdm import tqdm
 from src.halo.halo import Halo
 from src.background import BackgroundDistribution
 from src.phase_space import PhaseSpace
 
-paths = sorted(list(Path('../run results').glob('CDM+SIDM single fraction=*')))
+paths = sorted(list(Path('../run results/2026-02-21').glob('*')))
 
 halo = Halo.load(paths[0], verbose=False)
-
-# 'CDM+SIDM single fraction=0.1 [11043803]'  'CDM+SIDM single fraction=0.6 [11043808]'
-# 'CDM+SIDM single fraction=0.2 [11043804]'  'CDM+SIDM single fraction=0.7 [11043809]'
-# 'CDM+SIDM single fraction=0.3 [11043805]'  'CDM+SIDM single fraction=0.8 [11043810]'
-# 'CDM+SIDM single fraction=0.4 [11043806]'  'CDM+SIDM single fraction=0.9 [11043811]'
-# 'CDM+SIDM single fraction=0.5 [11043807]'
 
 halos = compare.Halos.from_paths(paths)
 path_condition = {
@@ -120,7 +114,7 @@ for color, halo in plot.color_palette(tqdm(halos), 'magma'):
         .to_numpy()
         .T
     )
-    t = Quantity(t, units.time)  # * scaleup_factor.value
+    t = Quantity(t, units.time)
     rho = Quantity(rho, units.density)
     sns.lineplot(
         x=t.to('Gyr').value[::10] * f_SIDM,

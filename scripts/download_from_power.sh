@@ -9,10 +9,12 @@ fi
 
 USER="rotembarnea"
 REMOTE_HOST="hpcsl.tau.ac.il"
-REMOTE_BASE="/scratch200/rotembarnea/SIDM/pySIDM/run results/$1"
+# REMOTE_BASE="/scratch200/rotembarnea/SIDM/pySIDM/run results/$1"
+REMOTE_BASE="/scratch200/rotembarnea/SIDM/pySIDM/run results"
 LOCAL_BASE="$HOME/Documents/SIDM/pySIDM/run results"
 
-REMOTE_END=$(basename "$REMOTE_BASE")
+REMOTE_END="$1"
+# REMOTE_END=$(basename "$REMOTE_BASE")
 
 if [[ "$LOCAL_BASE" != *"$REMOTE_END" ]]; then
     LOCAL_BASE="$LOCAL_BASE/$REMOTE_END"
